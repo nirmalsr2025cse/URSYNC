@@ -214,16 +214,18 @@ export default function TendersByLocation() {
 
         {/* Results grid */}
         {!loadingCards && tenders.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
             {tenders.map((tender, idx) => (
               <div
                 key={tender.id}
                 ref={(el) => { cardRefs.current[idx] = el }}
+                className="flex"
               >
                 <TenderCard
                   tender={tender}
                   highlighted={activeMarker === idx}
                   onClick={() => handleCardClick(idx)}
+                  className="flex-1"
                 />
               </div>
             ))}
