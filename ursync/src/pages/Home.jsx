@@ -251,7 +251,8 @@ export default function Home() {
       </div>
 
       {/* ── Tabs ────────────────────────────────────────────────────────── */}
-      <div className="flex bg-white border border-[#FFE5BF] rounded-2xl p-1 shadow-sm w-full sm:w-auto">
+      <div className="overflow-x-auto">
+      <div className="flex min-w-max bg-white border border-[#FFE5BF] rounded-2xl p-1 shadow-sm">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id
           const count = stats[tab.id]
@@ -260,7 +261,7 @@ export default function Home() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={[
-                'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold',
+                'flex items-center gap-1 sm:gap-2 md:gap-1 px-2 sm:px-4 md:px-2 py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap',
                 'transition-all duration-200 flex-1 justify-center',
                 isActive
                   ? `${tab.activeBg} text-white shadow-md`
@@ -281,6 +282,7 @@ export default function Home() {
             </button>
           )
         })}
+      </div>
       </div>
 
       {/* ── Section label ────────────────────────────────────────────────── */}

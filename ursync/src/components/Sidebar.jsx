@@ -2,10 +2,8 @@ import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { useRole, NAV_CONFIG, ROLE_LABELS, ROLE_COLORS } from './RoleContext'
 
-// ── Icon map ──────────────────────────────────────────────────────────────────
 function Icon({ name, className }) {
   const props = { className, fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }
-
   const paths = {
     home:         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 9.75L12 3l9 6.75V21a.75.75 0 01-.75.75H15v-6h-6v6H3.75A.75.75 0 013 21V9.75z" />,
     doc:          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />,
@@ -15,7 +13,7 @@ function Icon({ name, className }) {
     tag:          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />,
     archive:      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />,
     status:       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />,
-    cancel:       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />,
+    retender:     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />,
     download:     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />,
     shield:       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />,
     bell:         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />,
@@ -30,36 +28,30 @@ function Icon({ name, className }) {
     upcoming:     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />,
     completed:    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />,
     applications: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />,
-    retender: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />,
-    money:  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M2.25 6.75A2.25 2.25 0 014.5 4.5h15a2.25 2.25 0 012.25 2.25v10.5A2.25 2.25 0 0119.5 19.5h-15a2.25 2.25 0 01-2.25-2.25V6.75zm9.75 7.5a3 3 0 100-6 3 3 0 000 6z"/>,
-    edit: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16.862 4.487a2.25 2.25 0 113.182 3.182L8.25 19.463 3 21l1.537-5.25L16.862 4.487z"/>
+    apply:        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />,
+    org:          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />,
+    mytenders:    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />,
+    search:       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />,
   }
 
   return <svg {...props}>{paths[name] || paths.doc}</svg>
 }
 
-// ── Sidebar ───────────────────────────────────────────────────────────────────
 export default function Sidebar({ open, onClose }) {
-  const { role, setRole, } = useRole()
+  const { role } = useRole()
   const navItems = NAV_CONFIG[role] || []
 
   return (
     <>
-      {/* Overlay — mobile/tablet */}
       {open && (
-        <div
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
-          onClick={onClose}
-          aria-hidden="true"
-        />
+        <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} aria-hidden="true" />
       )}
 
       <aside
         className={[
           'fixed top-0 left-0 z-40 w-64 bg-white border-r border-tn-border',
-          'flex flex-col',
+          'flex flex-col h-screen',
           'transition-transform duration-250 ease-out',
-          'h-screen',
           'lg:sticky lg:top-0 lg:translate-x-0 lg:z-auto lg:flex-shrink-0',
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         ].join(' ')}
@@ -68,11 +60,7 @@ export default function Sidebar({ open, onClose }) {
         {/* Mobile header */}
         <div className="flex items-center justify-between px-4 py-3 bg-tn-navy lg:hidden flex-shrink-0">
           <span className="text-white font-semibold text-sm">Menu</span>
-          <button
-            onClick={onClose}
-            className="text-white/70 hover:text-white transition-colors"
-            aria-label="Close sidebar"
-          >
+          <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -81,7 +69,7 @@ export default function Sidebar({ open, onClose }) {
 
         {/* Role badge */}
         <div className="flex-shrink-0 px-3 pt-3 pb-2">
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${ROLE_COLORS[role]}`}>
+          <div className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ' + ROLE_COLORS[role]}>
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -90,19 +78,14 @@ export default function Sidebar({ open, onClose }) {
           </div>
         </div>
 
-        {/* Nav — scrollable */}
-        <nav
-          className="overflow-y-auto py-1 px-2 space-y-0.5"
-          style={{ flex: '1 1 0', minHeight: 0 }}
-        >
+        {/* Nav */}
+        <nav className="overflow-y-auto py-1 px-2 space-y-0.5" style={{ flex: '1 1 0', minHeight: 0 }}>
           {navItems.map(({ label, path, icon }) => (
             <NavLink
               key={path}
               to={path}
               onClick={onClose}
-              className={({ isActive }) =>
-                ['sidebar-link', isActive ? 'active' : ''].join(' ')
-              }
+              className={({ isActive }) => ['sidebar-link', isActive ? 'active' : ''].join(' ')}
             >
               <Icon name={icon} className="w-4 h-4 flex-shrink-0" />
               <span className="truncate">{label}</span>
@@ -110,7 +93,7 @@ export default function Sidebar({ open, onClose }) {
           ))}
         </nav>
 
-        {/* Footer — always pinned */}
+        {/* Footer */}
         <div className="flex-shrink-0 border-t border-tn-border bg-white">
           <p className="text-xs text-tn-muted text-center py-3">
             © {new Date().getFullYear()} Govt. of Tamil Nadu
