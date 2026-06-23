@@ -6,6 +6,8 @@ import Home from '../pages/Home'
 import Dashboard from '../pages/Dashboard'
 import Placeholder from '../pages/Placeholder'
 import TendersByOrganization from '../components/TenderByOrganization'
+import CreateSavedTenders from '../pages/CreateSavedTenders'
+import CreateTender from '../pages/CreateTender'
 
 export default function AppRoutes() {
   return (
@@ -17,6 +19,8 @@ export default function AppRoutes() {
         <Route path="/tenders-by-location" element={<TendersByLocation />} />
         <Route path="*" element={<Placeholder />} />
         <Route path="/tenders-by-org" element={<TendersByOrganization />} />
+        <Route path="/create-saved-tenders" element={<CreateSavedTenders />} />
+        <Route path="/create-tender"        element={<CreateTender />} />
       </Route>
     </Routes>
   )

@@ -50,7 +50,7 @@ export const NAV_CONFIG = {
   [ROLES.DEPARTMENT_EMPLOYEE]: [
     { label: 'Home',                   path: '/home',             icon: 'home'     },
     { label: 'Dashboard',              path: '/dashboard',        icon: 'dash'     },
-    { label: 'Saved & Create Tenders', path: '/tender-details',   icon: 'doc'      },
+    { label: 'Saved & Create Tenders', path: '/create-saved-tenders',icon: 'doc'      },
     { label: 'Reports & Feedbacks',    path: '/reports',          icon: 'chart'    },
     { label: 'Cancelled / Retendered', path: '/cancelled',        icon: 'retender' },
     { label: 'Check Tender Status',    path: '/tender-status',    icon: 'status'   },
@@ -60,7 +60,7 @@ export const NAV_CONFIG = {
   [ROLES.DEPARTMENT_HEAD]: [
     { label: 'Home',                   path: '/home',             icon: 'home'     },
     { label: 'Dashboard',              path: '/dashboard',        icon: 'dash'     },
-    { label: 'Saved & Create Tenders', path: '/tender-details',   icon: 'doc'      },
+    { label: 'Saved & Create Tenders', path: '/create-saved-tenders',   icon: 'doc'      },
     { label: 'Reports & Feedbacks',    path: '/reports',          icon: 'chart'    },
     { label: 'Conflicts',              path: '/conflicts',        icon: 'conflict' },
     { label: 'Resource Sharing',       path: '/resource-sharing', icon: 'share'    },
