@@ -2,6 +2,8 @@
 import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MOCK_SAVED_TENDERS, STATUS_CONFIG, PRIORITY_CONFIG, TENDER_CATEGORIES } from '../data/tenderMockData'
+import TenderView from './TenderView'
+import {useRole} from '../components/RoleContext'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(d) {
@@ -111,6 +113,7 @@ function SavedTenderCard({ tender, onView, onEdit, onDelete }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function CreateSavedTenders() {
   const navigate = useNavigate()
+    const { role } = useRole();
   const [tenders, setTenders]     = useState(MOCK_SAVED_TENDERS)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('All')
@@ -141,9 +144,14 @@ export default function CreateSavedTenders() {
     return list
   }, [tenders, search, statusFilter, catFilter])
 
-  function handleView(tender) {
-    showToast('Viewing: ' + tender.projectName)
-  }
+   const handleView = (tender) => {
+    navigate('/tender-view', {
+      state: {
+        tender,
+        role,
+      },
+    });
+  };
 
   function handleEdit(tender) {
     navigate('/create-tender', { state: { tender } })
