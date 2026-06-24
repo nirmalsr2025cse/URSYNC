@@ -1,9 +1,9 @@
 // src/pages/CreateSavedTenders.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MOCK_SAVED_TENDERS, STATUS_CONFIG, PRIORITY_CONFIG, TENDER_CATEGORIES } from '../data/tenderMockData'
-import TenderView from './TenderView'
 import {useRole} from '../components/RoleContext'
+import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(d) {
@@ -113,36 +113,55 @@ function SavedTenderCard({ tender, onView, onEdit, onDelete }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function CreateSavedTenders() {
   const navigate = useNavigate()
-    const { role } = useRole();
+  const { role } = useRole();
+  console.log('Current role:', role); // Debugging line to check the current role 
   const [tenders, setTenders]     = useState(MOCK_SAVED_TENDERS)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('All')
   const [catFilter, setCat]       = useState('All')
   const [toast, setToast]         = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = useResponsiveItemsPerPage()
+  console.log("Total Mock Tenders:", MOCK_SAVED_TENDERS.length);
 
   // Show toast
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
   }
+  const visibleTenders = tenders.filter((tender) => {
+    if (role === 'department_head') {
+      return (
+        tender.createdByRole === 'department_employee' ||
+        tender.createdByRole === 'department_head'
+      );
+    }
 
+    else if (role === 'department_employee') {
+      return tender.createdByRole === 'department_employee';
+    }
+
+    return true;
+  });
   // Filtered list
   const filtered = useMemo(() => {
-    let list = tenders
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter(t =>
-        t.projectName.toLowerCase().includes(q) ||
-        t.department.toLowerCase().includes(q) ||
-        t.id.toLowerCase().includes(q) ||
-        t.district.toLowerCase().includes(q)
-      )
-    }
-    if (statusFilter !== 'All') list = list.filter(t => t.status === statusFilter)
-    if (catFilter !== 'All')    list = list.filter(t => t.category === catFilter)
-    return list
-  }, [tenders, search, statusFilter, catFilter])
+    return visibleTenders.filter((tender) => {
+      const matchesSearch =
+        tender.projectName.toLowerCase().includes(search.toLowerCase()) ||
+        tender.department.toLowerCase().includes(search.toLowerCase()) ||
+        tender.id.toLowerCase().includes(search.toLowerCase()) ||
+        tender.district.toLowerCase().includes(search.toLowerCase());
+
+      const matchesStatus =
+        statusFilter === 'All' || tender.status === statusFilter;
+
+      const matchesCategory =
+        catFilter === 'All' || tender.category === catFilter;
+
+      return matchesSearch && matchesStatus && matchesCategory;
+    });
+  }, [visibleTenders, search, statusFilter, catFilter]);
 
    const handleView = (tender) => {
     navigate('/tender-view', {
@@ -153,6 +172,19 @@ export default function CreateSavedTenders() {
     });
   };
 
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+
+  const paginatedTenders = filtered.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, catFilter, role, itemsPerPage]);
+
+  
   function handleEdit(tender) {
     navigate('/create-tender', { state: { tender } })
   }
@@ -169,6 +201,7 @@ export default function CreateSavedTenders() {
 
   const statusOptions = ['All', 'Draft', 'Pending Approval', 'Sent to Head', 'Sent to Administrator', 'Approved', 'Rejected']
   const categoryOptions = ['All', ...TENDER_CATEGORIES]
+
 
   return (
     <div className="p-4 lg:p-6 space-y-5 relative">
@@ -282,8 +315,8 @@ export default function CreateSavedTenders() {
 
       {/* ── Cards Grid ─────────────────────────────────────────────────── */}
       {filtered.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch pb-24">
-          {filtered.map(tender => (
+        <div key={currentPage} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch pb-24 animate-fade-in">
+          {paginatedTenders.map(tender => (
             <SavedTenderCard
               key={tender.id}
               tender={tender}
@@ -305,7 +338,12 @@ export default function CreateSavedTenders() {
           <p className="text-sm text-[#6B7A8D]">Try adjusting your search or filters.</p>
         </div>
       )}
-
+      {/* ── Pagination Controls ──────────────────────────────────────── */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+      />
       {/* ── Floating Action Button ──────────────────────────────────────── */}
       <button
         onClick={() => navigate('/create-tender')}

@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react'
 import TenderCard from '../components/TenderCard'
 import { tenders, DEMO_ROLE_DEPARTMENT } from '../data/tenders'
 import { useRole, ROLES, ROLE_LABELS } from '../components/RoleContext'
+import Pagination from '../components/Pagination'
 
 // ── Tab config ────────────────────────────────────────────────────────────────
 const TABS = [
@@ -47,6 +48,7 @@ export default function Home() {
   const [viewMode,   setViewMode]   = useState('grid')
   const [searchQuery, setSearch]    = useState('')
   const [filterCat,  setFilterCat]  = useState('All')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const currentTab = TABS.find((t) => t.id === activeTab)
 
@@ -59,6 +61,9 @@ export default function Home() {
     if (!deptCode) return list
     return list.filter((t) => t.departmentCode === deptCode)
   }
+
+  // Reset to page 1 whenever tab/search/filter changes
+  React.useEffect(() => { setCurrentPage(1) }, [activeTab, searchQuery, filterCat])
 
   // ── All categories across all tabs ───────────────────────────────────────
   const allCategories = useMemo(() => {
@@ -87,6 +92,11 @@ export default function Home() {
 
     return list
   }, [activeTab, role, searchQuery, filterCat])
+
+  const ITEMS_PER_PAGE = 3
+  const totalPages = Math.ceil(currentTenders.length / ITEMS_PER_PAGE)
+  const paginated  = currentTenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+
 
   // ── Stats (per role) ─────────────────────────────────────────────────────
   const stats = useMemo(() => ({
@@ -313,12 +323,13 @@ export default function Home() {
 
       {/* ── Cards ───────────────────────────────────────────────────────── */}
       {currentTenders.length > 0 ? (
-        <div className={
+        <React.Fragment>
+        <div key={currentPage} className={
           viewMode === 'grid'
-            ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5'
-            : 'flex flex-col gap-3'
+            ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 animate-fade-in'
+            : 'flex flex-col gap-3 animate-fade-in'
         }>
-          {currentTenders.map((tender) => (
+          {paginated.map((tender) => (
             <TenderCard
               key={tender.id}
               tender={tender}
@@ -326,7 +337,14 @@ export default function Home() {
               onClick={(t) => alert(`Tender ID: ${t.id}\n\n${t.title}\n\nDepartment: ${t.department}\nValue: ${t.value}`)}
             />
           ))}
+          
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
+      </React.Fragment>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center
                         bg-white rounded-2xl border border-[#FFE5BF] border-dashed">

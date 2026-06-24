@@ -268,12 +268,6 @@ export default function TenderView() {
           color="amber"
         />
         <StatCard
-          icon={<UsersIcon />}
-          label="Contractors"
-          value={tender.contractors ? `${tender.contractors} bidders` : '—'}
-          color="emerald"
-        />
-        <StatCard
           icon={<TagIcon />}
           label="Tender Type"
           value={tender.tenderType}

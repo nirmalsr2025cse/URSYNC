@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react'
-import MapComponent from './MapComponent'
-import LocationSelector from './LocationSelector'
-import TenderCard, { TenderCardSkeleton } from './TenderCard'
+import MapComponent from '../components/MapComponent'
+import LocationSelector from '../components/LocationSelector'
+import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import { getMockNearbyLocations } from '../services/locationService'
 import { getMockTendersByLocation } from '../services/tenderService'
+import Pagination from '../components/Pagination'
 
 export default function TendersByLocation() {
   const [query,         setQuery]         = useState('')
@@ -14,6 +15,11 @@ export default function TendersByLocation() {
   const [loadingCards,  setLoadingCards]  = useState(false)
   const [error,         setError]         = useState(null)
   const [searched,      setSearched]      = useState(false)
+  const [currentPage,   setCurrentPage]   = useState(1)
+
+  const ITEMS_PER_PAGE = 6
+  const totalPages = Math.ceil(tenders.length / ITEMS_PER_PAGE)
+  const paginated  = tenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   const cardRefs = useRef({})
 
@@ -43,6 +49,7 @@ export default function TendersByLocation() {
     }
 
     setTenders(tenderResult.data || [])
+    setCurrentPage(1)  // Reset to first page on new search
     setLoadingCards(false)
   }
 
@@ -214,8 +221,8 @@ export default function TendersByLocation() {
 
         {/* Results grid */}
         {!loadingCards && tenders.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-            {tenders.map((tender, idx) => (
+          <div key={currentPage} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch animate-fade-in">
+            {paginated.map((tender, idx) => (
               <div
                 key={tender.id}
                 ref={(el) => { cardRefs.current[idx] = el }}
@@ -231,6 +238,12 @@ export default function TendersByLocation() {
             ))}
           </div>
         )}
+
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
 
         {/* Empty state — after search, no results */}
         {!loadingCards && searched && tenders.length === 0 && !error && (

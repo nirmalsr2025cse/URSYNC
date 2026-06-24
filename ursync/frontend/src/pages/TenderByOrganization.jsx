@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
-import TenderCard, { TenderCardSkeleton } from './TenderCard'
+import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import { tenders } from '../data/tenders'
+import Pagination from '../components/Pagination'
 
 // ─── Flatten tenders.js { ongoing, upcoming, completed } → flat array ─────────
 
@@ -107,6 +108,7 @@ export default function TenderByOrganization() {
   const [searched,    setSearched]    = useState(false)
   const [activeMarker,setActiveMarker]= useState(null)
   const [error,       setError]       = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const cardRefs = useRef({})
 
@@ -119,6 +121,7 @@ export default function TenderByOrganization() {
 
     setTimeout(() => {
       setResults(applyFilters(allTenders, filters))
+      setCurrentPage(1)
       setLoading(false)
     }, 600)
   }
@@ -132,6 +135,10 @@ export default function TenderByOrganization() {
   }
 
   const handleCardClick = (idx) => setActiveMarker(idx)
+
+  const ITEMS_PER_PAGE = 9
+  const totalPages = Math.ceil(results.length / ITEMS_PER_PAGE)
+  const paginated  = results.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   const activeFilters = Object.entries(filters).filter(([, v]) => v)
 
@@ -294,7 +301,7 @@ export default function TenderByOrganization() {
       {/* ── Results grid ─────────────────────────────────────────────────── */}
       {!loading && results.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {results.map((tender, idx) => (
+          {paginated.map((tender, idx) => (
             <div
               key={tender.id}
               ref={(el) => { cardRefs.current[idx] = el }}
@@ -310,6 +317,12 @@ export default function TenderByOrganization() {
           ))}
         </div>
       )}
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+      />
 
       {/* ── No results ───────────────────────────────────────────────────── */}
       {!loading && searched && results.length === 0 && !error && (
