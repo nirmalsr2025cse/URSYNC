@@ -104,7 +104,7 @@ export default function TendersByLocation() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Enter location to search tenders (e.g., Tiruchirappalli)"
-              className="input-base pl-10"
+              className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
               aria-label="Location search"
             />
           </div>

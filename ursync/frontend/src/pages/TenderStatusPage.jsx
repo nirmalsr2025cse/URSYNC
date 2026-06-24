@@ -50,7 +50,7 @@ function SelectField({ label, value, onChange, options, placeholder }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="input-base text-sm"
+        className="input-base text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (
@@ -69,7 +69,7 @@ function DateField({ label, value, onChange }) {
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="input-base text-sm"
+        className="input-base text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
       />
     </div>
   )
@@ -84,7 +84,7 @@ function TextField({ label, value, onChange, placeholder }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="input-base text-sm"
+        className="input-base text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
       />
     </div>
   )

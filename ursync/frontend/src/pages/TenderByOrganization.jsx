@@ -5,6 +5,8 @@ import Pagination from '../components/Pagination'
 
 // ─── Flatten tenders.js { ongoing, upcoming, completed } → flat array ─────────
 
+const TextBoxStyle = "w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
+
 const STATUS_MAP = {
   ongoing:   'Ongoing',
   upcoming:  'Upcoming',
@@ -88,7 +90,7 @@ function SelectField({ label, value, onChange, options, placeholder }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="input-base text-sm"
+        className="input-base text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (
@@ -182,7 +184,7 @@ export default function TenderByOrganization() {
                 value={filters.organization}
                 onChange={(e) => setFilters((f) => ({ ...f, organization: e.target.value }))}
                 placeholder="Search by organisation name (e.g., TWAD Board)"
-                className="input-base pl-10"
+                className={TextBoxStyle}
                 aria-label="Organisation name"
               />
             </div>
@@ -215,6 +217,7 @@ export default function TenderByOrganization() {
               onChange={(v) => setFilters((f) => ({ ...f, organizationType: v }))}
               options={ORG_TYPES}
               placeholder="All types"
+              className={TextBoxStyle}
             />
             <SelectField
               label="Category"
@@ -222,6 +225,7 @@ export default function TenderByOrganization() {
               onChange={(v) => setFilters((f) => ({ ...f, tenderCategory: v }))}
               options={TENDER_CATS}
               placeholder="All categories"
+              className={TextBoxStyle}
             />
             <SelectField
               label="District"
@@ -229,6 +233,7 @@ export default function TenderByOrganization() {
               onChange={(v) => setFilters((f) => ({ ...f, district: v }))}
               options={DISTRICTS}
               placeholder="All districts"
+              className={TextBoxStyle}
             />
             <SelectField
               label="Status"
@@ -236,6 +241,7 @@ export default function TenderByOrganization() {
               onChange={(v) => setFilters((f) => ({ ...f, expiry: v }))}
               options={EXPIRY_OPTIONS}
               placeholder="All statuses"
+              className={TextBoxStyle}
             />
           </div>
 

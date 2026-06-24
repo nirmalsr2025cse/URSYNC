@@ -200,11 +200,8 @@ export default function Home() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title, department, location, ID..."
-            className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl
-                       bg-white text-[#0A2240] placeholder-gray-400
-                       focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C]
-                       transition-all"
+            placeholder="Search by title"
+            className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
           />
           {searchQuery && (
             <button
