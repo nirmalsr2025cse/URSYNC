@@ -296,7 +296,6 @@ export default function TenderView() {
           <InfoRow label="Priority"        value={tender.priority} />
           <InfoRow label="Start Date"      value={formatDate(tender.startDate)} />
           <InfoRow label="End Date"        value={formatDate(tender.endDate)} />
-          <InfoRow label="Contractors"     value={tender.contractors ? tender.contractors + ' registered' : '—'} />
         </div>
       </SectionCard>
 
