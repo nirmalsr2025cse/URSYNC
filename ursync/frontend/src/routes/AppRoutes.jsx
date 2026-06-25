@@ -13,6 +13,8 @@ import TnTendersAct from '../pages/TnTendersAct'
 import TendersStatus from '../pages/TenderStatusPage'
 import ArchiveTenderPage from '../pages/ArchiveTenderPage'
 import ReportsFeedbacks from '../pages/ReportsFeedbacks'
+import Downloads from '../pages/Downloads'
+import CancelledRetendered from '../pages/CancelledRetendered'
 
 export default function AppRoutes() {
   return (
@@ -25,8 +27,10 @@ export default function AppRoutes() {
         <Route path="/tenders-by-location" element={<TendersByLocation />} />
         <Route path="/tender-status" element={<TendersStatus />} />
         <Route path="/archive" element={<ArchiveTenderPage />} />
+        <Route path="/downloads" element={<Downloads />} />
         <Route path="*" element={<Placeholder />} />
         <Route path="/reports" element={<ReportsFeedbacks />} />
+        <Route path="/cancelled" element={<CancelledRetendered />} />
         <Route path="/tenders-by-org" element={<TendersByOrganization />} />
         <Route path="/create-saved-tenders" element={<CreateSavedTenders />} />
         <Route path="/create-tender"        element={<CreateTender />} />

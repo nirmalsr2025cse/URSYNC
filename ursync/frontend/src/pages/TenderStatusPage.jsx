@@ -192,19 +192,10 @@ export default function TenderStatusPage() {
     setSearched(true)
 
     setTimeout(() => {
-      // 1. Start with role-scoped pool
-      let pool = allTenders
-      if (currentUserRole === 'department_employee' || currentUserRole === 'department_head') {
-        pool = allTenders.filter((t) =>
-          (t.departmentCode || '').toLowerCase() === currentUserDept.toLowerCase()
-        )
-      }
-
-      // 2. Apply search criteria on top of that
-      let filtered = pool
-      if (activeTab === 'criteria1') filtered = applyCriteria1(pool, criteria1)
-      if (activeTab === 'criteria2') filtered = applyCriteria2(pool, criteria2)
-      if (activeTab === 'criteria3') filtered = applyCriteria3(pool, criteria3)
+      let filtered = allTenders
+      if (activeTab === 'criteria1') filtered = applyCriteria1(allTenders, criteria1)
+      if (activeTab === 'criteria2') filtered = applyCriteria2(allTenders, criteria2)
+      if (activeTab === 'criteria3') filtered = applyCriteria3(allTenders, criteria3)
 
       setResults(filtered)
       setCurrentPage(1)
@@ -248,21 +239,27 @@ export default function TenderStatusPage() {
       </div>
 
       {/* ── Tab bar ──────────────────────────────────────────────────────── */}
-      <div className="flex gap-3 p-4 border-tn-border">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => handleTabChange(tab.id)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all
-              ${activeTab === tab.id
-                ? 'bg-tn-navy text-white shadow-sm'
-                : 'bg-transparent text-tn-muted border border-tn-border hover:bg-tn-light'}`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 gap-1">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => handleTabChange(tab.id)}
+              className={[
+                'px-6 py-2 rounded-full text-sm font-semibold transition-all duration-200',
+                isActive
+                  ? 'bg-tn-navy text-white shadow-sm'
+                  : 'text-tn-blue border border-tn-border bg-transparent hover:bg-tn-light',
+              ].join(' ')}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
+
         {/* ── Tab content / search form ─────────────────────────────────── */}
         <form onSubmit={handleSearch} className="p-5 space-y-4">
 

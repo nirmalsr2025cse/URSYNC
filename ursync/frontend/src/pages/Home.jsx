@@ -237,7 +237,7 @@ export default function Home() {
           <button
             onClick={() => setViewMode('grid')}
             className={`p-2 rounded-lg transition-colors ${
-              viewMode === 'grid' ? 'bg-[#0A2240] text-white' : 'text-gray-400 hover:text-[#0A2240]'
+              viewMode === 'grid' ? 'bg-tn-navy text-white' : 'text-gray-400 hover:text-tn-navy'
             }`}
             aria-label="Grid view"
           >
@@ -249,7 +249,7 @@ export default function Home() {
           <button
             onClick={() => setViewMode('list')}
             className={`p-2 rounded-lg transition-colors ${
-              viewMode === 'list' ? 'bg-[#0A2240] text-white' : 'text-gray-400 hover:text-[#0A2240]'
+              viewMode === 'list' ? 'bg-tn-navy text-white' : 'text-gray-400 hover:text-tn-navy'
             }`}
             aria-label="List view"
           >
