@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { ChevronRight, Archive as ArchiveIcon } from "lucide-react";
-import ArchiveSearchCard from "../components/ArchiveSearchCard.jsx";
-import TenderCard from "../components/TenderCard";
+import ArchiveSearchCard from "../components/ArchiveSearchCard";
+import TenderCard, { TenderCardSkeleton } from "../components/TenderCard";
 import Pagination from "../components/Pagination.jsx";
 import { tenders } from "../data/tenders.js";
 
@@ -12,16 +12,16 @@ const PAGE_SIZE = 6;
 
 export default function ArchiveTenderPage() {
   const [tenderId, setTenderId] = useState("");
-  const [appliedTenderId, setAppliedTenderId] = useState("");
+  const [appliedTenderId, setAppliedTenderId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [activeMarker, setActiveMarker] = useState(null);
 
   // All filtering happens client-side against the local sample data.
-  // Matches against id or organization fields (as named in tenders.js).
   const filteredTenders = useMemo(() => {
+    if (appliedTenderId === null) return [];
     let result = [...allTenders];
-
     const idQuery = appliedTenderId.trim().toLowerCase();
     if (idQuery) {
       result = result.filter(
@@ -30,7 +30,6 @@ export default function ArchiveTenderPage() {
           t.organization.toLowerCase().includes(idQuery)
       );
     }
-
     return result;
   }, [appliedTenderId]);
 
@@ -42,6 +41,12 @@ export default function ArchiveTenderPage() {
   }, [filteredTenders, currentPage]);
 
   const handleTenderIdSearch = () => {
+    if (tenderId.trim().length === 0) {
+      setAppliedTenderId(null);
+      setSearched(false);
+      return;
+    }
+    setActiveMarker(null);
     setLoading(true);
     setSearched(true);
     setTimeout(() => {
@@ -53,9 +58,10 @@ export default function ArchiveTenderPage() {
 
   const handleReset = () => {
     setTenderId("");
-    setAppliedTenderId("");
+    setAppliedTenderId(null);
     setCurrentPage(1);
     setSearched(false);
+    setActiveMarker(null);
   };
 
   return (
@@ -82,7 +88,7 @@ export default function ArchiveTenderPage() {
         </nav>
       </div>
 
-      {/* ── Search — TenderID field + buttons only ───────────────────────── */}
+      {/* ── Search ───────────────────────────────────────────────────────── */}
       <ArchiveSearchCard
         tenderId={tenderId}
         onTenderIdChange={setTenderId}
@@ -96,11 +102,8 @@ export default function ArchiveTenderPage() {
           <ArchiveIcon className="w-4 h-4 text-tn-blue" />
           Archived Tender Results
         </h2>
-        {filteredTenders.length > 0 && !loading && (
-          <span
-            className="text-xs font-medium text-tn-muted bg-tn-light
-                       px-2.5 py-1 rounded-full border border-tn-border"
-          >
+        {!loading && searched && filteredTenders.length > 0 && (
+          <span className="text-xs font-medium text-tn-muted bg-tn-light px-2.5 py-1 rounded-full border border-tn-border">
             {filteredTenders.length} tender{filteredTenders.length !== 1 ? "s" : ""} found
           </span>
         )}
@@ -110,33 +113,29 @@ export default function ArchiveTenderPage() {
       {loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div
-              key={i}
-              className="bg-white rounded-xl border border-tn-border p-5 space-y-3 animate-pulse"
-            >
-              <div className="h-4 bg-tn-border rounded w-2/3" />
-              <div className="h-3 bg-tn-border rounded w-1/2" />
-              <div className="h-3 bg-tn-border rounded w-3/4" />
-              <div className="h-3 bg-tn-border rounded w-1/3" />
-              <div className="h-8 bg-tn-border rounded w-full mt-4" />
-            </div>
+            <TenderCardSkeleton key={i} />
           ))}
         </div>
       )}
 
       {/* ── Results grid ─────────────────────────────────────────────────── */}
-      {!loading && filteredTenders.length > 0 && (
+      {!loading && searched && filteredTenders.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {paginatedTenders.map((tender) => (
+          {paginatedTenders.map((tender, idx) => (
             <div key={tender.id} className="flex">
-              <TenderCard tender={tender} className="flex-1" />
+              <TenderCard
+                tender={tender}
+                className="flex-1"
+                highlighted={activeMarker === idx}
+                onClick={() => setActiveMarker(idx)}
+              />
             </div>
           ))}
         </div>
       )}
 
       {/* ── Pagination ───────────────────────────────────────────────────── */}
-      {!loading && filteredTenders.length > 0 && (
+      {!loading && searched && filteredTenders.length > 0 && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
@@ -146,14 +145,8 @@ export default function ArchiveTenderPage() {
 
       {/* ── No results after search ──────────────────────────────────────── */}
       {!loading && searched && filteredTenders.length === 0 && (
-        <div
-          className="flex flex-col items-center justify-center py-16 text-center
-                      bg-white rounded-xl border border-tn-border"
-        >
-          <div
-            className="w-14 h-14 rounded-full bg-tn-light flex items-center
-                        justify-center mb-4 border border-tn-border"
-          >
+        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-xl border border-tn-border">
+          <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
             <ArchiveIcon className="w-7 h-7 text-tn-muted" />
           </div>
           <h3 className="font-semibold text-tn-navy mb-1">No archived tenders found</h3>
@@ -165,6 +158,20 @@ export default function ArchiveTenderPage() {
           </button>
         </div>
       )}
+
+      {/* ── Pre-search empty state ────────────────────────────────────────── */}
+      {!searched && !loading && (
+        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-xl border border-dashed border-tn-border">
+          <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
+            <ArchiveIcon className="w-7 h-7 text-tn-blue" />
+          </div>
+          <h3 className="font-semibold text-tn-navy mb-1">Search for archived tenders</h3>
+          <p className="text-sm text-tn-muted max-w-xs">
+            Enter a Tender ID or organisation name above to find archived tenders.
+          </p>
+        </div>
+      )}
+
     </div>
   );
 }

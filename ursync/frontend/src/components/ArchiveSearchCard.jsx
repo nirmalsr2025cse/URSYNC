@@ -8,7 +8,7 @@ export default function ArchiveSearchCard({
   onReset,
 }) {
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") onTenderIdSearch();
+    if (e.key === "Enter" && tenderId.trim().length > 0) onTenderIdSearch();
   };
 
   return (
@@ -36,7 +36,8 @@ export default function ArchiveSearchCard({
           <div className="flex gap-2">
             <button
               onClick={onTenderIdSearch}
-              className="flex items-center gap-2 bg-tn-blue hover:bg-rust-600 text-white font-semibold text-sm px-5 py-2.5 rounded-md transition-colors"
+              disabled={tenderId.trim().length === 0}
+              className="flex items-center gap-2 bg-tn-blue hover:bg-rust-600 text-white font-semibold text-sm px-5 py-2.5 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Search size={16} />
               Search

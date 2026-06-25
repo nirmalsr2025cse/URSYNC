@@ -49,6 +49,7 @@ export default function Home() {
   const [searchQuery, setSearch]    = useState('')
   const [filterCat,  setFilterCat]  = useState('All')
   const [currentPage, setCurrentPage] = useState(1)
+  const [activeMarker, setActiveMarker] = useState(null)
 
   const currentTab = TABS.find((t) => t.id === activeTab)
 
@@ -63,7 +64,10 @@ export default function Home() {
   }
 
   // Reset to page 1 whenever tab/search/filter changes
-  React.useEffect(() => { setCurrentPage(1) }, [activeTab, searchQuery, filterCat])
+  React.useEffect(() => { 
+    setCurrentPage(1)
+    setActiveMarker(null)
+  }, [activeTab, searchQuery, filterCat])
 
   // ── All categories across all tabs ───────────────────────────────────────
   const allCategories = useMemo(() => {
@@ -93,7 +97,7 @@ export default function Home() {
     return list
   }, [activeTab, role, searchQuery, filterCat])
 
-  const ITEMS_PER_PAGE = 3
+  const ITEMS_PER_PAGE = 6
   const totalPages = Math.ceil(currentTenders.length / ITEMS_PER_PAGE)
   const paginated  = currentTenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
@@ -326,15 +330,16 @@ export default function Home() {
             ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 animate-fade-in'
             : 'flex flex-col gap-3 animate-fade-in'
         }>
-          {paginated.map((tender) => (
+          {paginated.map((tender, idx) => (
             <TenderCard
               key={tender.id}
               tender={tender}
               viewMode={viewMode}
-              onClick={(t) => alert(`Tender ID: ${t.id}\n\n${t.title}\n\nDepartment: ${t.department}\nValue: ${t.value}`)}
+              highlighted={activeMarker === idx}
+              onClick={() => setActiveMarker(idx)}
             />
           ))}
-          
+                    
         </div>
         <Pagination
           currentPage={currentPage}
