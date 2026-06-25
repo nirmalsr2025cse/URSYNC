@@ -28,13 +28,13 @@ export default function Pagination({ currentPage, totalPages, onPageChange }) {
   const visiblePages = getVisiblePages()
 
   return (
-    <div className="flex items-center justify-center gap-2 mt-8 pb-4 flex-wrap">
+    <div className="flex items-center justify-center gap-1 mt-8 pb-4 flex-wrap">
 
       {/* Previous */}
       <button
         disabled={currentPage === 1}
         onClick={() => onPageChange(currentPage - 1)}
-        className="flex items-center gap-1 px-4 py-2 rounded-lg border border-[#FFE5BF]
+        className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-[#FFE5BF]
                    bg-white text-[#0A2240] text-sm font-medium
                    disabled:opacity-40 disabled:cursor-not-allowed
                    hover:bg-[#FFF2DB] transition-colors"
@@ -75,7 +75,7 @@ export default function Pagination({ currentPage, totalPages, onPageChange }) {
       <button
         disabled={currentPage === totalPages}
         onClick={() => onPageChange(currentPage + 1)}
-        className="flex items-center gap-1 px-4 py-2 rounded-lg border border-[#FFE5BF]
+        className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-[#FFE5BF]
                    bg-white text-[#0A2240] text-sm font-medium
                    disabled:opacity-40 disabled:cursor-not-allowed
                    hover:bg-[#FFF2DB] transition-colors"
