@@ -12,7 +12,7 @@ export default function ArchiveSearchCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-card border border-rust-100 p-5 sm:p-6">
+    <div className="bg-white rounded-2xl shadow-card border border-tn-gold p-5 sm:p-6">
       {/* Search by Tender ID — only search on this page, no captcha */}
       <div>
         <label className="text-sm font-semibold text-rust-900 mb-2 block">

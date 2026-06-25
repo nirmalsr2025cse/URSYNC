@@ -12,6 +12,7 @@ import TenderView from '../pages/TenderView'
 import TnTendersAct from '../pages/TnTendersAct'
 import TendersStatus from '../pages/TenderStatusPage'
 import ArchiveTenderPage from '../pages/ArchiveTenderPage'
+import ReportsFeedbacks from '../pages/ReportsFeedbacks'
 
 export default function AppRoutes() {
   return (
@@ -25,6 +26,7 @@ export default function AppRoutes() {
         <Route path="/tender-status" element={<TendersStatus />} />
         <Route path="/archive" element={<ArchiveTenderPage />} />
         <Route path="*" element={<Placeholder />} />
+        <Route path="/reports" element={<ReportsFeedbacks />} />
         <Route path="/tenders-by-org" element={<TendersByOrganization />} />
         <Route path="/create-saved-tenders" element={<CreateSavedTenders />} />
         <Route path="/create-tender"        element={<CreateTender />} />

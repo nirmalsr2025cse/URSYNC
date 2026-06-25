@@ -192,10 +192,19 @@ export default function TenderStatusPage() {
     setSearched(true)
 
     setTimeout(() => {
-      let filtered = allTenders
-      if (activeTab === 'criteria1') filtered = applyCriteria1(allTenders, criteria1)
-      if (activeTab === 'criteria2') filtered = applyCriteria2(allTenders, criteria2)
-      if (activeTab === 'criteria3') filtered = applyCriteria3(allTenders, criteria3)
+      // 1. Start with role-scoped pool
+      let pool = allTenders
+      if (currentUserRole === 'department_employee' || currentUserRole === 'department_head') {
+        pool = allTenders.filter((t) =>
+          (t.departmentCode || '').toLowerCase() === currentUserDept.toLowerCase()
+        )
+      }
+
+      // 2. Apply search criteria on top of that
+      let filtered = pool
+      if (activeTab === 'criteria1') filtered = applyCriteria1(pool, criteria1)
+      if (activeTab === 'criteria2') filtered = applyCriteria2(pool, criteria2)
+      if (activeTab === 'criteria3') filtered = applyCriteria3(pool, criteria3)
 
       setResults(filtered)
       setCurrentPage(1)
@@ -239,24 +248,21 @@ export default function TenderStatusPage() {
       </div>
 
       {/* ── Tab bar ──────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-tn-border shadow-sm overflow-hidden">
-        <div className="flex border-b border-tn-border">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleTabChange(tab.id)}
-              className={`flex-1 sm:flex-none px-5 py-3 text-sm font-semibold transition-colors
-                          border-b-2 -mb-px
-                          ${activeTab === tab.id
-                            ? 'text-tn-blue border-tn-blue bg-tn-light/40'
-                            : 'text-tn-muted border-transparent hover:text-tn-navy hover:bg-tn-light/30'}`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
+      <div className="flex gap-3 p-4 border-tn-border">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => handleTabChange(tab.id)}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all
+              ${activeTab === tab.id
+                ? 'bg-tn-navy text-white shadow-sm'
+                : 'bg-transparent text-tn-muted border border-tn-border hover:bg-tn-light'}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
         {/* ── Tab content / search form ─────────────────────────────────── */}
         <form onSubmit={handleSearch} className="p-5 space-y-4">
 
@@ -384,7 +390,6 @@ export default function TenderStatusPage() {
             </div>
           )}
         </form>
-      </div>
 
       {/* ── Results header ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
