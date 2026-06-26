@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import { CANCELLED_TENDERS, RETENDERED_TENDERS } from '../data/MockDataCR'
+import { useRole } from '../components/RoleContext'
 
 const TABS = [
   { id: 'cancelled',  label: 'Cancelled'  },
@@ -13,9 +14,40 @@ export default function CancelledRetendered() {
   const [searchInput,   setSearchInput]   = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
   const [animating,     setAnimating]     = useState(false)
+  const { role } = useRole()
 
-  const rawData = activeTab === 'cancelled' ? CANCELLED_TENDERS : RETENDERED_TENDERS
+  // Department mapping — same as rest of project
+  const ROLE_DEPT_MAP = {
+    department_employee: 'Public Works Department',
+    department_head:     'Public Works Department',
+  }
 
+  const isDeptRole       = role === 'department_employee' || role === 'department_head'
+  const isTenderPerson   = role === 'tender_person'
+  const userDept         = ROLE_DEPT_MAP[role] || null
+
+  // Tender Person email — replace with real auth when backend ready
+  const TENDER_PERSON_EMAIL = 'srnirmal1809@gmail.com'
+
+  const rawData = useMemo(() => {
+    const all = activeTab === 'cancelled' ? CANCELLED_TENDERS : RETENDERED_TENDERS
+
+    // Department Employee / Head — show only their dept
+    if (isDeptRole && userDept) {
+      return all.filter((t) => t.department === userDept)
+    }
+
+    // Tender Person — show only cancelled tenders where cancelledBy matches their email
+    if (isTenderPerson) {
+      return CANCELLED_TENDERS.filter(
+        (t) => t.cancelledBy === TENDER_PERSON_EMAIL
+      )
+    }
+
+    // All other roles — show everything
+    return all
+  }, [activeTab, role])
+  
   // ── Normalise data to match TenderCard field names ────────────────────────
   // TenderCard expects: id, title, description, organization, department,
   // location, closingDate, status, category, value, image, documentUrl
@@ -65,6 +97,8 @@ export default function CancelledRetendered() {
     }, 150)
   }
 
+   const visibleTabs = isTenderPerson? TABS.filter((t) => t.id === 'cancelled'): TABS
+
   return (
     <div className="p-4 lg:p-6 space-y-6 animate-fade-in">
 
@@ -86,10 +120,22 @@ export default function CancelledRetendered() {
           <span className="text-tn-blue font-medium">Cancelled / Retendered</span>
         </nav>
       </div>
+      {isDeptRole && userDept && (
+        <div className="flex items-center gap-3 bg-tn-light border border-tn-border rounded-xl px-4 py-3">
+          <svg className="w-4 h-4 text-tn-blue flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg> 
+          <p className="text-xs text-tn-navy font-medium">
+            Showing tenders for{' '}
+            <span className="font-bold">{userDept}</span> only.
+          </p>
+        </div>
+      )}
 
         {/* Tab Bar — pill style matching reference image */}
-        <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 gap-1">
-          {TABS.map((tab) => {
+          <div className="inline-flex items-center bg-tn-cream border border-tn-border rounded-full p-1 gap-1">
+            {visibleTabs.map((tab) => {
             const isActive = activeTab === tab.id
             return (
               <button
@@ -188,7 +234,12 @@ export default function CancelledRetendered() {
               No {activeTab} tenders found
             </p>
             <p className="text-sm text-tn-muted">
-              {appliedSearch ? 'Try a different search term.' : 'No records available.'}
+              {appliedSearch
+                ? 'Try a different search term.'
+                : isTenderPerson
+                  ? 'No cancelled tenders found for your account.'
+                  : 'No records available.'
+              }
             </p>
           </div>
         ) : (

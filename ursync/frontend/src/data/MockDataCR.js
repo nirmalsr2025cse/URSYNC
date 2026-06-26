@@ -14,6 +14,7 @@ export const CANCELLED_TENDERS = [
     reason: 'Budget reallocation by state government.',
     image: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'nirmal.sr205cse@sece.ac.in',
   },
   {
     id: 'TN/TANGEDCO/2024/042',
@@ -28,6 +29,7 @@ export const CANCELLED_TENDERS = [
     reason: 'No eligible bidders met the technical criteria.',
     image: 'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'nirmal.sr205cse@sece.ac.in',
   },
   {
     id: 'TN/TWAD/2024/018',
@@ -42,6 +44,7 @@ export const CANCELLED_TENDERS = [
     reason: 'Scope of work revised by the department.',
     image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'nirmal.sr205cse@sece.ac.in',
   },
   {
     id: 'TN/HEALTH/2024/009',
@@ -56,6 +59,7 @@ export const CANCELLED_TENDERS = [
     reason: 'Tender specifications required revision.',
     image: 'https://images.unsplash.com/photo-1581595220892-b0739db3ba8c?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'nirmal.sr205cse@sece.ac.in',
   },
   {
     id: 'TN/CORP/2024/007',
@@ -70,6 +74,7 @@ export const CANCELLED_TENDERS = [
     reason: 'Land acquisition issue pending resolution.',
     image: 'https://images.unsplash.com/photo-1617369120004-4fc70312c5e6?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'srnirmal1809@gmail.com',
   },
   {
     id: 'TN/EDU/2024/003',
@@ -84,6 +89,7 @@ export const CANCELLED_TENDERS = [
     reason: 'Insufficient number of qualified bidders.',
     image: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'srnirmal1809@gmail.com',
   },
 ]
 
@@ -102,6 +108,7 @@ export const RETENDERED_TENDERS = [
     reason: 'Original tender cancelled due to single bid received.',
     image: 'https://images.unsplash.com/photo-1545558014-8692077e9b5c?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'srnirmal1809@gmail.com',
   },
   {
     id: 'TN/TNHB/2024/031',
@@ -117,6 +124,7 @@ export const RETENDERED_TENDERS = [
     reason: 'Previous tender cancelled due to budget revision.',
     image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'srnirmal1809@gmail.com',
   },
   {
     id: 'TN/TANGEDCO/2024/088',
@@ -132,6 +140,7 @@ export const RETENDERED_TENDERS = [
     reason: 'Scope expanded to include additional facilities.',
     image: 'https://images.unsplash.com/photo-1509391366360-2e959784a276?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'srnirmal1809@gmail.com',
   },
   {
     id: 'TN/HEALTH/2024/022',
@@ -147,6 +156,7 @@ export const RETENDERED_TENDERS = [
     reason: 'Technical specifications updated as per latest guidelines.',
     image: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'srnirmal1809@gmail.com',
   },
   {
     id: 'TN/TWAD/2024/065',
@@ -162,6 +172,7 @@ export const RETENDERED_TENDERS = [
     reason: 'Original contract terminated due to contractor default.',
     image: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'srnirmal1809@gmail.com',
   },
   {
     id: 'TN/EDU/2024/077',
@@ -177,5 +188,6 @@ export const RETENDERED_TENDERS = [
     reason: 'Technology specifications updated to latest standards.',
     image: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=400&h=200&fit=crop',
     documentUrl: '/sample-tender.pdf',
+    cancelledBy:'srnirmal1809@gmail.com',
   },
 ]

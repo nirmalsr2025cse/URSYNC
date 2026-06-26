@@ -91,8 +91,8 @@ export const NAV_CONFIG = {
   [ROLES.TENDER_AUTHORITY]: [
     { label: 'Home',         path: '/home',         icon: 'home'         },
     { label: 'Pending',      path: '/pending',      icon: 'pending'      },
-    { label: 'Upcoming',     path: '/upcoming',     icon: 'upcoming'     },
     { label: 'Completed',    path: '/completed',    icon: 'completed'    },
+    { label: 'Cancelled / Retendered',    path: '/cancelled',           icon: 'retender' },
     { label: 'Applications', path: '/applications', icon: 'applications' },
   ],
 
