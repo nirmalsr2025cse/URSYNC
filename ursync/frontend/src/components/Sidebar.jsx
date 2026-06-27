@@ -69,7 +69,7 @@ export default function Sidebar({ open, onClose }) {
         </div>
 
         {/* Role badge */}
-        <div className="flex-shrink-0 px-3 pt-3 pb-2">
+        {/*<div className="flex-shrink-0 px-3 pt-3 pb-2">
           <div className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ' + ROLE_COLORS[role]}>
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -77,10 +77,10 @@ export default function Sidebar({ open, onClose }) {
             </svg>
             <span className="truncate">{ROLE_LABELS[role]}</span>
           </div>
-        </div>
-
+        </div>*/}
+        <div className="pb-2"></div>
         {/* Nav */}
-        <nav className="overflow-y-auto py-1 px-2 space-y-0.5" style={{ flex: '1 1 0', minHeight: 0 }}>
+        <nav className="overflow-y-auto py-1 px-2" style={{ flex: '1 1 0', minHeight: 0 }}>
           {navItems.map(({ label, path, icon }) => (
             <NavLink
               key={path}

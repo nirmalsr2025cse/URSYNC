@@ -15,7 +15,9 @@ export default function CancelledRetendered() {
   const [appliedSearch, setAppliedSearch] = useState('')
   const [animating,     setAnimating]     = useState(false)
   const { role } = useRole()
+  const [activeMarker, setActiveMarker] = useState(null)
 
+  
   // Department mapping — same as rest of project
   const ROLE_DEPT_MAP = {
     department_employee: 'Public Works Department',
@@ -91,6 +93,7 @@ export default function CancelledRetendered() {
     setAnimating(true)
     setSearchInput('')
     setAppliedSearch('')
+    setActiveMarker(null)  // ← add this line
     setTimeout(() => {
       setActiveTab(id)
       setAnimating(false)
@@ -134,7 +137,7 @@ export default function CancelledRetendered() {
       )}
 
         {/* Tab Bar — pill style matching reference image */}
-          <div className="inline-flex items-center bg-tn-cream border border-tn-border rounded-full p-1 gap-1">
+          <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 gap-1">
             {visibleTabs.map((tab) => {
             const isActive = activeTab === tab.id
             return (
@@ -243,13 +246,14 @@ export default function CancelledRetendered() {
             </p>
           </div>
         ) : (
-          filtered.map((tender) => (
+          filtered.map((tender, idx) => (
             <div key={tender.id} className="flex">
               <TenderCard
                 tender={tender}
                 viewMode="grid"
                 className="flex-1"
-                onClick={() => {}}
+                highlighted={activeMarker === idx}
+                onClick={() => setActiveMarker(idx)}
               />
             </div>
           ))

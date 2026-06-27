@@ -140,6 +140,7 @@ export default function TenderStatusPage() {
   const [loading,  setLoading]  = useState(false)
   const [searched, setSearched] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [activeMarker, setActiveMarker] = useState(null)
 
   const activeValues = useMemo(() => {
     if (activeTab === 'criteria1') return criteria1
@@ -182,6 +183,7 @@ export default function TenderStatusPage() {
     setActiveTab(tabId)
     setResults([])
     setSearched(false)
+    setActiveMarker(null)
     setCurrentPage(1)
   }
 
@@ -417,7 +419,12 @@ export default function TenderStatusPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
           {paginated.map((tender) => (
             <div key={tender.id} className="flex">
-              <TenderCard tender={tender} className="flex-1" />
+              <TenderCard 
+                tender={tender}
+                className="flex-1"
+                highlighted={activeMarker === idx}
+                onClick={() => setActiveMarker(idx)}
+                />
             </div>
           ))}
         </div>
