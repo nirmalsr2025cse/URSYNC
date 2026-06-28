@@ -102,11 +102,6 @@ export default function TenderByDepartment() {
                 <option key={dept} value={dept}>{dept}</option>
               ))}
             </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 pr-3 flex items-center">
-              <svg className="w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
           </div>
 
           {/* Search Button */}
@@ -268,7 +263,7 @@ export default function TenderByDepartment() {
             <h3 className="font-bold text-tn-navy text-base mb-2">
               Search for a department
             </h3>
-            <p className="text-sm text-[#F62440] max-w-xs leading-relaxed">
+            <p className="text-sm text-tn-muted max-w-xs leading-relaxed">
               Select a department from the dropdown above
               to browse tenders across Tamil Nadu.
             </p>

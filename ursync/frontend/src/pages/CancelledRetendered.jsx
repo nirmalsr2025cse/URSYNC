@@ -16,6 +16,7 @@ export default function CancelledRetendered() {
   const [animating,     setAnimating]     = useState(false)
   const { role } = useRole()
   const [activeMarker, setActiveMarker] = useState(null)
+  const [searching, setSearching] = useState(false)
 
   
   // Department mapping — same as rest of project
@@ -76,7 +77,11 @@ export default function CancelledRetendered() {
   }, [normalised, appliedSearch])
 
   function handleSearch() {
+    setSearching(true)
     setAppliedSearch(searchInput)
+    setTimeout(() => {
+      setSearching(false)
+    }, 600)
   }
 
   function handleClear() {
@@ -175,20 +180,29 @@ export default function CancelledRetendered() {
               className="w-full pl-3 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
             />
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleSearch}
-                className="btn-primary flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                Search
-              </button>
+            <button
+              onClick={handleSearch}
+              className="btn-primary flex items-center gap-2 focus:outline-none focus:ring-0"
+            >
+              {searching ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Searching…
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Search
+                </>
+              )}
+            </button>
               {(searchInput || appliedSearch) && (
                 <button
                   onClick={handleClear}
-                  className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap"
+                  className="text-xs text-tn-muted underline whitespace-nowrap"
                 >
                   Clear all
                 </button>

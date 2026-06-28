@@ -18,7 +18,8 @@ export const tenders = {
       status: "Ongoing",
       category: "Infrastructure",
       description: "Construction of 4-lane road connecting NH-44 to Ariyamangalam bypass.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal1809@gmail.com'
     },
     {
       id: "TN/TANGEDCO/2024/042",
@@ -34,7 +35,8 @@ export const tenders = {
       status: "Ongoing",
       category: "Energy",
       description: "Supply and installation of 33KV substation equipment.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'nirmal@gmail.com'
     },
     {
       id: "TN/TWAD/2024/018",
@@ -50,7 +52,8 @@ export const tenders = {
       status: "Ongoing",
       category: "Water & Sanitation",
       description: "Laying of underground drinking water pipeline network.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'nirmal@gmail.com'
     },
     {
       id: "TN/HEALTH/2024/009",
@@ -66,7 +69,8 @@ export const tenders = {
       status: "Ongoing",
       category: "Healthcare",
       description: "Procurement of advanced medical equipment for district hospital.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal1809@gmail.com'
     },
     {
       id: "TN/CORP/2024/007",
@@ -82,7 +86,8 @@ export const tenders = {
       status: "Ongoing",
       category: "Urban Development",
       description: "Development of parks and playgrounds in Woraiyur zone.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal@gmail.com'
     },
     {
       id: "TN/EDU/2024/003",
@@ -98,7 +103,8 @@ export const tenders = {
       status: "Ongoing",
       category: "Education",
       description: "Renovation of government school buildings in Zone 3.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal@gmail.com'
     },
   ],
 
@@ -117,7 +123,8 @@ export const tenders = {
       status: "Upcoming",
       category: "Infrastructure",
       description: "Rehabilitation of aging bridge structure over Cauvery River.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal1809@gmail.com'
     },
     {
       id: "TN/TNHB/2024/031",
@@ -133,7 +140,8 @@ export const tenders = {
       status: "Upcoming",
       category: "Housing",
       description: "Construction of 500 economically weaker section housing units.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'nirmal@gmail.com'
     },
     {
       id: "TN/TANGEDCO/2024/088",
@@ -149,7 +157,8 @@ export const tenders = {
       status: "Upcoming",
       category: "Energy",
       description: "Installation of 10MW solar power plant for government buildings.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'nirmal@gmail.com'
     },
     {
       id: "TN/HEALTH/2024/022",
@@ -165,7 +174,8 @@ export const tenders = {
       status: "Upcoming",
       category: "Healthcare",
       description: "Construction of 8 primary health centres in rural areas.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal1809@gmail.com'
     },
   ],
 
@@ -184,7 +194,8 @@ export const tenders = {
       status: "Completed",
       category: "Infrastructure",
       description: "Road widening of East Coast Road Phase 1 completed successfully.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal@gmail.com'
     },
     {
       id: "TN/TWAD/2023/011",
@@ -200,7 +211,8 @@ export const tenders = {
       status: "Completed",
       category: "Water & Sanitation",
       description: "Upgrade of sewage treatment plant capacity from 10 MLD to 25 MLD.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal@gmail.com'
     },
     {
       id: "TN/CORP/2023/015",
@@ -216,7 +228,8 @@ export const tenders = {
       status: "Completed",
       category: "Urban Development",
       description: "City-wide replacement of conventional street lights with LED.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal@gmail.com'
     },
     {
       id: "TN/EDU/2023/008",
@@ -232,7 +245,8 @@ export const tenders = {
       status: "Completed",
       category: "Education",
       description: "Installation of smart classroom equipment in 200 government schools.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal@gmail.com'
     },
     {
       id: "TN/HEALTH/2023/005",
@@ -248,7 +262,8 @@ export const tenders = {
       status: "Completed",
       category: "Healthcare",
       description: "Procurement of 50 advanced life support ambulances.",
-      documentUrl: '/sample-tender.pdf'
+      documentUrl: '/sample-tender.pdf',
+      user:'srnirmal@gmail.com'
     },
   ],
 }

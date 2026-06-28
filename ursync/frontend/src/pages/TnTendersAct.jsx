@@ -3,7 +3,7 @@ import React from 'react'
 export default function TnTendersAct() {
   return (
     <div className="p-4 lg:p-6 h-full">
-      <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden h-[calc(100vh-150px)] flex flex-col">
+      <div className="bg-white border border-tn-gold rounded-2xl overflow-hidden h-[calc(100vh-150px)] flex flex-col">
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#FFE5BF] bg-[#FFF2DB]">
