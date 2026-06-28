@@ -17,6 +17,7 @@ import Downloads from '../pages/Downloads'
 import CancelledRetendered from '../pages/CancelledRetendered'
 import ApplyTenders    from '../pages/ApplyTenders'
 import ApplyTenderForm from '../pages/ApplyTenderForm'
+import TenderByDepartment from '../pages/TenderByDepartment'
 
 export default function AppRoutes() {
   return (
@@ -39,6 +40,7 @@ export default function AppRoutes() {
         <Route path="/tender-view"        element={<TenderView />} />
         <Route path="/apply-tenders"         element={<ApplyTenders />} />
         <Route path="/apply-tenders/apply" element={<ApplyTenderForm />} />
+        <Route path="/tenders-by-dept" element={<TenderByDepartment />} />
       </Route>
     </Routes>
   )

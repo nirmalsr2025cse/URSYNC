@@ -38,6 +38,7 @@ const TENDER_CATS    = ['Construction', 'Infrastructure', 'Water Supply', 'Elect
 const EXPIRY_OPTIONS = ['Ongoing', 'Upcoming', 'Completed']
 const DISTRICTS      = [...new Set(allTenders.map((t) => t.district).filter(Boolean))].sort()
 
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function matchOrgType(name, type) {
@@ -111,6 +112,13 @@ export default function TenderByOrganization() {
   const [activeMarker,setActiveMarker]= useState(null)
   const [error,       setError]       = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [activeTab, setActiveTab] = useState('all')
+
+  const tabTenders = activeTab === 'all'       ? results
+                 : activeTab === 'ongoing'   ? results.filter((t) => t.status === 'Ongoing')
+                 : activeTab === 'upcoming'  ? results.filter((t) => t.status === 'Upcoming')
+                 : activeTab === 'completed' ? results.filter((t) => t.status === 'Completed')
+                 : results
 
   const cardRefs = useRef({})
 
@@ -119,6 +127,7 @@ export default function TenderByOrganization() {
     setError(null)
     setLoading(true)
     setSearched(true)
+    setActiveTab('all')
     setActiveMarker(null)
 
     setTimeout(() => {
@@ -139,8 +148,7 @@ export default function TenderByOrganization() {
   const handleCardClick = (idx) => setActiveMarker(idx)
 
   const ITEMS_PER_PAGE = 9
-  const totalPages = Math.ceil(results.length / ITEMS_PER_PAGE)
-  const paginated  = results.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+  const totalPages = Math.ceil(tabTenders.length / ITEMS_PER_PAGE)
 
   const activeFilters = Object.entries(filters).filter(([, v]) => v)
 
@@ -304,10 +312,42 @@ export default function TenderByOrganization() {
         </div>
       )}
 
+      {!loading && results.length > 0 && (
+        <div className="overflow-x-auto mb-4 pb-1">
+          <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 shadow-sm gap-1 min-w-max">
+            {[
+              { id: 'all',       label: 'All',       count: results.length },
+              { id: 'ongoing',   label: 'Ongoing',   count: results.filter((t) => t.status === 'Ongoing').length },
+              { id: 'upcoming',  label: 'Upcoming',  count: results.filter((t) => t.status === 'Upcoming').length },
+              { id: 'completed', label: 'Completed', count: results.filter((t) => t.status === 'Completed').length },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id); setCurrentPage(1) }}
+                className={[
+                  'flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200',
+                  activeTab === tab.id
+                    ? 'bg-tn-navy text-white shadow-sm'
+                    : 'text-tn-blue border border-tn-border bg-transparent hover:bg-tn-light',
+                ].join(' ')}
+              >
+                {tab.label}
+                <span className={[
+                  'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                  activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-tn-light text-tn-navy',
+                ].join(' ')}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Results grid ─────────────────────────────────────────────────── */}
       {!loading && results.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {paginated.map((tender, idx) => (
+          {tabTenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((tender, idx) => (
             <div
               key={tender.id}
               ref={(el) => { cardRefs.current[idx] = el }}

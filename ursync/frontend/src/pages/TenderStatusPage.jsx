@@ -39,7 +39,7 @@ const EMPTY_CRITERIA_1 = { tenderStatus: '', fromDate: '', toDate: '', tenderCat
 const EMPTY_CRITERIA_2 = { organization: '', department: '', publishedFrom: '', publishedTo: '' }
 const EMPTY_CRITERIA_3 = { tenderId: '' }
 
-const ITEMS_PER_PAGE = 9
+const ITEMS_PER_PAGE = 6
 
 // ─── Reusable field components ─────────────────────────────────────────────────
 
@@ -141,6 +141,7 @@ export default function TenderStatusPage() {
   const [searched, setSearched] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [activeMarker, setActiveMarker] = useState(null)
+  const [statusTab, setStatusTab] = useState('all')
 
   const activeValues = useMemo(() => {
     if (activeTab === 'criteria1') return criteria1
@@ -184,6 +185,7 @@ export default function TenderStatusPage() {
     setResults([])
     setSearched(false)
     setActiveMarker(null)
+    setStatusTab('all')
     setCurrentPage(1)
   }
 
@@ -191,6 +193,7 @@ export default function TenderStatusPage() {
     e?.preventDefault()
     if (!isValid) return
     setLoading(true)
+    setStatusTab('all')
     setSearched(true)
 
     setTimeout(() => {
@@ -214,9 +217,18 @@ export default function TenderStatusPage() {
     setCurrentPage(1)
   }
 
-  const totalPages = Math.ceil(results.length / ITEMS_PER_PAGE)
-  const paginated   = results.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+  const displayResults = useMemo(() => {
+    if (activeTab === 'criteria3') return results
+    if (statusTab === 'all')       return results
+    if (statusTab === 'ongoing')   return results.filter((t) => t.status === 'Ongoing')
+    if (statusTab === 'upcoming')  return results.filter((t) => t.status === 'Upcoming')
+    if (statusTab === 'completed') return results.filter((t) => t.status === 'Completed')
+    return results
+  }, [results, statusTab, activeTab])
 
+
+  const totalPages = Math.ceil(displayResults.length / ITEMS_PER_PAGE)
+  const paginated  = displayResults.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-fade-in">
 
@@ -414,17 +426,49 @@ export default function TenderStatusPage() {
         </div>
       )}
 
+      {!loading && results.length > 0 && activeTab !== 'criteria3' && (
+        <div className="overflow-x-auto pb-1">
+          <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 shadow-sm gap-1 min-w-max">
+            {[
+              { id: 'all',       label: 'All',       count: results.length },
+              { id: 'ongoing',   label: 'Ongoing',   count: results.filter((t) => t.status === 'Ongoing').length },
+              { id: 'upcoming',  label: 'Upcoming',  count: results.filter((t) => t.status === 'Upcoming').length },
+              { id: 'completed', label: 'Completed', count: results.filter((t) => t.status === 'Completed').length },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => { setStatusTab(tab.id); setCurrentPage(1) }}
+                className={[
+                  'flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200',
+                  statusTab === tab.id
+                    ? 'bg-tn-navy text-white shadow-sm'
+                    : 'text-tn-blue border border-tn-border bg-transparent hover:bg-tn-light',
+                ].join(' ')}
+              >
+                {tab.label}
+                <span className={[
+                  'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                  statusTab === tab.id ? 'bg-white/20 text-white' : 'bg-tn-light text-tn-navy',
+                ].join(' ')}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Results grid ─────────────────────────────────────────────────── */}
       {!loading && results.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {paginated.map((tender) => (
+          {paginated.map((tender, idx) => (
             <div key={tender.id} className="flex">
               <TenderCard 
                 tender={tender}
                 className="flex-1"
                 highlighted={activeMarker === idx}
                 onClick={() => setActiveMarker(idx)}
-                />
+              />
             </div>
           ))}
         </div>

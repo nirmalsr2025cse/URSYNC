@@ -16,9 +16,16 @@ export default function TendersByLocation() {
   const [error,         setError]         = useState(null)
   const [searched,      setSearched]      = useState(false)
   const [currentPage,   setCurrentPage]   = useState(1)
+  const [activeTab, setActiveTab] = useState('all')
+
+  const tabTenders = activeTab === 'all'         ? tenders
+                 : activeTab === 'open'        ? tenders.filter((t) => t.status === 'Open')
+                 : activeTab === 'closingsoon' ? tenders.filter((t) => t.status === 'Closing Soon')
+                 : activeTab === 'closed'      ? tenders.filter((t) => t.status === 'Closed')
+                 : tenders
 
   const ITEMS_PER_PAGE = 6
-  const totalPages = Math.ceil(tenders.length / ITEMS_PER_PAGE)
+  const totalPages = Math.ceil(tabTenders.length / ITEMS_PER_PAGE)
   const paginated  = tenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   const cardRefs = useRef({})
@@ -32,6 +39,7 @@ export default function TendersByLocation() {
     setLoadingCards(true)
     setSearched(true)
     setActiveMarker(null)
+    setActiveTab('all')
 
     // Fetch location data and tenders in parallel
     const [locResult, tenderResult] = await Promise.all([
@@ -219,10 +227,42 @@ export default function TendersByLocation() {
           </div>
         )}
 
+        {!loadingCards && tenders.length > 0 && (
+          <div className="overflow-x-auto mb-4 pb-1">
+            <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 shadow-sm gap-1 min-w-max">
+              {[
+                { id: 'all',          label: 'All',          count: tenders.length },
+                { id: 'open',         label: 'Open',         count: tenders.filter((t) => t.status === 'Open').length },
+                { id: 'closingsoon',  label: 'Closing Soon', count: tenders.filter((t) => t.status === 'Closing Soon').length },
+                { id: 'closed',       label: 'Closed',       count: tenders.filter((t) => t.status === 'Closed').length },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => { setActiveTab(tab.id); setCurrentPage(1) }}
+                  className={[
+                    'flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200',
+                    activeTab === tab.id
+                      ? 'bg-tn-navy text-white shadow-sm'
+                      : 'text-tn-blue border border-tn-border bg-transparent hover:bg-tn-light',
+                  ].join(' ')}
+                >
+                  {tab.label}
+                  <span className={[
+                    'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                    activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-tn-light text-tn-navy',
+                  ].join(' ')}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Results grid */}
         {!loadingCards && tenders.length > 0 && (
           <div key={currentPage} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch animate-fade-in">
-            {paginated.map((tender, idx) => (
+            {tabTenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((tender, idx) => (
               <div
                 key={tender.id}
                 ref={(el) => { cardRefs.current[idx] = el }}
