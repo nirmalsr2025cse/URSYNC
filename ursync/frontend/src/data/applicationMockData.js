@@ -1,0 +1,60 @@
+// src/data/applicationMockData.js
+
+const today = new Date()
+const past   = (d) => { const dt = new Date(today); dt.setDate(dt.getDate() - d); return dt.toISOString().split('T')[0] }
+const future = (d) => { const dt = new Date(today); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0] }
+
+const DOCS = [
+  { name: 'PAN Card',                url: '/sample-tender.pdf' },
+  { name: 'GST Certificate',         url: '/sample-tender.pdf' },
+  { name: 'Company Registration',    url: '/sample-tender.pdf' },
+  { name: 'Experience Certificate',  url: '/sample-tender.pdf' },
+  { name: 'Financial Statement',     url: '/sample-tender.pdf' },
+  { name: 'Technical Proposal',      url: '/sample-tender.pdf' },
+  { name: 'Commercial Proposal',     url: '/sample-tender.pdf' },
+  { name: 'EMD Receipt',             url: '/sample-tender.pdf' },
+  { name: 'Bid Proposal',            url: '/sample-tender.pdf' },
+  { name: 'Additional Documents',    url: '/sample-tender.pdf' },
+]
+
+function makeApplicants(tenderId, count) {
+  const names = ['Karthik Selvam','Priya Rajan','Murugan T','Anitha M','Senthil K','Lakshmi V','Rajesh P','Divya N','Vijayakumar S','Meena R']
+  const companies = ['Selvam Constructions Pvt Ltd','Rajan Infrastructure','MRT Builders','Anitha Enterprises','SK Projects','Lakshmi Civil Works','Rajesh & Co','Divya Tech Solutions','VK Infrastructure','Meena Contractors']
+  const districts = ['Chennai','Coimbatore','Madurai','Tiruchirappalli','Salem','Vellore','Erode','Dindigul','Thanjavur','Namakkal']
+  return Array.from({ length: count }, (_, i) => ({
+    applicationId: `APP/${tenderId.replace(/\//g,'-')}/${String(i+1).padStart(3,'0')}`,
+    applicantName: names[i % names.length],
+    companyName:   companies[i % companies.length],
+    mobile:        `98${String(Math.floor(Math.random()*100000000)).padStart(8,'0')}`,
+    email:         `${names[i % names.length].toLowerCase().replace(' ','.')}@company.com`,
+    district:      districts[i % districts.length],
+    experience:    `${(i % 10) + 3} Years`,
+    bidAmount:     `₹ ${(Math.floor(Math.random() * 50) + 10)}.${Math.floor(Math.random()*90)+10} Lakh`,
+    submittedDate: past(Math.floor(Math.random() * 20) + 2),
+    approvalStatus:'Pending',
+    documents:     DOCS,
+  }))
+}
+
+export const APPLICATION_TENDERS = [
+  // ── ONGOING (deadline passed, not yet sent to dept) ───────────────────────
+  { id:'TN/PWD/2026/001',  title:'Construction of NH-44 Junction Road',           department:'Public Works Department',              organization:'Tamil Nadu PWD',  category:'Infrastructure',     district:'Tiruchirappalli', value:'₹ 4.85 Crore',  applicationDeadline: past(5),  status:'Ongoing',   sentToDept:false, image:'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Tiruchirappalli', closingDate: past(5),  description:'Construction of 4-lane road connecting NH-44 to Ariyamangalam bypass.', applicants: makeApplicants('TN/PWD/2026/001', 8) },
+  { id:'TN/TANGEDCO/2026/042', title:'33 KV Substation Equipment Supply',         department:'Tamil Nadu Generation and Distribution Corporation', organization:'TANGEDCO', category:'Energy',         district:'Tiruchirappalli', value:'₹ 12.30 Crore', applicationDeadline: past(8),  status:'Ongoing',   sentToDept:false, image:'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Srirangam', closingDate: past(8),  description:'Supply and installation of 33KV substation equipment.', applicants: makeApplicants('TN/TANGEDCO/2026/042', 6) },
+  { id:'TN/TWAD/2026/018',    title:'Underground Drinking Water Pipeline',         department:'Tamil Nadu Water and Drainage Board',    organization:'TWAD Board',  category:'Water & Sanitation', district:'Tiruchirappalli', value:'₹ 7.20 Crore',  applicationDeadline: past(3),  status:'Ongoing',   sentToDept:false, image:'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Thillai Nagar', closingDate: past(3), description:'Laying of underground drinking water pipeline network.', applicants: makeApplicants('TN/TWAD/2026/018', 7) },
+  { id:'TN/HEALTH/2026/009',  title:'Medical Equipment Supply — District Hospital', department:'Department of Health and Family Welfare', organization:'Directorate of Medical Services', category:'Healthcare', district:'Tiruchirappalli', value:'₹ 3.60 Crore', applicationDeadline: past(10), status:'Ongoing',  sentToDept:false, image:'https://images.unsplash.com/photo-1581595220892-b0739db3ba8c?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Manapparai', closingDate: past(10), description:'Procurement of advanced medical equipment for district hospital.', applicants: makeApplicants('TN/HEALTH/2026/009', 9) },
+  { id:'TN/CORP/2026/007',    title:'Woraiyur Parks and Playgrounds Development',  department:'Tiruchirappalli City Municipal Corporation', organization:'TCMC',     category:'Urban Development',  district:'Tiruchirappalli', value:'₹ 1.95 Crore',  applicationDeadline: past(6),  status:'Ongoing',   sentToDept:false, image:'https://images.unsplash.com/photo-1617369120004-4fc70312c5e6?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Woraiyur', closingDate: past(6),  description:'Development of parks and playgrounds in Woraiyur zone.', applicants: makeApplicants('TN/CORP/2026/007', 5) },
+  { id:'TN/EDU/2026/003',     title:'School Infrastructure Renovation — Zone 3',  department:'School Education Department',            organization:'School Education Department', category:'Education', district:'Chennai',         value:'₹ 2.40 Crore',  applicationDeadline: past(12), status:'Ongoing',   sentToDept:false, image:'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Chennai', closingDate: past(12),  description:'Renovation of government school buildings in Zone 3.', applicants: makeApplicants('TN/EDU/2026/003', 10) },
+  { id:'TN/PWD/2026/055',     title:'Bridge Rehabilitation — Cauvery River',       department:'Public Works Department',              organization:'Tamil Nadu PWD',  category:'Infrastructure',     district:'Tiruchirappalli', value:'₹ 18.50 Crore', applicationDeadline: past(2),  status:'Ongoing',   sentToDept:false, image:'https://images.unsplash.com/photo-1545558014-8692077e9b5c?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Tiruchirappalli', closingDate: past(2), description:'Rehabilitation of aging bridge structure over Cauvery River.', applicants: makeApplicants('TN/PWD/2026/055', 6) },
+  { id:'TN/TNHB/2026/031',    title:'500 EWS Housing Units Construction',          department:'Tamil Nadu Housing Board',             organization:'TNHB',            category:'Housing',            district:'Tiruchirappalli', value:'₹ 22.50 Crore', applicationDeadline: past(7),  status:'Ongoing',   sentToDept:false, image:'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Tiruchirappalli District', closingDate: past(7), description:'Construction of 500 economically weaker section housing units.', applicants: makeApplicants('TN/TNHB/2026/031', 8) },
+
+  // ── UPCOMING (deadline not yet passed) ───────────────────────────────────
+  { id:'TN/TANGEDCO/2026/088', title:'Solar Power Plant Installation — 10MW',     department:'Tamil Nadu Generation and Distribution Corporation', organization:'TANGEDCO', category:'Energy',         district:'Madurai',         value:'₹ 45.00 Crore', applicationDeadline: future(10), status:'Upcoming', sentToDept:false, image:'https://images.unsplash.com/photo-1509391366360-2e959784a276?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Madurai', closingDate: future(10), description:'Installation of 10MW solar power plant for government buildings.', applicants:[] },
+  { id:'TN/HEALTH/2026/022',  title:'Primary Health Centre Construction — Rural', department:'Department of Health and Family Welfare', organization:'Directorate of Medical Services', category:'Healthcare', district:'Virudhunagar',    value:'₹ 5.80 Crore',  applicationDeadline: future(5),  status:'Upcoming', sentToDept:false, image:'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Virudhunagar', closingDate: future(5), description:'Construction of 8 primary health centres in rural areas.', applicants:[] },
+  { id:'TN/PWD/2026/066',     title:'Coastal Road Development — Phase 2',         department:'Public Works Department',              organization:'Tamil Nadu PWD',  category:'Roads',              district:'Chennai',         value:'₹ 35.00 Crore', applicationDeadline: future(15), status:'Upcoming', sentToDept:false, image:'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Chennai', closingDate: future(15), description:'Development of coastal road phase 2 connecting marina to ECR.', applicants:[] },
+  { id:'TN/TWAD/2026/045',    title:'Sewage Treatment Plant Upgrade — Phase 3',   department:'Tamil Nadu Water and Drainage Board',    organization:'TWAD Board',  category:'Water & Sanitation', district:'Coimbatore',      value:'₹ 9.75 Crore',  applicationDeadline: future(8),  status:'Upcoming', sentToDept:false, image:'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Coimbatore', closingDate: future(8), description:'Phase 3 upgrade of sewage treatment plant capacity to 50 MLD.', applicants:[] },
+
+  // ── COMPLETED (already sent to dept) ─────────────────────────────────────
+  { id:'TN/PWD/2025/077',     title:'East Coast Road Widening — Phase 1',         department:'Public Works Department',              organization:'Tamil Nadu PWD',  category:'Infrastructure',     district:'Chennai',         value:'₹ 32.00 Crore', applicationDeadline: past(30), status:'Completed', sentToDept:true,  sentDate: past(20), approvedCount:3, image:'https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Chennai to Mahabalipuram', closingDate: past(30), description:'Road widening of East Coast Road Phase 1 completed successfully.', applicants: makeApplicants('TN/PWD/2025/077', 7) },
+  { id:'TN/TWAD/2025/011',    title:'Sewage Treatment Plant Upgrade',             department:'Tamil Nadu Water and Drainage Board',    organization:'TWAD Board',  category:'Water & Sanitation', district:'Coimbatore',      value:'₹ 9.75 Crore',  applicationDeadline: past(45), status:'Completed', sentToDept:true,  sentDate: past(35), approvedCount:2, image:'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Coimbatore', closingDate: past(45), description:'Upgrade of sewage treatment plant capacity from 10 MLD to 25 MLD.', applicants: makeApplicants('TN/TWAD/2025/011', 6) },
+  { id:'TN/HEALTH/2025/005',  title:'Ambulance Fleet Procurement',                department:'Department of Health and Family Welfare', organization:'Directorate of Medical Services', category:'Healthcare', district:'Tamil Nadu',       value:'₹ 8.40 Crore',  applicationDeadline: past(60), status:'Completed', sentToDept:true,  sentDate: past(50), approvedCount:4, image:'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=200&fit=crop', documentUrl:'/sample-tender.pdf', location:'Tamil Nadu', closingDate: past(60), description:'Procurement of 50 advanced life support ambulances.', applicants: makeApplicants('TN/HEALTH/2025/005', 9) },
+]

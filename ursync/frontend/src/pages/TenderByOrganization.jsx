@@ -147,7 +147,7 @@ export default function TenderByOrganization() {
 
   const handleCardClick = (idx) => setActiveMarker(idx)
 
-  const ITEMS_PER_PAGE = 9
+  const ITEMS_PER_PAGE = 6
   const totalPages = Math.ceil(tabTenders.length / ITEMS_PER_PAGE)
 
   const activeFilters = Object.entries(filters).filter(([, v]) => v)

@@ -22,6 +22,10 @@ import YourTenders from '../pages/YourTenders'
 import DebarmentList from '../pages/DebarmentList'
 import TenderCumAuction from '../pages/TenderCumAuction'
 import Announcements from '../pages/Announcements'
+import Applications           from '../pages/Applications'
+import ApplicationApplicants  from '../pages/ApplicationApplicants'
+import ApplicantDetails       from '../pages/ApplicantDetails'
+import ApprovedApplicants     from '../pages/ApprovedApplicants'
 
 export default function AppRoutes() {
   return (
@@ -49,6 +53,10 @@ export default function AppRoutes() {
         <Route path="/debarment" element={<DebarmentList />} />
         <Route path="/auction" element={<TenderCumAuction />} />
         <Route path="/announcements" element={<Announcements />} />
+        <Route path="/applications"                    element={<Applications />} />
+        <Route path="/applications/:tenderId"          element={<ApplicationApplicants />} />
+        <Route path="/applications/:tenderId/approved" element={<ApprovedApplicants />} />
+        <Route path="/Applicant/:applicationId"        element={<ApplicantDetails />} />
       </Route>
     </Routes>
   )
