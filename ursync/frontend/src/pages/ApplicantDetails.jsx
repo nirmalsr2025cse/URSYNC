@@ -170,9 +170,14 @@ export default function ApplicantDetails() {
                 <button
                 onClick={handleReject}
                 disabled={status === 'Rejected'}
-                className="px-6 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold bg-tn-warn text-white hover:bg-tn-warn transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                 Reject
+                </button>
+                <button
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                Report
                 </button>
             </>
             )}

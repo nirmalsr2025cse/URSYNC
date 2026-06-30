@@ -1,6 +1,6 @@
 // src/pages/ApplicationApplicants.jsx
 import React, { useState, useMemo, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Pagination from '../components/Pagination'
 import { APPLICATION_TENDERS } from '../data/applicationMockData'
 
@@ -124,6 +124,9 @@ export default function ApplicationApplicants() {
 
   const approvedCount = tender ? getApproved(tender.id).length : 0
 
+  const location = useLocation()
+  const fromTab  = location.state?.fromTab || 'Ongoing'
+
   function showToast(msg) {
     setToast(msg)
     setTimeout(() => setToast(null), 3000)
@@ -152,7 +155,7 @@ export default function ApplicationApplicants() {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
         <p className="font-bold text-[#0A2240] mb-2">Tender not found.</p>
-        <button onClick={() => navigate('/applications')} className="text-sm text-[#1A4A8C] underline">Back to Applications</button>
+        <button onClick={() => navigate('/applications', { state: { fromTab } })} className="text-sm text-[#1A4A8C] underline">Back to Applications</button>
       </div>
     )
   }
@@ -163,7 +166,7 @@ export default function ApplicationApplicants() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/applications')} className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors">
+        <button onClick={() => navigate('/applications', { state: { fromTab } })} className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>

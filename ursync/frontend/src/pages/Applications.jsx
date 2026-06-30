@@ -1,6 +1,6 @@
 // src/pages/Applications.jsx
 import React, { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import Pagination from '../components/Pagination'
 import { APPLICATION_TENDERS } from '../data/applicationMockData'
@@ -19,7 +19,6 @@ export default function Applications() {
   const navigate = useNavigate()
   const PAGE_SIZE = 6
 
-  const [activeTab,   setActiveTab]   = useState('Ongoing')
   const [currentPage, setCurrentPage] = useState(1)
   const [animating,   setAnimating]   = useState(false)
   const [search,      setSearch]      = useState('')
@@ -31,6 +30,8 @@ export default function Applications() {
   const [appliedDept,     setAppliedDept]     = useState('All')
   const [appliedDistrict, setAppliedDistrict] = useState('All')
   const [appliedCategory, setAppliedCategory] = useState('All')
+  const location = useLocation()
+  const [activeTab, setActiveTab] = useState(location.state?.fromTab || 'Ongoing')
 
   const DEPARTMENTS = ['All', ...new Set(APPLICATION_TENDERS.map(t => t.department))]
   const DISTRICTS   = ['All', ...new Set(APPLICATION_TENDERS.map(t => t.district))]
@@ -209,8 +210,9 @@ export default function Applications() {
       </div>
 
       {/* ── Tab Bar ────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="inline-flex items-center bg-white border border-[#FFE5BF] rounded-full p-1 shadow-sm gap-1">
+      <div>
+      <div className="flex items-center justify-between gap-4 flex-wrap overflow-auto">
+        <div className="inline-flex items-center bg-white border border-[#FFE5BF] rounded-full p-1 shadow-sm gap-1 min-w-max">
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id
             return (
@@ -230,9 +232,12 @@ export default function Applications() {
             )
           })}
         </div>
+        </div>
+        <div className="pt-2">
         <span className="text-xs font-medium text-[#6B7A8D] bg-white border border-[#FFE5BF] px-3 py-1.5 rounded-full">
           {filtered.length} tender{filtered.length !== 1 ? 's' : ''}
         </span>
+        </div>
       </div>
 
       {/* ── Cards ──────────────────────────────────────────────────────── */}
@@ -268,12 +273,12 @@ export default function Applications() {
                     tender={{ ...tender, status: activeTab }}
                     viewMode="grid"
                     className="flex-1"
-                    onClick={() => deadlinePassed && navigate('/applications/' + encodeURIComponent(tender.id))}
+                    onClick={() => deadlinePassed && navigate('/applications/' + encodeURIComponent(tender.id), { state: { fromTab: activeTab } })}
                   />
 
                   {activeTab === 'Ongoing' && (
                     <button
-                      onClick={() => navigate('/applications/' + encodeURIComponent(tender.id))}
+                      onClick={() => navigate('/applications/' + encodeURIComponent(tender.id), { state: { fromTab: activeTab } })}
                       className="mt-2 w-full py-2.5 text-xs font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors flex items-center justify-center gap-1.5"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -286,8 +291,8 @@ export default function Applications() {
 
                   {activeTab === 'Completed' && (
                     <button
-                      onClick={() => navigate('/applications/' + encodeURIComponent(tender.id))}
-                      className="mt-2 w-full py-2.5 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors flex items-center justify-center gap-1.5"
+                      onClick={() => navigate('/applications/' + encodeURIComponent(tender.id), { state: { fromTab: activeTab } })}
+                      className="mt-2 w-full py-2.5 text-xs font-semibold rounded-xl bg-tn-blue text-white border border-[#FFE5BF] transition-colors flex items-center justify-center gap-1.5"
                     >
                       View Details
                     </button>
