@@ -102,7 +102,6 @@ export default function ApplicantDetails() {
         <InfoGrid items={[
           { label: 'Company Name',   value: applicant.companyName },
           { label: 'Experience',     value: applicant.experience },
-          { label: 'Bid Amount',     value: applicant.bidAmount },
           { label: 'Submitted Date', value: new Date(applicant.submittedDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) },
         ]} />
       </Section>

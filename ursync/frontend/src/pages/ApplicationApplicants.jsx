@@ -53,7 +53,6 @@ function ApplicantCard({ applicant, tenderId, onView, onApprove, approved, isCom
         <p className="text-[10px] font-mono text-[#6B7A8D] uppercase">{applicant.applicationId}</p>
 
         <div className="space-y-1.5 text-xs text-[#6B7A8D] pt-2 border-t border-[#FFE5BF]">
-          <MetaRow icon="money" label={'Bid: ' + applicant.bidAmount} />
           <MetaRow icon="exp"   label={'Experience: ' + applicant.experience} />
           <MetaRow icon="pin"   label={applicant.district} />
           <MetaRow icon="cal"   label={'Submitted: ' + new Date(applicant.submittedDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})} />
