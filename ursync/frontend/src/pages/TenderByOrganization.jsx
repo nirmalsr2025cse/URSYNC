@@ -151,7 +151,7 @@ export default function TenderByOrganization() {
   const totalPages = Math.ceil(tabTenders.length / ITEMS_PER_PAGE)
 
   const activeFilters = Object.entries(filters).filter(([, v]) => v)
-
+  const hasFilters = activeFilters.length > 0 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-fade-in">
 
@@ -216,6 +216,15 @@ export default function TenderByOrganization() {
                 </>
               )}
             </button>
+            {hasFilters && (
+            <button
+                type="button"
+                onClick={handleReset}
+                className="text-xs text-tn-muted hover:text-tn-danger underline ml-1"
+              >
+                Clear all
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -265,13 +274,6 @@ export default function TenderByOrganization() {
                   {val}
                 </span>
               ))}
-              <button
-                type="button"
-                onClick={handleReset}
-                className="text-xs text-tn-muted hover:text-tn-danger underline ml-1"
-              >
-                Clear all
-              </button>
             </div>
           )}
         </form>

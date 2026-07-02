@@ -30,6 +30,7 @@ import BidderSelection from '../pages/BidderSelection'
 import BidderList from '../pages/BidderList'
 import BidderDetails from '../pages/BidderDetails'
 import FinalizedBidders from '../pages/FinalizedBidders'
+import TenderByClassification from '../pages/TenderByClassification'
 
 export default function AppRoutes() {
   return (
@@ -50,6 +51,7 @@ export default function AppRoutes() {
         <Route path="/create-saved-tenders" element={<CreateSavedTenders />} />
         <Route path="/create-tender"        element={<CreateTender />} />
         <Route path="/tender-view"        element={<TenderView />} />
+        <Route path="/tenders-by-class"        element={<TenderByClassification />} />
         <Route path="/apply-tenders"         element={<ApplyTenders />} />
         <Route path="/apply-tenders/apply" element={<ApplyTenderForm />} />
         <Route path="/tenders-by-dept" element={<TenderByDepartment />} />

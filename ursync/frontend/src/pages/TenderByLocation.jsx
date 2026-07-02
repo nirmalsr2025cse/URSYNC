@@ -61,6 +61,17 @@ export default function TendersByLocation() {
     setLoadingCards(false)
   }
 
+  const handleClear = () => {
+    setQuery('')
+    setLocationData(null)
+    setTenders([])
+    setActiveMarker(null)
+    setError(null)
+    setSearched(false)
+    setCurrentPage(1)
+    setActiveTab('all')
+  }
+
   const handleMarkerClick = (idx) => {
     setActiveMarker(idx)
     const el = cardRefs.current[idx]
@@ -136,6 +147,15 @@ export default function TendersByLocation() {
               </>
             )}
           </button>
+          {query.trim() && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="text-xs text-tn-muted hover:text-tn-danger underline self-center"
+            >
+              Clear all
+            </button>
+          )}
         </form>
 
         {/* Quick chips */}
