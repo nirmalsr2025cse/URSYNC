@@ -291,7 +291,7 @@ export default function ApplyTenders() {
                         'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition-colors',
                         closed
                         ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-                        : 'bg-tn-navy text-white',
+                        : 'bg-[#1A4A8C] text-white',
                     ].join(' ')}
                     >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

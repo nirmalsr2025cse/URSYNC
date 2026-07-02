@@ -1,9 +1,10 @@
-// src/pages/ApprovedApplicants.jsx
+// src/pages/FinalizedBidders.jsx
 import React, { useState, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
 import { APPLICATION_TENDERS } from '../data/applicationMockData'
-import { getApproved, removeApproved } from './ApplicationApplicants'
+import { getFinalizedBidders, removeFinalizedBidder } from './BidderList'
+import { useRole } from '../components/RoleContext'
 
 function Toast({ toast }) {
   if (!toast) return null
@@ -15,61 +16,38 @@ function Toast({ toast }) {
   )
 }
 
-function ConfirmModal({ open, onCancel, onConfirm }) {
-  if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-        <div className="w-12 h-12 rounded-full bg-[#FFF2DB] flex items-center justify-center mb-4 mx-auto">
-          <svg className="w-5 h-5 text-[#1A4A8C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-          </svg>
-        </div>
-        <h3 className="text-base font-bold text-[#0A2240] text-center mb-2">Send to Department?</h3>
-        <p className="text-sm text-[#6B7A8D] text-center mb-6">
-          This will finalize the approved applicants and move this tender to Completed. This action cannot be undone.
-        </p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-[#FFE5BF] text-[#0A2240] hover:bg-[#FFF2DB] transition-colors">
-            Cancel
-          </button>
-          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors">
-            Confirm
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export default function ApprovedApplicants() {
+export default function FinalizedBidders() {
   const navigate  = useNavigate()
   const { tenderId } = useParams()
+  const location  = useLocation()
   const decodedId = decodeURIComponent(tenderId || '')
+  const fromTab   = location.state?.fromTab || 'Ongoing'
   const tender    = APPLICATION_TENDERS.find((t) => t.id === decodedId)
+  const { role } = useRole()
 
   const PAGE_SIZE = useResponsiveItemsPerPage()
   const [currentPage, setCurrentPage] = useState(1)
-  const [, forceRender] = useState(0)
   const [toast, setToast] = useState(null)
-  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [, forceRender] = useState(0)
 
   if (!tender) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
         <p className="font-bold text-[#0A2240] mb-2">Tender not found.</p>
-        <button onClick={() => navigate('/applications')} className="text-sm text-[#1A4A8C] underline">Back to Applications</button>
+        <button onClick={() => navigate('/bidder-selection')} className="text-sm text-[#1A4A8C] underline">
+          Back to Bidder Selection
+        </button>
       </div>
     )
   }
 
-  const approved = getApproved(tender.id)
+  const finalized = getFinalizedBidders(tender.id)
 
-  const totalPages = Math.max(1, Math.ceil(approved.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(finalized.length / PAGE_SIZE))
   const paginated  = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE
-    return approved.slice(start, start + PAGE_SIZE)
-  }, [approved, currentPage, PAGE_SIZE])
+    return finalized.slice(start, start + PAGE_SIZE)
+  }, [finalized, currentPage, PAGE_SIZE])
 
   function showToast(msg) {
     setToast(msg)
@@ -77,60 +55,61 @@ export default function ApprovedApplicants() {
   }
 
   function handleRemove(applicationId) {
-    removeApproved(tender.id, applicationId)
+    removeFinalizedBidder(tender.id, applicationId)
     forceRender((n) => n + 1)
-    showToast('Applicant removed successfully.')
+    showToast('Bidder removed from finalized list.')
   }
-
-  function handleSendToDept() {
-    tender.sentToDept   = true
-    tender.status       = 'Completed'
-    tender.sentDate     = new Date().toISOString().split('T')[0]
-    tender.approvedCount = approved.length
-    setConfirmOpen(false)
-    showToast('Tender Sent to Department')
-    setTimeout(() => navigate('/applications'), 1200)
+  function handleSendToHigherAuthority() {
+    if (role === 'department_employee') {
+        // TODO: wire up actual "send to head" action
+        showToast('Sent to Department Head')
+    } else if (role === 'department_head') {
+        // TODO: wire up actual "send to administrator" action
+        showToast('Sent to Administrator')
+    }
   }
 
   return (
     <div className="p-4 lg:p-6 space-y-5 pb-24 min-h-screen animate-fade-in">
       <Toast toast={toast} />
-      <ConfirmModal open={confirmOpen} onCancel={() => setConfirmOpen(false)} onConfirm={handleSendToDept} />
 
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div>
-            <h1 className="text-xl font-extrabold text-[#0A2240]">Approved Applicants</h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5">Selected Bidder List — {tender.title}</p>
-          </div>
+    {/* Header */}
+    <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="flex items-center gap-3">
+        <button
+        onClick={() => navigate('/bidder-selection', { state: { fromTab } })}
+        className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors"
+        >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        </button>
+        <div>
+        <h1 className="text-xl font-extrabold text-[#0A2240]">Finalized Bidders</h1>
+        <p className="text-xs text-[#6B7A8D] mt-0.5">Selected Bidder List — {tender.title}</p>
         </div>
+    </div>
 
-        {approved.length > 0 && (
-          <button
-            onClick={() => setConfirmOpen(true)}
-            className="px-6 py-2.5 rounded-xl text-sm font-bold bg-[#F62440] text-white hover:bg-red-600 transition-colors shadow-md flex-shrink-0"
-          >
-            Send to Department
-          </button>
-        )}
-      </div>
+    {finalized.length > 0 && (role === 'department_employee' || role === 'department_head') && (
+        <button
+        onClick={handleSendToHigherAuthority}
+        className="px-6 py-2.5 rounded-xl text-sm font-bold bg-[#F62440] text-white hover:bg-red-600 transition-colors shadow-md flex-shrink-0"
+        >
+        {role === 'department_employee' ? 'Send to Head' : 'Send to Administrator'}
+        </button>
+    )}
+    </div>
 
-      {/* Approved list */}
-      {approved.length === 0 ? (
+      {/* Finalized list */}
+      {finalized.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-[#FFE5BF] border-dashed">
           <div className="w-14 h-14 rounded-full bg-[#FFF2DB] flex items-center justify-center mb-4 border border-[#FFE5BF]">
             <svg className="w-6 h-6 text-[#6B7A8D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <p className="font-bold text-[#0A2240] mb-1">No applicants approved yet.</p>
-          <p className="text-sm text-[#6B7A8D]">Go back and approve applicants to add them here.</p>
+          <p className="font-bold text-[#0A2240] mb-1">No bidders finalized yet.</p>
+          <p className="text-sm text-[#6B7A8D]">Go back and select bidders to finalize.</p>
         </div>
       ) : (
         <>
@@ -155,7 +134,7 @@ export default function ApprovedApplicants() {
                     <p>Bid Amount: <span className="font-semibold text-[#0A2240]">{a.bidAmount}</span></p>
                     <p>Experience: {a.experience}</p>
                     <p>District: {a.district}</p>
-                    <p>Approved on: {new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</p>
+                    <p>Finalized on: {tender.finalizedDate ? new Date(tender.finalizedDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'}</p>
                   </div>
 
                   <button

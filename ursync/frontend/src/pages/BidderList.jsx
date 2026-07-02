@@ -15,6 +15,18 @@ function Toast({ toast }) {
   )
 }
 
+// ── Shared finalized-bidder store (per tender) — module level so it persists across pages ──
+const finalizedStore = {}
+export function getFinalizedBidders(tenderId) {
+  return finalizedStore[tenderId] || []
+}
+export function setFinalizedBidders(tenderId, list) {
+  finalizedStore[tenderId] = list
+}
+export function removeFinalizedBidder(tenderId, applicationId) {
+  finalizedStore[tenderId] = getFinalizedBidders(tenderId).filter((a) => a.applicationId !== applicationId)
+}
+
 // ── Status Badge ──────────────────────────────────────────────────────────────
 const APPROVAL_CONFIG = {
   Approved: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
@@ -37,7 +49,8 @@ function StatusBadge({ status }) {
 }
 
 // ── Bidder Card ───────────────────────────────────────────────────────────────
-function BidderCard({ applicant, isSelected, onSelect, onRemove }) {
+// ── Bidder Card ───────────────────────────────────────────────────────────────
+function BidderCard({ applicant, isSelected, onSelect, onRemove, onView }) {
   return (
     <div className={[
       'bg-white border rounded-2xl overflow-hidden flex flex-col',
@@ -80,27 +93,34 @@ function BidderCard({ applicant, isSelected, onSelect, onRemove }) {
           <MetaRow icon="doc"   label={applicant.documents.length + ' documents uploaded'} />
         </div>
 
-        {/* Action button */}
-        <div className="mt-1">
+        {/* Action buttons */}
+        <div className="flex gap-2 mt-1">
+          <button
+            onClick={() => onView(applicant)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors"
+          >
+            View
+          </button>
+
           {isSelected ? (
             <button
               onClick={() => onRemove(applicant.applicationId)}
-              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              Remove from Selection
+              Remove
             </button>
           ) : (
             <button
               onClick={() => onSelect(applicant)}
-              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              Select Bidder
+              Select
             </button>
           )}
         </div>
@@ -123,43 +143,6 @@ function MetaRow({ icon, label }) {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={paths[icon]} />
       </svg>
       <span className="leading-snug truncate">{label}</span>
-    </div>
-  )
-}
-
-// ── Confirm Modal ─────────────────────────────────────────────────────────────
-function ConfirmModal({ open, count, onCancel, onConfirm }) {
-  if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fade-in">
-        <div className="w-12 h-12 rounded-full bg-[#FFF2DB] flex items-center justify-center mb-4 mx-auto">
-          <svg className="w-5 h-5 text-[#1A4A8C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-          </svg>
-        </div>
-        <h3 className="text-base font-bold text-[#0A2240] text-center mb-2">
-          Finalize Bidder Selection?
-        </h3>
-        <p className="text-sm text-[#6B7A8D] text-center mb-6">
-          You have selected <span className="font-bold text-[#0A2240]">{count} bidder{count !== 1 ? 's' : ''}</span>. This will finalize the selection for this tender.
-        </p>
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-[#FFE5BF] text-[#0A2240] hover:bg-[#FFF2DB] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors"
-          >
-            Confirm
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -187,7 +170,6 @@ export default function BidderList() {
   const [search,        setSearch]        = useState('')
   const [currentPage,   setCurrentPage]   = useState(1)
   const [toast,         setToast]         = useState(null)
-  const [confirmOpen,   setConfirmOpen]   = useState(false)
   const [finalized,     setFinalized]     = useState(false)
 
   function showToast(msg) {
@@ -207,10 +189,23 @@ export default function BidderList() {
   }
 
   function handleFinalize() {
+    const finalizedApplicants = applicantPool.filter((a) => selectedIds.includes(a.applicationId))
+    setFinalizedBidders(tender.id, finalizedApplicants)
+    tender.bidderFinalized      = true
+    tender.finalizedDate        = new Date().toISOString().split('T')[0]
+    tender.finalizedBidderCount = finalizedApplicants.length
+
     setFinalized(true)
-    setConfirmOpen(false)
     showToast('Bidder selection finalized successfully!')
-    setTimeout(() => navigate('/bidder-selection', { state: { fromTab } }), 1200)
+    setTimeout(() => {
+      navigate('/bidder-list/' + encodeURIComponent(tender.id) + '/finalized', { state: { fromTab } })
+    }, 1200)
+  }
+
+  function handleView(applicant) {
+    navigate('/Bidder/' + encodeURIComponent(applicant.applicationId), {
+      state: { tenderId: tender.id, fromTab },
+    })
   }
 
   // Filtered applicant pool
@@ -243,14 +238,6 @@ export default function BidderList() {
 
   return (
     <div className="p-4 lg:p-6 space-y-5 pb-24 min-h-screen animate-fade-in">
-      <Toast toast={toast} />
-      <ConfirmModal
-        open={confirmOpen}
-        count={selectedIds.length}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={handleFinalize}
-      />
-
       {/* ── Header ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
@@ -362,6 +349,7 @@ export default function BidderList() {
               isSelected={selectedIds.includes(a.applicationId)}
               onSelect={handleSelect}
               onRemove={handleRemove}
+              onView={handleView}
             />
           ))}
         </div>
@@ -372,12 +360,11 @@ export default function BidderList() {
       {/* ── Floating Finalize button ──────────────────────────────────── */}
       {selectedIds.length > 0 && (
         <button
-          onClick={() => setConfirmOpen(true)}
+          onClick={handleFinalize}
           className="fixed bottom-8 right-8 z-40 flex items-center gap-2 px-5 py-3.5 rounded-full bg-[#F62440] text-white shadow-lg hover:bg-red-600 hover:scale-105 transition-all duration-200 font-semibold text-sm"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M5 13l4 4L19 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
           Finalize ({selectedIds.length})
         </button>

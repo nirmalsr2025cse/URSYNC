@@ -28,6 +28,8 @@ import ApplicantDetails       from '../pages/ApplicantDetails'
 import ApprovedApplicants     from '../pages/ApprovedApplicants'
 import BidderSelection from '../pages/BidderSelection'
 import BidderList from '../pages/BidderList'
+import BidderDetails from '../pages/BidderDetails'
+import FinalizedBidders from '../pages/FinalizedBidders'
 
 export default function AppRoutes() {
   return (
@@ -61,6 +63,8 @@ export default function AppRoutes() {
         <Route path="/Applicant/:applicationId"        element={<ApplicantDetails />} />
         <Route path="/bidder-selection" element={<BidderSelection/>} />
         <Route path="/bidder-selection/:tenderId" element={<BidderList/>} />
+        <Route path="/Bidder/:applicationId" element={<BidderDetails />} />
+        <Route path="/bidder-list/:tenderId/finalized" element={<FinalizedBidders />} />
       </Route>
     </Routes>
   )
