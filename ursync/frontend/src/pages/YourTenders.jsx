@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
 import { tenders } from '../data/tenders'
+import { useNavigate } from 'react-router-dom'
 
 // ── Flatten all tenders ───────────────────────────────────────────────────────
 const ALL_TENDERS = [
@@ -39,6 +40,8 @@ export default function YourTenders() {
   const [activeTab,   setActiveTab]   = useState('all')
   const [searched, setSearched] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
+  const navigate = useNavigate()
+  const [activeMarker, setActiveMarker] = useState(null)
 
   // ── Search ────────────────────────────────────────────────────────────────
   async function handleSearch() {
@@ -47,6 +50,7 @@ export default function YourTenders() {
     setSearched(true)
     setActiveTab('all')
     setCurrentPage(1)
+    setActiveMarker(null)
 
     await new Promise((r) => setTimeout(r, 500))
 
@@ -260,13 +264,17 @@ export default function YourTenders() {
                 {/* Cards grid */}
                 {paginated.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-                    {paginated.map((tender) => (
+                    {paginated.map((tender, idx) => (
                       <div key={tender.id} className="flex">
                         <TenderCard
                           tender={tender}
                           viewMode="grid"
                           className="flex-1"
-                          onClick={() => {}}
+                          highlighted={activeMarker === idx}
+                          onClick={() => {
+                            setActiveMarker(idx)
+                            navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
+                          }}
                         />
                       </div>
                     ))}

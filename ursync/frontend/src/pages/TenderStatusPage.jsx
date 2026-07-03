@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import Pagination from '../components/Pagination'
 import { tenders } from '../data/tenders'
+import { useNavigate } from 'react-router-dom'
 
 // ─── Flatten tenders.js { ongoing, upcoming, completed } → flat array ─────────
 
@@ -142,6 +143,7 @@ export default function TenderStatusPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [activeMarker, setActiveMarker] = useState(null)
   const [statusTab, setStatusTab] = useState('all')
+  const navigate = useNavigate()
 
   const activeValues = useMemo(() => {
     if (activeTab === 'criteria1') return criteria1
@@ -467,7 +469,10 @@ export default function TenderStatusPage() {
                 tender={tender}
                 className="flex-1"
                 highlighted={activeMarker === idx}
-                onClick={() => setActiveMarker(idx)}
+                onClick={() => {
+                  setActiveMarker(idx)
+                  navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
+                }}
               />
             </div>
           ))}

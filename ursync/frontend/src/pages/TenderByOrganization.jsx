@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import { tenders } from '../data/tenders'
 import Pagination from '../components/Pagination'
+import { useNavigate } from 'react-router-dom'
 
 // ─── Flatten tenders.js { ongoing, upcoming, completed } → flat array ─────────
 
@@ -113,6 +114,7 @@ export default function TenderByOrganization() {
   const [error,       setError]       = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [activeTab, setActiveTab] = useState('all')
+  const navigate = useNavigate()
 
   const tabTenders = activeTab === 'all'       ? results
                  : activeTab === 'ongoing'   ? results.filter((t) => t.status === 'Ongoing')
@@ -145,7 +147,10 @@ export default function TenderByOrganization() {
     setError(null)
   }
 
-  const handleCardClick = (idx) => setActiveMarker(idx)
+  const handleCardClick = (idx, tender) => {
+    setActiveMarker(idx)
+    navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
+  }
 
   const ITEMS_PER_PAGE = 6
   const totalPages = Math.ceil(tabTenders.length / ITEMS_PER_PAGE)
@@ -358,7 +363,7 @@ export default function TenderByOrganization() {
               <TenderCard
                 tender={tender}
                 highlighted={activeMarker === idx}
-                onClick={() => handleCardClick(idx)}
+                onClick={() => handleCardClick(idx, tender)}
                 className="flex-1"
               />
             </div>

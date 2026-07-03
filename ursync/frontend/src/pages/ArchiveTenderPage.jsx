@@ -4,6 +4,7 @@ import ArchiveSearchCard from "../components/ArchiveSearchCard";
 import TenderCard, { TenderCardSkeleton } from "../components/TenderCard";
 import Pagination from "../components/Pagination.jsx";
 import { tenders } from "../data/tenders.js";
+import { useNavigate } from 'react-router-dom'
 
 // Flatten { ongoing, upcoming, completed } → single flat array
 const allTenders = Object.values(tenders).flat();
@@ -17,6 +18,7 @@ export default function ArchiveTenderPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [activeMarker, setActiveMarker] = useState(null);
+  const navigate = useNavigate()
 
   // All filtering happens client-side against the local sample data.
   const filteredTenders = useMemo(() => {
@@ -127,7 +129,10 @@ export default function ArchiveTenderPage() {
                 tender={tender}
                 className="flex-1"
                 highlighted={activeMarker === idx}
-                onClick={() => setActiveMarker(idx)}
+                onClick={() => {
+                  setActiveMarker(idx)
+                  navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
+                }}
               />
             </div>
           ))}

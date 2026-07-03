@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import { tenders } from '../data/tenders'
+import { useNavigate } from 'react-router-dom'
 
 // ── Flatten all tenders ───────────────────────────────────────────────────────
 const ALL_TENDERS = [
@@ -22,6 +23,8 @@ export default function TenderByDepartment() {
   const [loading,      setLoading]      = useState(false)
   const [results,      setResults]      = useState([])
   const [activeTab, setActiveTab] = useState('all')
+  const navigate = useNavigate()
+  const [activeMarker, setActiveMarker] = useState(null)
 
   async function handleSearch() {
     setLoading(true)
@@ -32,6 +35,7 @@ export default function TenderByDepartment() {
       : ALL_TENDERS.filter((t) => t.department === selectedDept)
     setResults(filtered)
     setActiveTab('all')
+    setActiveMarker(null)
     setLoading(false)
   }
 
@@ -205,15 +209,19 @@ export default function TenderByDepartment() {
         {!loading && searched && results.length > 0 && (
         <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-            {tabResults.map((tender) => (
-                <div key={tender.id} className="flex">
-                <TenderCard 
-                    tender={tender}
-                    viewMode="grid"
-                    className="flex-1"
-                    onClick={() => {}}
+            {tabResults.map((tender, idx) => (
+              <div key={tender.id} className="flex">
+                <TenderCard
+                  tender={tender}
+                  viewMode="grid"
+                  className="flex-1"
+                  highlighted={activeMarker === idx}
+                  onClick={() => {
+                    setActiveMarker(idx)
+                    navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
+                  }}
                 />
-                </div>
+              </div>
             ))}
             </div>
 

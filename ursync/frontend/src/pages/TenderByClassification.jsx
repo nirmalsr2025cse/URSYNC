@@ -76,6 +76,7 @@ export default function TendersByClassification() {
   const [sortBy,         setSortBy]         = useState('Latest')
   const [currentPage,    setCurrentPage]    = useState(1)
   const [searching,      setSearching]      = useState(false)
+  const [activeMarker, setActiveMarker] = useState(null)
 
   function handleSearch() {
     setSearching(true)
@@ -295,13 +296,17 @@ export default function TendersByClassification() {
 
       {!searching && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {paginated.map((tender) => (
+          {paginated.map((tender, idx) => (
             <div key={tender.id} className="flex">
               <TenderCard
                 tender={tender}
                 viewMode="grid"
                 className="flex-1"
-                onClick={() => {}}
+                highlighted={activeMarker === idx}
+                onClick={() => {
+                  setActiveMarker(idx)
+                  navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
+                }}
               />
             </div>
           ))}

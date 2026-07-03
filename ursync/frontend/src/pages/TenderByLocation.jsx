@@ -5,6 +5,7 @@ import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import { getMockNearbyLocations } from '../services/locationService'
 import { getMockTendersByLocation } from '../services/tenderService'
 import Pagination from '../components/Pagination'
+import { useNavigate } from 'react-router-dom'
 
 export default function TendersByLocation() {
   const [query,         setQuery]         = useState('')
@@ -17,6 +18,7 @@ export default function TendersByLocation() {
   const [searched,      setSearched]      = useState(false)
   const [currentPage,   setCurrentPage]   = useState(1)
   const [activeTab, setActiveTab] = useState('all')
+  const navigate = useNavigate()
 
   const tabTenders = activeTab === 'all'         ? tenders
                  : activeTab === 'open'        ? tenders.filter((t) => t.status === 'Open')
@@ -78,8 +80,9 @@ export default function TendersByLocation() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  const handleCardClick = (idx) => {
+  const handleCardClick = (idx, tender) => {
     setActiveMarker(idx)
+    navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
   }
 
   return (
@@ -291,7 +294,7 @@ export default function TendersByLocation() {
                 <TenderCard
                   tender={tender}
                   highlighted={activeMarker === idx}
-                  onClick={() => handleCardClick(idx)}
+                  onClick={() => handleCardClick(idx, tender)}
                   className="flex-1"
                 />
               </div>
