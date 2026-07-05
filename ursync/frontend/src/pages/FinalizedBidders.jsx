@@ -22,6 +22,7 @@ export default function FinalizedBidders() {
   const location  = useLocation()
   const decodedId = decodeURIComponent(tenderId || '')
   const fromTab   = location.state?.fromTab || 'Ongoing'
+  const fromPath  = location.state?.fromPath
   const tender    = APPLICATION_TENDERS.find((t) => t.id === decodedId)
   const { role } = useRole()
 
@@ -77,7 +78,7 @@ export default function FinalizedBidders() {
     <div className="flex items-center justify-between gap-4 flex-wrap">
     <div className="flex items-center gap-3">
         <button
-        onClick={() => navigate('/bidder-selection', { state: { fromTab } })}
+        onClick={() => navigate('/bidder-selection/' + encodeURIComponent(tender.id), { state: { fromTab, fromPath } })}
         className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors"
         >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

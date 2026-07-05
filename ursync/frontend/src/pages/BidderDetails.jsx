@@ -10,6 +10,7 @@ export default function BidderDetails() {
   const decodedAppId = decodeURIComponent(applicationId || '')
   const tenderId  = location.state?.tenderId
   const fromTab   = location.state?.fromTab || 'Ongoing'
+  const fromPath  = location.state?.fromPath
 
   // Find tender + applicant (search the passed tenderId first, fall back to scanning all tenders)
   const tender = tenderId
@@ -20,7 +21,10 @@ export default function BidderDetails() {
 
   function handleBack() {
     if (tender) {
-      navigate('/bidder-selection/' + encodeURIComponent(tender.id), { state: { fromTab } })
+      // Forward fromTab (and fromPath) back to BidderList so it can correctly
+      // restore whether this tender originated from the Ongoing or Completed
+      // tab — this determines whether the Select/Remove button is shown.
+      navigate('/bidder-selection/' + encodeURIComponent(tender.id), { state: { fromTab, fromPath } })
     } else {
       navigate(-1)
     }

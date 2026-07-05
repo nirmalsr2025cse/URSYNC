@@ -5,7 +5,7 @@ import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import { getMockNearbyLocations } from '../services/locationService'
 import { getMockTendersByLocation } from '../services/tenderService'
 import Pagination from '../components/Pagination'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate , useLocation} from 'react-router-dom'
 
 export default function TendersByLocation() {
   const [query,         setQuery]         = useState('')
@@ -19,6 +19,7 @@ export default function TendersByLocation() {
   const [currentPage,   setCurrentPage]   = useState(1)
   const [activeTab, setActiveTab] = useState('all')
   const navigate = useNavigate()
+  const location = useLocation()
 
   const tabTenders = activeTab === 'all'         ? tenders
                  : activeTab === 'open'        ? tenders.filter((t) => t.status === 'Open')
@@ -31,6 +32,8 @@ export default function TendersByLocation() {
   const paginated  = tenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   const cardRefs = useRef({})
+
+  const rootPath = location.state?.rootPath || location.pathname
 
   const handleSearch = async (e) => {
     e?.preventDefault()
@@ -82,7 +85,7 @@ export default function TendersByLocation() {
 
   const handleCardClick = (idx, tender) => {
     setActiveMarker(idx)
-    navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
+    navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender, fromPath: rootPath } })
   }
 
   return (

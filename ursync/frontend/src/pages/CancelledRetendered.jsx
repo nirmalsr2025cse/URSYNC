@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import { CANCELLED_TENDERS, RETENDERED_TENDERS } from '../data/MockDataCR'
 import { useRole } from '../components/RoleContext'
+import { useNavigate , useLocation } from 'react-router-dom'
 
 const TABS = [
   { id: 'cancelled',  label: 'Cancelled'  },
@@ -17,6 +18,10 @@ export default function CancelledRetendered() {
   const { role } = useRole()
   const [activeMarker, setActiveMarker] = useState(null)
   const [searching, setSearching] = useState(false)
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const rootPath = location.state?.fromPath || location.pathname
 
   
   // Department mapping — same as rest of project

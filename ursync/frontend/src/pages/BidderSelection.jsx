@@ -19,6 +19,7 @@ export default function BidderSelection() {
   const location  = useLocation()
   const { role }  = useRole()
   const PAGE_SIZE = useResponsiveItemsPerPage()
+  const rootPath = location.state?.fromPath || location.pathname
 
   // Dept roles hide dropdowns
   const isDeptRole = role === ROLES.DEPARTMENT_EMPLOYEE || role === ROLES.DEPARTMENT_HEAD
@@ -30,6 +31,7 @@ export default function BidderSelection() {
   const [dept,        setDept]        = useState('All')
   const [district,    setDistrict]    = useState('All')
   const [category,    setCategory]    = useState('All')
+  const [activeMarker, setActiveMarker] = useState(null)
 
   const DEPARTMENTS = ['All', ...new Set(APPLICATION_TENDERS.map(t => t.department))]
   const DISTRICTS   = ['All', ...new Set(APPLICATION_TENDERS.map(t => t.district))]
@@ -39,11 +41,12 @@ export default function BidderSelection() {
     if (id === activeTab) return
     setAnimating(true)
     setCurrentPage(1)
+    setActiveMarker(null)
     setTimeout(() => { setActiveTab(id); setAnimating(false) }, 150)
   }
 
   function handleClear() {
-    setSearch(''); setDept('All'); setDistrict('All'); setCategory('All'); setCurrentPage(1)
+    setSearch(''); setDept('All'); setDistrict('All'); setCategory('All'); setCurrentPage(1); setActiveMarker(null)
   }
 
   // ── Tab filtering — only show tenders sent by Tender Authority ─────────────
@@ -92,11 +95,17 @@ export default function BidderSelection() {
     Completed: 'No completed tenders.',
   }
 
-  function handleCardClick(tender) {
+  function handleCardClick(tender, idx) {
+    setActiveMarker(idx)
     if (!isDeadlinePassed(tender.applicationDeadline)) return
-    navigate('/bidder-selection/' + encodeURIComponent(tender.id), {
-      state: { fromTab: activeTab },
-    })
+    // Give the highlight a moment to actually paint before navigating away —
+    // otherwise the state change and the route change land in the same tick
+    // and the highlighted style never gets a chance to render.
+    setTimeout(() => {
+      navigate('/bidder-selection/' + encodeURIComponent(tender.id), {
+        state: { fromTab: activeTab, fromPath: rootPath },
+      })
+    }, 150)
   }
 
   return (
@@ -207,7 +216,7 @@ export default function BidderSelection() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
-            {paginated.map((tender) => {
+            {paginated.map((tender, idx) => {
               const deadlinePassed = isDeadlinePassed(tender.applicationDeadline)
               return (
                 <div key={tender.id} className="flex flex-col">
@@ -234,14 +243,15 @@ export default function BidderSelection() {
                   <TenderCard
                     tender={{ ...tender, status: activeTab }}
                     viewMode="grid"
+                    highlighted={activeMarker === idx}
                     className="flex-1"
-                    onClick={() => handleCardClick(tender)}
+                    onClick={() => handleCardClick(tender, idx)}
                   />
 
                   {/* Select Bidders button — only for Ongoing */}
                   {activeTab === 'Ongoing' && (
                     <button
-                      onClick={() => handleCardClick(tender)}
+                      onClick={() => handleCardClick(tender, idx)}
                       className="mt-2 w-full py-2.5 text-xs font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors flex items-center justify-center gap-1.5"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -254,7 +264,7 @@ export default function BidderSelection() {
 
                   {activeTab === 'Completed' && (
                     <button
-                      onClick={() => handleCardClick(tender)}
+                      onClick={() => handleCardClick(tender, idx)}
                       className="mt-2 w-full py-2.5 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors"
                     >
                       View Details

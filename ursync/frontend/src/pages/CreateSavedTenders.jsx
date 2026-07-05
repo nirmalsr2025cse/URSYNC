@@ -1,6 +1,6 @@
 // src/pages/CreateSavedTenders.jsx
 import React, { useState, useMemo, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate , useLocation } from 'react-router-dom'
 import { MOCK_SAVED_TENDERS, STATUS_CONFIG, PRIORITY_CONFIG, TENDER_CATEGORIES } from '../data/tenderMockData'
 import {useRole} from '../components/RoleContext'
 import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
@@ -113,6 +113,7 @@ function SavedTenderCard({ tender, onView, onEdit, onDelete }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function CreateSavedTenders() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { role } = useRole();
   console.log('Current role:', role); // Debugging line to check the current role 
   const [tenders, setTenders]     = useState(MOCK_SAVED_TENDERS)
@@ -124,6 +125,8 @@ export default function CreateSavedTenders() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = useResponsiveItemsPerPage()
   console.log("Total Mock Tenders:", MOCK_SAVED_TENDERS.length);
+
+  const rootPath = location.state?.fromPath || location.pathname
 
   // Show toast
   function showToast(msg, type = 'success') {
@@ -168,6 +171,7 @@ export default function CreateSavedTenders() {
       state: {
         tender,
         role,
+        fromPath: rootPath
       },
     });
   };
@@ -186,7 +190,7 @@ export default function CreateSavedTenders() {
 
   
   function handleEdit(tender) {
-    navigate('/create-tender', { state: { tender } })
+    navigate('/create-tender', { state: { tender , fromPath: rootPath } })
   }
 
   function confirmDelete(tender) {
@@ -346,7 +350,7 @@ export default function CreateSavedTenders() {
       />
       {/* ── Floating Action Button ──────────────────────────────────────── */}
       <button
-        onClick={() => navigate('/create-tender')}
+        onClick={() => navigate('/create-tender', { state: { fromPath: rootPath } } )}
         className="fixed bottom-8 right-8 z-40 w-14 h-14 rounded-full bg-[#F62440] text-white shadow-lg flex items-center justify-center hover:bg-red-600 hover:scale-110 hover:shadow-xl transition-all duration-200 active:scale-95"
         title="Create New Tender"
         aria-label="Create New Tender"

@@ -4,7 +4,7 @@ import TenderCard from '../components/TenderCard'
 import { tenders, DEMO_ROLE_DEPARTMENT } from '../data/tenders'
 import { useRole, ROLES, ROLE_LABELS } from '../components/RoleContext'
 import Pagination from '../components/Pagination'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate , useLocation } from 'react-router-dom'
 
 
 // ── Tab config ────────────────────────────────────────────────────────────────
@@ -53,8 +53,11 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1)
   const [activeMarker, setActiveMarker] = useState(null)
   const navigate = useNavigate()
+  const location = useLocation()
 
   const currentTab = TABS.find((t) => t.id === activeTab)
+
+  const rootPath = location.state?.fromPath || location.pathname
 
   // ── Department filtering (FRONTEND DEMO ONLY) ────────────────────────────
   // NOTE: For production, DELETE this block and fetch from backend with
@@ -342,7 +345,7 @@ export default function Home() {
               onClick={() => {
                 setActiveMarker(idx)
                 navigate('/tender-details-view/' + encodeURIComponent(tender.id), {
-                  state: { tender }
+                  state: { tender, fromPath: rootPath }
                 })
               }}
             />

@@ -1,5 +1,5 @@
 import React from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useRole, NAV_CONFIG, ROLE_LABELS, ROLE_COLORS } from './RoleContext'
 
 function Icon({ name, className }) {
@@ -32,15 +32,46 @@ function Icon({ name, className }) {
     org:          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />,
     mytenders:    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />,
     search:       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />,
-    savedtenders: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />,
+    savedtenders: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />,
   }
 
   return <svg {...props}>{paths[name] || paths.doc}</svg>
 }
 
+// ── Walk up the navigation state chain to find the root sidebar path ──────────
+// Each page passes { fromPath } in navigation state.
+// This walks the chain: current → fromPath → fromPath's fromPath → ...
+// until it finds a path that matches a sidebar nav item.
+function getRootSidebarPath(location, navPaths) {
+  // Build a chain of fromPath values from location state
+  let current = location.state?.fromPath || null
+
+  // If current page is a sidebar path, use it directly
+  if (navPaths.includes(location.pathname)) {
+    return location.pathname
+  }
+
+  // Walk up the chain
+  while (current) {
+    if (navPaths.includes(current)) {
+      return current
+    }
+    // Can't go deeper without state — stop
+    break
+  }
+
+  return null
+}
+
 export default function Sidebar({ open, onClose }) {
   const { role } = useRole()
   const navItems = NAV_CONFIG[role] || []
+  const location = useLocation()
+
+  const navPaths = navItems.map((item) => item.path)
+
+  // Find the root sidebar path from the navigation chain
+  const activeSidebarPath = getRootSidebarPath(location, navPaths)
 
   return (
     <>
@@ -68,30 +99,28 @@ export default function Sidebar({ open, onClose }) {
           </button>
         </div>
 
-        {/* Role badge */}
-        {/*<div className="flex-shrink-0 px-3 pt-3 pb-2">
-          <div className={'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ' + ROLE_COLORS[role]}>
-            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span className="truncate">{ROLE_LABELS[role]}</span>
-          </div>
-        </div>*/}
-        <div className="pb-2"></div>
+        <div className="pb-2" />
+
         {/* Nav */}
         <nav className="overflow-y-auto py-1 px-2" style={{ flex: '1 1 0', minHeight: 0 }}>
-          {navItems.map(({ label, path, icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              onClick={onClose}
-              className={({ isActive }) => ['sidebar-link', isActive ? 'active' : ''].join(' ')}
-            >
-              <Icon name={icon} className="w-4 h-4 flex-shrink-0" />
-              <span className="truncate">{label}</span>
-            </NavLink>
-          ))}
+          {navItems.map(({ label, path, icon }) => {
+            // Active if: current path matches, OR the root of the navigation chain matches
+            const isChainActive = activeSidebarPath === path
+
+            return (
+              <NavLink
+                key={path}
+                to={path}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  ['sidebar-link', isActive || isChainActive ? 'active' : ''].join(' ')
+                }
+              >
+                <Icon name={icon} className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{label}</span>
+              </NavLink>
+            )
+          })}
         </nav>
 
         {/* Footer */}

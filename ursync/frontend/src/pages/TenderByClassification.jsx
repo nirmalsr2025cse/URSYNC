@@ -1,6 +1,6 @@
 //src/pages/TenderByClassification.jsx
 import React, { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate , useLocation } from 'react-router-dom'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import Pagination from '../components/Pagination'
 import { tenders } from '../data/tenders'
@@ -68,6 +68,7 @@ function SelectField({ label, value, onChange, options, placeholder }) {
 
 export default function TendersByClassification() {
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [keyword,        setKeyword]        = useState('')
   const [appliedKeyword, setAppliedKeyword] = useState('')
@@ -77,6 +78,8 @@ export default function TendersByClassification() {
   const [currentPage,    setCurrentPage]    = useState(1)
   const [searching,      setSearching]      = useState(false)
   const [activeMarker, setActiveMarker] = useState(null)
+
+  const rootPath = location.state?.fromPath||location.pathname
 
   function handleSearch() {
     setSearching(true)
@@ -305,7 +308,7 @@ export default function TendersByClassification() {
                 highlighted={activeMarker === idx}
                 onClick={() => {
                   setActiveMarker(idx)
-                  navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender } })
+                  navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender , fromPath:rootPath } })
                 }}
               />
             </div>

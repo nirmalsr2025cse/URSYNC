@@ -49,8 +49,7 @@ function StatusBadge({ status }) {
 }
 
 // ── Bidder Card ───────────────────────────────────────────────────────────────
-// ── Bidder Card ───────────────────────────────────────────────────────────────
-function BidderCard({ applicant, isSelected, onSelect, onRemove, onView }) {
+function BidderCard({ applicant, isSelected, onSelect, onRemove, onView, isCompleted }) {
   return (
     <div className={[
       'bg-white border rounded-2xl overflow-hidden flex flex-col',
@@ -93,35 +92,45 @@ function BidderCard({ applicant, isSelected, onSelect, onRemove, onView }) {
           <MetaRow icon="doc"   label={applicant.documents.length + ' documents uploaded'} />
         </div>
 
-        {/* Action buttons */}
+        {/*
+          Action buttons.
+          - Ongoing tenders (isCompleted === false): show View + Select/Remove, exactly as before.
+          - Completed tenders (isCompleted === true): render ONLY the View button.
+            The Select/Remove button is not rendered at all (not disabled, not hidden via CSS).
+        */}
         <div className="flex gap-2 mt-1">
           <button
             onClick={() => onView(applicant)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors"
+            className={[
+              'flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors',
+              isCompleted ? 'w-full' : 'flex-1',
+            ].join(' ')}
           >
             View
           </button>
 
-          {isSelected ? (
-            <button
-              onClick={() => onRemove(applicant.applicationId)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Remove
-            </button>
-          ) : (
-            <button
-              onClick={() => onSelect(applicant)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Select
-            </button>
+          {!isCompleted && (
+            isSelected ? (
+              <button
+                onClick={() => onRemove(applicant.applicationId)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Remove
+              </button>
+            ) : (
+              <button
+                onClick={() => onSelect(applicant)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Select
+              </button>
+            )
           )}
         </div>
       </div>
@@ -150,8 +159,8 @@ function MetaRow({ icon, label }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function BidderList() {
   const navigate          = useNavigate()
-  const { tenderId }      = useParams()
   const location          = useLocation()
+  const { tenderId }      = useParams()
   const decodedId         = decodeURIComponent(tenderId || '')
   const fromTab           = location.state?.fromTab || 'Ongoing'
   const PAGE_SIZE         = useResponsiveItemsPerPage()
@@ -166,11 +175,23 @@ export default function BidderList() {
     ? approvedByAuthority
     : (tender?.applicants || [])
 
-  const [selectedIds,   setSelectedIds]   = useState([])
+  // Hydrate previously finalized/selected bidders (if any) so returning to
+  // this page — e.g. after navigating to FinalizedBidders and back — still
+  // shows the same bidders marked as selected instead of resetting to empty.
+  const [selectedIds,   setSelectedIds]   = useState(() =>
+    getFinalizedBidders(decodedId).map((a) => a.applicationId)
+  )
   const [search,        setSearch]        = useState('')
   const [currentPage,   setCurrentPage]   = useState(1)
   const [toast,         setToast]         = useState(null)
-  const [finalized,     setFinalized]     = useState(false)
+  const [finalized,     setFinalized]     = useState(() => !!tender?.bidderFinalized)
+  const rootPath = location.state?.fromPath || location.pathname
+
+  // Whether this tender's bidder selection has already been finalized is
+  // determined by which tab the user came from — NOT by a separate flag —
+  // so that the correct button set is restored even after navigating away
+  // to BidderDetails and back (fromTab is threaded through every hop).
+  const isCompleted = fromTab === 'Completed'
 
   function showToast(msg) {
     setToast(msg)
@@ -198,13 +219,13 @@ export default function BidderList() {
     setFinalized(true)
     showToast('Bidder selection finalized successfully!')
     setTimeout(() => {
-      navigate('/bidder-list/' + encodeURIComponent(tender.id) + '/finalized', { state: { fromTab } })
+      navigate('/bidder-list/' + encodeURIComponent(tender.id) + '/finalized', { state: { fromTab , fromPath: rootPath} })
     }, 1200)
   }
 
   function handleView(applicant) {
     navigate('/Bidder/' + encodeURIComponent(applicant.applicationId), {
-      state: { tenderId: tender.id, fromTab },
+      state: { tenderId: tender.id, fromTab, fromPath: rootPath },
     })
   }
 
@@ -229,7 +250,7 @@ export default function BidderList() {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
         <p className="font-bold text-[#0A2240] mb-2">Tender not found.</p>
-        <button onClick={() => navigate('/bidder-selection')} className="text-sm text-[#1A4A8C] underline">
+        <button onClick={() => navigate('/bidder-selection' , {state : {fromPath: rootPath}})} className="text-sm text-[#1A4A8C] underline">
           Back to Bidder Selection
         </button>
       </div>
@@ -242,7 +263,7 @@ export default function BidderList() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/bidder-selection', { state: { fromTab } })}
+            onClick={() => navigate('/bidder-selection', { state: { fromTab , fromPath: rootPath } })}
             className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -350,6 +371,7 @@ export default function BidderList() {
               onSelect={handleSelect}
               onRemove={handleRemove}
               onView={handleView}
+              isCompleted={isCompleted}
             />
           ))}
         </div>
@@ -358,7 +380,7 @@ export default function BidderList() {
       <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
 
       {/* ── Floating Finalize button ──────────────────────────────────── */}
-      {selectedIds.length > 0 && (
+      {selectedIds.length > 0 && !isCompleted && (
         <button
           onClick={handleFinalize}
           className="fixed bottom-8 right-8 z-40 flex items-center gap-2 px-5 py-3.5 rounded-full bg-[#F62440] text-white shadow-lg hover:bg-red-600 hover:scale-105 transition-all duration-200 font-semibold text-sm"
