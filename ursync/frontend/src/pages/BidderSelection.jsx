@@ -246,30 +246,30 @@ export default function BidderSelection() {
                     highlighted={activeMarker === idx}
                     className="flex-1"
                     onClick={() => handleCardClick(tender, idx)}
+                    footer={
+                      activeTab === "Ongoing" ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCardClick(tender, idx);
+                          }}
+                          className="w-full py-2.5 rounded-xl bg-[#1A4A8C] text-white text-sm font-semibold hover:bg-[#0A2240] transition-colors"
+                        >
+                          Select Bidders
+                        </button>
+                      ) : activeTab === "Completed" ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCardClick(tender, idx);
+                          }}
+                          className="w-full py-2.5 rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] text-sm font-semibold hover:bg-[#FFE5BF] transition-colors"
+                        >
+                          View Details
+                        </button>
+                      ) : null
+                    }
                   />
-
-                  {/* Select Bidders button — only for Ongoing */}
-                  {activeTab === 'Ongoing' && (
-                    <button
-                      onClick={() => handleCardClick(tender, idx)}
-                      className="mt-2 w-full py-2.5 text-xs font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      Select Bidders
-                    </button>
-                  )}
-
-                  {activeTab === 'Completed' && (
-                    <button
-                      onClick={() => handleCardClick(tender, idx)}
-                      className="mt-2 w-full py-2.5 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors"
-                    >
-                      View Details
-                    </button>
-                  )}
                 </div>
               )
             })}

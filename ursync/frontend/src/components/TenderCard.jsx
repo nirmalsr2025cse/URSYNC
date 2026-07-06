@@ -82,7 +82,7 @@ function DownloadBtn({ tender }) {
   )
 }
 
-export default function TenderCard({ tender, highlighted, onClick, viewMode, className }) {
+export default function TenderCard({ tender, highlighted, onClick, viewMode, className , footer = false }) {
   highlighted = highlighted || false
   viewMode = viewMode || 'grid'
   className = className || ''
@@ -211,7 +211,7 @@ export default function TenderCard({ tender, highlighted, onClick, viewMode, cla
             )}
           </div>
         </div>
-
+            
         {tender.value && (
           <div className="flex items-center gap-2 mt-1">
             <p className="flex-1 text-xs font-bold text-tn-navy bg-tn-light px-2 py-1.5 rounded-lg text-center">
@@ -220,7 +220,13 @@ export default function TenderCard({ tender, highlighted, onClick, viewMode, cla
             <DownloadBtn tender={tender} />
           </div>
         )}
+        {footer && (
+          <div className="mt-3 pt-3 border-t border-[#FFE5BF]">
+            {footer}
+          </div>
+        )}
       </div>
+      
     </article>
   )
 }

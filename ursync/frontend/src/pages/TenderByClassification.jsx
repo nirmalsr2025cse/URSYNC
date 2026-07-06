@@ -48,7 +48,7 @@ const EMPTY_FILTERS = {
   organizationType: '', district: '', status: '', valueRange: '',
 }
 
-const ITEMS_PER_PAGE = 9
+const ITEMS_PER_PAGE = 6
 
 function SelectField({ label, value, onChange, options, placeholder }) {
   return (
