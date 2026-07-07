@@ -34,7 +34,7 @@ function MetaRow({ icon, label }) {
   )
 }
 
-function FinalBidderCard({ bidder, onView, onRemove }) {
+function FinalBidderCard({ bidder, onView, onRemove, readOnly }) {
   return (
     <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden flex flex-col hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
       <div className="h-1 w-full bg-[#1A4A8C]" />
@@ -67,23 +67,28 @@ function FinalBidderCard({ bidder, onView, onRemove }) {
           <MetaRow icon="doc"   label={bidder.documents.length + ' documents uploaded'} />
         </div>
 
-        {/* Only View and Remove — no Select/Finalize here */}
+        {/* Only View and Remove — Remove hidden when readOnly */}
         <div className="flex gap-2 mt-1">
           <button
             onClick={() => onView(bidder)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors"
+            className={[
+              'flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors',
+              readOnly ? 'w-full' : 'flex-1',
+            ].join(' ')}
           >
             View
           </button>
-          <button
-            onClick={() => onRemove(bidder.applicationId)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Remove
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => onRemove(bidder.applicationId)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Remove
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -98,6 +103,8 @@ export default function FinalBidder() {
 
   // FinalBidder's own path — passed down to BidderDetails so it knows how to return here
   const rootPath = location.pathname
+
+  const readOnly = !!location.state?.readOnly
 
   // Where FinalBidder itself should go back to — passed in by whatever page links here.
   // e.g. navigate('/finalbidder', { state: { backTo: '/dashboard' } })
@@ -115,7 +122,7 @@ export default function FinalBidder() {
 
   function handleView(bidder) {
     navigate('/Bidder/' + encodeURIComponent(bidder.applicationId), {
-      state: { fromFinalList: true, fromPath: rootPath },
+      state: { fromFinalList: true, fromPath: rootPath , readOnly},
     })
   }
 
@@ -184,7 +191,7 @@ export default function FinalBidder() {
         </div>
 
         {/* Role-based action buttons — top right */}
-        {role === 'department_head' && (
+        {!readOnly && role === 'department_head' && (
           <div className="flex gap-2">
             <button
               onClick={handleApprove}
@@ -201,7 +208,7 @@ export default function FinalBidder() {
           </div>
         )}
 
-        {role === 'administrator' && (
+        {!readOnly && role === 'administrator' && (
           <div className="flex gap-2">
             <button
               onClick={handlePublish}
@@ -262,6 +269,7 @@ export default function FinalBidder() {
               bidder={b}
               onView={handleView}
               onRemove={handleRemove}
+              readOnly={readOnly}
             />
           ))}
         </div>

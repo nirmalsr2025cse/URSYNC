@@ -174,31 +174,36 @@ function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove
         </div>
         <div className="flex items-center gap-2 pt-1">
           <button onClick={() => onConfirmReject(bidder)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors">
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-sky text-white border border-tn-sky hover:bg-tn-sky transition-colors">
             <RejectIcon /> Reject
           </button>
+
+          <button onClick={() => onView(bidder)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors">
+            <EyeIcon /> View
+          </button>
+
           {role === ROLES.ADMINISTRATOR ? (
             <button
-                onClick={() => onConfirmApprove(bidder)}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-blue text-white transition-colors"
+              onClick={() => onConfirmApprove(bidder)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-blue text-white transition-colors"
             >
-                <ApproveIcon />
-                Approve
+              <ApproveIcon /> Approve
             </button>
-            ) : (
+          ) : (
             <button
-                onClick={() => onEdit(bidder)}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+              onClick={() => onEdit(bidder)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
             >
-                <EditIcon />
-                Edit
+              <EditIcon /> Edit
             </button>
-            )}
+          )}
+
           <button
             onClick={() => onDelete(bidder)}
             className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition-colors flex-shrink-0"
             title="Delete"
-            >
+          >
             <TrashIcon />
           </button>
         </div>
@@ -331,8 +336,8 @@ export default function Approvement() {
   useEffect(() => { setCurrentPage(1) }, [search, statusFilter, categoryFilter, activeTab])
 
   function handleView(item) {
-    navigate('/tender-view', {
-      state: { tender:item, role , fromPath: rootPath },
+    navigate('/finalbidder', {
+      state: { fromPath: rootPath, readOnly: true },
     })
   }
 
@@ -726,6 +731,14 @@ export default function Approvement() {
 }
 
 // ── Icon Components ───────────────────────────────────────────────────────────
+function EyeIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+  )
+}
 function RejectIcon() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>

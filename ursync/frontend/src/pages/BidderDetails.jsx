@@ -15,6 +15,8 @@ export default function BidderDetails() {
   const fromPath       = location.state?.fromPath
   const fromFinalList  = location.state?.fromFinalList
 
+  const readOnly        = location.state?.readOnly 
+
   // ── Case 1: Coming from the Final Bidder list ──────────────────────────
   const finalBidder = fromFinalList ? getFinalBidderById(decodedAppId) : null
 
@@ -40,17 +42,14 @@ export default function BidderDetails() {
 
   function handleBack() {
     if (fromFinalList) {
-      navigate('/finalbidder', { state: { fromPath }, replace: true }) 
+      navigate('/finalbidder', { state: { fromPath, readOnly }, replace: true })
     } else if (tender) {
-      // Forward fromTab (and fromPath) back to BidderList so it can correctly
-      // restore whether this tender originated from the Ongoing or Completed
-      // tab — this determines whether the Select/Remove button is shown.
       navigate('/bidder-selection/' + encodeURIComponent(tender.id), { state: { fromTab, fromPath } })
     } else {
       navigate(-1)
     }
   }
-
+  
   if (!tenderInfo || !applicant) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">

@@ -115,7 +115,6 @@ export default function CreateSavedTenders() {
   const navigate = useNavigate()
   const location = useLocation()
   const { role } = useRole();
-  console.log('Current role:', role); // Debugging line to check the current role 
   const [tenders, setTenders]     = useState(MOCK_SAVED_TENDERS)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('All')
@@ -124,7 +123,6 @@ export default function CreateSavedTenders() {
   const [deleteModal, setDeleteModal] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = useResponsiveItemsPerPage()
-  console.log("Total Mock Tenders:", MOCK_SAVED_TENDERS.length);
 
   const rootPath = location.state?.fromPath || location.pathname
 
