@@ -12,7 +12,7 @@ import {
   APPROVAL_TENDER_CATEGORIES,
   APPROVAL_BIDDER_STATUSES,
   APPROVAL_TENDER_STATUSES,
-} from '../data/approvementMockData'
+} from '../data/approvementMockData';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(d) {
@@ -62,9 +62,12 @@ function MetaRow({ icon, label }) {
 }
 
 // ── Tender Card ───────────────────────────────────────────────────────────────
-function TenderApprovementCard({ tender, role , onView, onEdit, onConfirmApprove, onDelete  }) {
+function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove, onConfirmReject, onDelete }) {
   return (
-    <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">
+    <div
+      onClick={() => onView(tender)}
+      className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col cursor-pointer"
+    >
       <div className="h-48 overflow-hidden bg-[#FFF2DB]">
         <img src={tender.image} alt={tender.projectName} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
       </div>
@@ -79,7 +82,7 @@ function TenderApprovementCard({ tender, role , onView, onEdit, onConfirmApprove
         <p className="text-xs text-[#6B7A8D] line-clamp-2 leading-relaxed">{tender.description}</p>
         <div className="space-y-1.5 text-xs text-[#6B7A8D] pt-2 border-t border-[#FFE5BF]">
           <MetaRow icon="building" label={tender.department} />
-          <MetaRow icon="tag"      label={tender.category + ' · ' + tender.tenderType} />
+          <MetaRow icon="tag" label={tender.category + ' · ' + tender.tenderType} />
           <MetaRow icon="location" label={tender.district} />
           <div className="flex items-center justify-between pt-1">
             <MetaRow icon="calendar" label={'Start: ' + formatDate(tender.startDate)} />
@@ -90,35 +93,51 @@ function TenderApprovementCard({ tender, role , onView, onEdit, onConfirmApprove
           <p className="text-sm font-extrabold text-[#0A2240]">₹ {tender.amount}</p>
           <p className="text-[10px] text-[#6B7A8D]">Updated {formatDate(tender.lastUpdated)}</p>
         </div>
+
+        {/* ── Action row: every button MUST stopPropagation ── */}
         <div className="flex items-center gap-2 pt-1">
-          <button onClick={() => onView(tender)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors">
-            <EyeIcon /> View
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onConfirmReject(tender)
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors"
+          >
+            <RejectIcon /> Reject
           </button>
+
           {role === ROLES.ADMINISTRATOR ? (
             <button
-                onClick={() => onConfirmApprove(tender)}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-blue text-white  transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                onConfirmApprove(tender)
+              }}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-blue text-white transition-colors"
             >
-                <ApproveIcon />
-                Approve
+              <ApproveIcon /> Approve
             </button>
-            ) : (
+          ) : (
             <button
-                onClick={() => onEdit(tender)}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit(tender)
+              }}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
             >
-                <EditIcon />
-                Edit
+              <EditIcon /> Edit
             </button>
-            )}
+          )}
+
           <button
-            onClick={() => onDelete(tender)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(tender)
+            }}
             className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition-colors flex-shrink-0"
             title="Delete"
-            >
+          >
             <TrashIcon />
-            </button>
+          </button>
         </div>
       </div>
     </div>
@@ -126,7 +145,7 @@ function TenderApprovementCard({ tender, role , onView, onEdit, onConfirmApprove
 }
 
 // ── Bidder Card ───────────────────────────────────────────────────────────────
-function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove, onDelete  }) {
+function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove, onConfirmReject, onDelete  }) {
   return (
     <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">
       <div className="h-48 overflow-hidden bg-[#FFF2DB]">
@@ -154,13 +173,13 @@ function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove
           <p className="text-[10px] text-[#6B7A8D]">Updated {formatDate(bidder.lastUpdated)}</p>
         </div>
         <div className="flex items-center gap-2 pt-1">
-          <button onClick={() => onView(bidder)}
+          <button onClick={() => onConfirmReject(bidder)}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors">
-            <EyeIcon /> View
+            <RejectIcon /> Reject
           </button>
           {role === ROLES.ADMINISTRATOR ? (
             <button
-                onClick={() => onConfirmApprove(tender)}
+                onClick={() => onConfirmApprove(bidder)}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-blue text-white transition-colors"
             >
                 <ApproveIcon />
@@ -168,7 +187,7 @@ function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove
             </button>
             ) : (
             <button
-                onClick={() => onEdit(tender)}
+                onClick={() => onEdit(bidder)}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
             >
                 <EditIcon />
@@ -231,6 +250,7 @@ export default function Approvement() {
   const [approvalTenders, setApprovalTenders] = useState(APPROVAL_TENDERS);
   const [approvalBidders, setApprovalBidders] = useState(APPROVAL_BIDDERS);
   const [approveModal, setApproveModal] = useState(null);
+  const [rejectModal, setRejectModal] = useState(null);
 
   const [deleteModal, setDeleteModal] = useState(null);
   const [toast, setToast] = useState(null);
@@ -254,7 +274,7 @@ export default function Approvement() {
       setActiveTab(id)
       setAnimating(false)
       setLoading(false)
-    }, 300)
+    }, 200)
   }
 
   function handleClear() {
@@ -262,25 +282,45 @@ export default function Approvement() {
   }
 
   const filtered = useMemo(() => {
-    const data = activeTab === 'tenders' ? approvalTenders : approvalBidders
+    let data = activeTab === "tenders" ? approvalTenders : approvalBidders;
+
+    if (activeTab === "tenders") {
+        data = data.filter(tender => tender.status === "Pending Approval");
+    } else {
+        data = data.filter(bidder => bidder.status === "Pending");
+    }
+
     return data.filter((item) => {
-      const q = search.trim().toLowerCase()
-      const matchesSearch = !q || (
-        activeTab === 'tenders'
-          ? (item.id.toLowerCase().includes(q) ||
-             item.projectName.toLowerCase().includes(q) ||
-             item.department.toLowerCase().includes(q) ||
-             item.district.toLowerCase().includes(q))
-          : (item.id.toLowerCase().includes(q) ||
-             item.companyName.toLowerCase().includes(q) ||
-             item.tenderName.toLowerCase().includes(q) ||
-             item.district.toLowerCase().includes(q))
-      )
-      const matchesStatus   = statusFilter   === 'All' || item.status   === statusFilter
-      const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter
-      return matchesSearch && matchesStatus && matchesCategory
-    })
-  }, [activeTab, search, statusFilter, categoryFilter])
+        const q = search.trim().toLowerCase();
+
+        const matchesSearch = !q || (
+        activeTab === "tenders"
+            ? (
+                item.id.toLowerCase().includes(q) ||
+                item.projectName.toLowerCase().includes(q) ||
+                item.department.toLowerCase().includes(q) ||
+                item.district.toLowerCase().includes(q)
+            )
+            : (
+                item.id.toLowerCase().includes(q) ||
+                item.companyName.toLowerCase().includes(q) ||
+                item.tenderName.toLowerCase().includes(q) ||
+                item.district.toLowerCase().includes(q)
+            )
+        );
+
+        const matchesCategory =
+        categoryFilter === "All" || item.category === categoryFilter;
+
+        return matchesSearch && matchesCategory;
+    });
+    }, [
+    activeTab,
+    approvalTenders,
+    approvalBidders,
+    search,
+    categoryFilter,
+    ]);
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage)
   const paginated  = useMemo(() => {
@@ -292,13 +332,17 @@ export default function Approvement() {
 
   function handleView(item) {
     navigate('/tender-view', {
-      state: { item, role , fromPath: rootPath },
+      state: { tender:item, role , fromPath: rootPath },
     })
   }
 
   function handleEdit(item) {
+    if (activeTab === 'bidders') {
+        navigate('/finalbidder', { state: { fromPath: rootPath } })
+        return
+    }
     navigate('/create-tender', {
-      state: { item, type: activeTab, fromPath: rootPath },
+      state: { tender:item, type: activeTab, fromPath: rootPath },
     })
   }
 
@@ -324,6 +368,28 @@ export default function Approvement() {
     );
 
     setApproveModal(null);
+    }
+
+    function confirmReject(tender) {
+        setRejectModal(tender);
+    }
+
+    function handleReject() {
+        showToast(
+            `Tender "${rejectModal.id}" rejected successfully.`,
+            "error"
+        );
+
+        setRejectModal(null);
+
+        // Update status if needed
+        setApprovalTenders(prev =>
+            prev.map(t =>
+            t.id === rejectModal.id
+                ? { ...t, status: "Rejected" }
+                : t
+            )
+        );
     }
 
   const hasFilters = search || statusFilter !== 'All' || categoryFilter !== 'All'
@@ -456,6 +522,47 @@ export default function Approvement() {
         </div>
         )}
 
+        {rejectModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+
+            <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+                <RejectIcon />
+            </div>
+
+            <h3 className="text-lg font-bold text-center text-[#0A2240]">
+                Reject Tender
+            </h3>
+
+            <p className="text-sm text-center text-[#6B7A8D] mt-3">
+                Are you sure you want to reject
+                <br />
+                <span className="font-bold text-[#0A2240]">
+                {rejectModal.id}
+                </span>
+                ?
+            </p>
+
+            <div className="flex gap-3 mt-6">
+                <button
+                onClick={() => setRejectModal(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-[#FFE5BF]"
+                >
+                Cancel
+                </button>
+
+                <button
+                onClick={handleReject}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white"
+                >
+                Confirm
+                </button>
+            </div>
+
+            </div>
+        </div>
+        )}
+
       {/* ── Page Header ────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -533,13 +640,6 @@ export default function Approvement() {
           )}
         </div>
         <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="px-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all cursor-pointer"
-        >
-          {statusOptions.map(s => <option key={s} value={s}>{s === 'All' ? 'All Statuses' : s}</option>)}
-        </select>
-        <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value)}
           className="px-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all cursor-pointer"
@@ -548,11 +648,12 @@ export default function Approvement() {
         </select>
         {hasFilters && (
           <button
+            type="button"
             onClick={handleClear}
-            className="px-4 py-2.5 text-sm font-semibold text-[#F62440] border border-red-200 rounded-xl hover:bg-red-50 transition-colors whitespace-nowrap"
-          >
-            Clear All
-          </button>
+            className="text-xs text-tn-muted hover:text-tn-danger underline ml-1"
+            >
+            Clear all
+        </button>
         )}
       </div>
 
@@ -591,6 +692,7 @@ export default function Approvement() {
                         onView={handleView}
                         onEdit={handleEdit}
                         onConfirmApprove={confirmApprove}
+                        onConfirmReject={confirmReject}
                         onDelete={confirmDelete}
                     />
                 ))
@@ -602,6 +704,7 @@ export default function Approvement() {
                         onView={handleView}
                         onEdit={handleEdit}
                         onConfirmApprove={confirmApprove}
+                        onConfirmReject={confirmReject}
                         onDelete={confirmDelete}
                     />
                 ))
@@ -623,12 +726,9 @@ export default function Approvement() {
 }
 
 // ── Icon Components ───────────────────────────────────────────────────────────
-function EyeIcon() {
+function RejectIcon() {
   return (
-    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-    </svg>
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
   )
 }
 

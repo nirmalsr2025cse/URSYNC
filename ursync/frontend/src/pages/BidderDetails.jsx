@@ -2,25 +2,46 @@
 import React from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { APPLICATION_TENDERS } from '../data/applicationMockData'
+import { getFinalBidderById } from '../data/finalBidderMockData'
 
 export default function BidderDetails() {
   const navigate  = useNavigate()
   const { applicationId } = useParams()
   const location  = useLocation()
   const decodedAppId = decodeURIComponent(applicationId || '')
-  const tenderId  = location.state?.tenderId
-  const fromTab   = location.state?.fromTab || 'Ongoing'
-  const fromPath  = location.state?.fromPath
 
-  // Find tender + applicant (search the passed tenderId first, fall back to scanning all tenders)
-  const tender = tenderId
-    ? APPLICATION_TENDERS.find((t) => t.id === tenderId)
-    : APPLICATION_TENDERS.find((t) => t.applicants.some((a) => a.applicationId === decodedAppId))
+  const tenderId       = location.state?.tenderId
+  const fromTab        = location.state?.fromTab || 'Ongoing'
+  const fromPath       = location.state?.fromPath
+  const fromFinalList  = location.state?.fromFinalList
 
-  const applicant = tender?.applicants.find((a) => a.applicationId === decodedAppId)
+  // ── Case 1: Coming from the Final Bidder list ──────────────────────────
+  const finalBidder = fromFinalList ? getFinalBidderById(decodedAppId) : null
+
+  // ── Case 2: Coming from the regular tender-applicant flow ─────────────
+  const tender = !finalBidder
+    ? (tenderId
+        ? APPLICATION_TENDERS.find((t) => t.id === tenderId)
+        : APPLICATION_TENDERS.find((t) => t.applicants.some((a) => a.applicationId === decodedAppId)))
+    : null
+
+  const tenderApplicant = tender?.applicants.find((a) => a.applicationId === decodedAppId)
+
+  // Normalize both sources into one shape used by the rest of the page
+  const applicant = finalBidder || tenderApplicant
+  const tenderInfo = finalBidder
+    ? {
+        id: finalBidder.tenderId,
+        title: finalBidder.tenderTitle,
+        department: finalBidder.department,
+        value: finalBidder.tenderValue,
+      }
+    : tender
 
   function handleBack() {
-    if (tender) {
+    if (fromFinalList) {
+      navigate('/finalbidder', { state: { fromPath }, replace: true }) 
+    } else if (tender) {
       // Forward fromTab (and fromPath) back to BidderList so it can correctly
       // restore whether this tender originated from the Ongoing or Completed
       // tab — this determines whether the Select/Remove button is shown.
@@ -30,7 +51,7 @@ export default function BidderDetails() {
     }
   }
 
-  if (!tender || !applicant) {
+  if (!tenderInfo || !applicant) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
         <p className="font-bold text-[#0A2240] mb-2">Bidder not found.</p>
@@ -63,7 +84,7 @@ export default function BidderDetails() {
       <Section title="Bid Details" highlight>
         <InfoGrid items={[
           { label: 'Bid Amount',     value: applicant.bidAmount },
-          { label: 'Tender Value',   value: tender.value },
+          { label: 'Tender Value',   value: tenderInfo.value },
           { label: 'Submitted Date', value: new Date(applicant.submittedDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) },
         ]} />
       </Section>
@@ -89,10 +110,10 @@ export default function BidderDetails() {
       {/* Tender Details */}
       <Section title="Tender Details">
         <InfoGrid items={[
-          { label: 'Tender ID',  value: tender.id },
-          { label: 'Title',      value: tender.title },
-          { label: 'Department', value: tender.department },
-          { label: 'Value',      value: tender.value },
+          { label: 'Tender ID',  value: tenderInfo.id },
+          { label: 'Title',      value: tenderInfo.title },
+          { label: 'Department', value: tenderInfo.department },
+          { label: 'Value',      value: tenderInfo.value },
         ]} />
       </Section>
 
@@ -135,7 +156,7 @@ export default function BidderDetails() {
       <div className="bg-white border border-[#FFE5BF] rounded-2xl shadow-sm px-4 py-4 lg:px-6">
         <div className="max-w-4xl mx-auto flex items-center justify-end gap-3">
           <button onClick={handleBack} className="px-6 py-2.5 rounded-xl text-sm font-semibold border border-[#FFE5BF] text-[#0A2240] bg-white hover:bg-[#FFF2DB] transition-colors">
-            Back to Bidder List
+            {fromFinalList ? 'Back to Final Bidder List' : 'Back to Bidder List'}
           </button>
         </div>
       </div>

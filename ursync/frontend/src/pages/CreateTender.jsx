@@ -62,6 +62,9 @@ export default function CreateTender() {
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
 
+  const tender   = location.state?.tender || null
+  const fromPath = location.state?.fromPath || '/create-saved-tenders'
+
   // ── Form state ──────────────────────────────────────────────────────────────
   const [form, setForm] = useState({
     projectName:       editData?.projectName       || '',
@@ -121,7 +124,7 @@ export default function CreateTender() {
     await new Promise(r => setTimeout(r, 1000))
     setSaving(false)
     showToast(editData ? 'Tender updated successfully!' : 'Tender saved as draft!')
-    setTimeout(() => navigate('/create-saved-tenders'), 1500)
+    setTimeout(() => navigate(fromPath), 1500)
   }
 
   // ── Send ────────────────────────────────────────────────────────────────────
@@ -134,6 +137,10 @@ export default function CreateTender() {
     const label = role === 'department_employee' ? 'Department Head' : 'Administrator'
     showToast('Tender sent to ' + label + ' successfully!')
     setTimeout(() => navigate('/create-saved-tenders'), 1500)
+  }
+
+  function handleBack() {
+    navigate(fromPath)
   }
 
   const sendLabel = role === 'department_employee' ? 'Send to Head' : 'Send to Administrator'
@@ -159,7 +166,7 @@ export default function CreateTender() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#FFE5BF]">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/create-saved-tenders')}
+            onClick={handleBack}
             className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -391,7 +398,7 @@ export default function CreateTender() {
       {/* ── Bottom Action Bar ───────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2 border-t border-[#FFE5BF]">
         <button
-          onClick={() => navigate('/create-saved-tenders')}
+          onClick={handleBack}
           className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-semibold border border-[#FFE5BF] text-[#0A2240] bg-white hover:bg-[#FFF2DB] transition-colors"
         >
           Cancel

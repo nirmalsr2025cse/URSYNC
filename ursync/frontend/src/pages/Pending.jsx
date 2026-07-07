@@ -350,30 +350,31 @@ export default function Pending() {
                           viewMode="grid"
                           className="flex-1"
                           onClick={() => { }}
+                          footer = {
+                            <div className="flex gap-2 mt-1">
+                              <button
+                                  onClick={() => openConfirm(tender.id, 'approve')}
+                                  className="flex-1 flex items-center justify-center gap-2 px-10 py-2.5 rounded-xl text-sm font-semibold text-white bg-tn-blue shadow-sm hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
+                              >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  Approve
+                              </button>
+
+                              <button
+                                  onClick={() => openConfirm(tender.id, 'reject')}
+                                  className="flex-1 flex items-center justify-center gap-2 px-10 py-2.5 rounded-xl text-sm font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2"
+                              >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                  Reject
+                              </button>
+                              </div>
+
+                          }
                         />
-                        {/* ── Approve / Reject Buttons ─────────────────── */}
-                        <div className="flex gap-2 mt-3">
-                        <button
-                            onClick={() => openConfirm(tender.id, 'approve')}
-                            className="flex-1 flex items-center justify-center gap-2 px-10 py-2.5 rounded-xl text-sm font-semibold text-white bg-tn-blue shadow-sm hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Approve
-                        </button>
-
-                        <button
-                            onClick={() => openConfirm(tender.id, 'reject')}
-                            className="flex-1 flex items-center justify-center gap-2 px-10 py-2.5 rounded-xl text-sm font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            Reject
-                        </button>
-                        </div>
-
                       </div>
                     ))}
                   </div>

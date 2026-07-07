@@ -175,6 +175,7 @@ export default function CreateSavedTenders() {
       },
     });
   };
+  
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
 

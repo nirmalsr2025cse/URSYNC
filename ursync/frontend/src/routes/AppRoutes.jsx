@@ -34,6 +34,8 @@ import TenderByClassification from '../pages/TenderByClassification'
 import TenderDetailsView from '../pages/TenderDetailsView'
 import Approvement from '../pages/Approvement'
 import Pending from '../pages/Pending'
+import FinalBidder from '../pages/FinalBidder'
+import Completed from '../pages/Completed'
 
 export default function AppRoutes() {
   return (
@@ -73,6 +75,8 @@ export default function AppRoutes() {
         <Route path="/bidder-list/:tenderId/finalized" element={<FinalizedBidders />} />
         <Route path="/approvement" element={<Approvement />} />
         <Route path="/pending" element={<Pending />} />
+        <Route path="/finalbidder" element={<FinalBidder />} />
+        <Route path="/completed" element={<Completed />} />
       </Route>
     </Routes>
   )
