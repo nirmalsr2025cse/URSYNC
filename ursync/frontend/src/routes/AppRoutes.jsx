@@ -38,6 +38,11 @@ import FinalBidder from '../pages/FinalBidder'
 import Completed from '../pages/Completed'
 import TenderRegistrationPayment from '../pages/TenderRegistrationPayment'
 import ChoosePaymentPlatform from '../pages/ChoosePaymentPlatform'
+import TenderFinancialChangeDetailsPage from '../pages/TenderFinancialChangeDetailsPage'
+import TenderFinancialChangesPage from '../pages/TenderFinancialChangesPage'
+import AdminBidderView from '../pages/AdminBidderView'
+import AdminBidderList from '../pages/AdminBidderList'
+import AdminBidderDetails from '../pages/AdminBidderDetails'
 
 export default function AppRoutes() {
   return (
@@ -81,6 +86,11 @@ export default function AppRoutes() {
         <Route path="/completed" element={<Completed />} />
         <Route path="/apply-tenders/payment" element={<TenderRegistrationPayment />} />
         <Route path="/apply-tenders/payment/choose-platform" element={<ChoosePaymentPlatform />} />
+        <Route path="/financial-changes" element={<TenderFinancialChangesPage />} />
+        <Route path="/financial-changes/details" element={<TenderFinancialChangeDetailsPage />} />
+        <Route path="/bidder-list" element={<AdminBidderView />} />
+        <Route path="/bidder-list/:tenderId" element={<AdminBidderList />} />
+        <Route path="/bidder-list/:tenderId/:applicationId" element={<AdminBidderDetails />} />
       </Route>
     </Routes>
   )
