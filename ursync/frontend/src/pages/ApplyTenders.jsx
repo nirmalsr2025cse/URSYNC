@@ -278,30 +278,30 @@ export default function ApplyTenders() {
                     viewMode="grid"
                     className="flex-1"
                     onClick={() => {}}
+                    footer={
+                      activeTab === 'Open' && (
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => navigate('/apply-tenders/apply', { state: { tenderId: tender.id } })}
+                            disabled={closed}
+                            title={closed ? 'Application Closed' : 'Apply for this tender'}
+                            className={[
+                              'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition-colors',
+                              closed
+                                ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                                : 'bg-[#1A4A8C] text-white',
+                            ].join(' ')}
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            {closed ? 'Application Closed' : 'Apply'}
+                          </button>
+                        </div>
+                      )
+                    }
                   />
-
-                {/* Buttons — Apply only for Open, nothing for Upcoming */}
-                {activeTab === 'Open' && (
-                <div className="flex gap-2 mt-2">
-                    <button
-                    onClick={() => navigate('/apply-tenders/apply', { state: { tenderId: tender.id } })}
-                    disabled={closed}
-                    title={closed ? 'Application Closed' : 'Apply for this tender'}
-                    className={[
-                        'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition-colors',
-                        closed
-                        ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-                        : 'bg-[#1A4A8C] text-white',
-                    ].join(' ')}
-                    >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    {closed ? 'Application Closed' : 'Apply'}
-                    </button>
-                </div>
-                )}
                 </div>
               )
             })}

@@ -36,6 +36,8 @@ import Approvement from '../pages/Approvement'
 import Pending from '../pages/Pending'
 import FinalBidder from '../pages/FinalBidder'
 import Completed from '../pages/Completed'
+import TenderRegistrationPayment from '../pages/TenderRegistrationPayment'
+import ChoosePaymentPlatform from '../pages/ChoosePaymentPlatform'
 
 export default function AppRoutes() {
   return (
@@ -77,6 +79,8 @@ export default function AppRoutes() {
         <Route path="/pending" element={<Pending />} />
         <Route path="/finalbidder" element={<FinalBidder />} />
         <Route path="/completed" element={<Completed />} />
+        <Route path="/apply-tenders/payment" element={<TenderRegistrationPayment />} />
+        <Route path="/apply-tenders/payment/choose-platform" element={<ChoosePaymentPlatform />} />
       </Route>
     </Routes>
   )

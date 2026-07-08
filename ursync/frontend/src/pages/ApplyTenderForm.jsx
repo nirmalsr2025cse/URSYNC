@@ -1,5 +1,5 @@
 // src/pages/ApplyTenderForm.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { APPLY_TENDERS } from '../data/applyTenderMockData'
 
@@ -82,7 +82,6 @@ export default function ApplyTenderForm() {
   const tender     = APPLY_TENDERS.find((t) => t.id === tenderId)
   const isClosed   = tender ? isDeadlinePassed(tender.applicationDeadline) : false
 
-  const [frozen,  setFrozen]  = useState(false)
   const [saving,  setSaving]  = useState(false)
   const [toast,   setToast]   = useState(null)
   const [errors,  setErrors]  = useState({})
@@ -160,7 +159,7 @@ export default function ApplyTenderForm() {
     return e
   }
 
-  // ── All required fields filled? (for enabling Freeze button) ─────────────
+  // ── All required fields filled? (for enabling Next button) ───────────────
   const isFormComplete = REQUIRED.every((key) =>
     form[key] && form[key].toString().trim() !== ''
   ) && form.acceptTerms
@@ -184,30 +183,28 @@ export default function ApplyTenderForm() {
     showToast('Application Saved Successfully!')
   }
 
-  // ── Freeze ────────────────────────────────────────────────────────────────
-  async function handleFreeze() {
+  // ── Next → navigate to payment page ───────────────────────────────────────
+  async function handleNext() {
     const e = validate()
     if (Object.keys(e).length) {
       setErrors(e)
-      showToast('Please fill all required fields before freezing.', 'error')
+      showToast('Please fill all required fields before proceeding.', 'error')
       return
     }
     setSaving(true)
-    await new Promise((r) => setTimeout(r, 800))
+    await new Promise((r) => setTimeout(r, 600))
     setSaving(false)
-    setFrozen(true)
-    showToast('Application Frozen Successfully!')
-  }
-
-  // ── Unfreeze ──────────────────────────────────────────────────────────────
-  function handleUnfreeze() {
-    setFrozen(false)
-    showToast('Application Unfrozen. You can now edit.')
+    navigate('/apply-tenders/payment', {
+      state: {
+        tenderId: tender.id,
+        formData: form,
+      },
+    })
   }
 
   // ── Input class ───────────────────────────────────────────────────────────
   function inputCls(errKey, readOnly = false) {
-    const isReadOnly = readOnly || frozen || isClosed
+    const isReadOnly = readOnly || isClosed
     return [
       'w-full px-4 py-2.5 text-sm rounded-xl border transition-all',
       isReadOnly
@@ -261,12 +258,7 @@ export default function ApplyTenderForm() {
               Application Closed
             </span>
           )}
-          {frozen && (
-            <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-              🔒 Frozen
-            </span>
-          )}
-          {!isClosed && !frozen && (
+          {!isClosed && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF]">
               Deadline: {new Date(tender.applicationDeadline).toLocaleDateString('en-IN', {
                 day: '2-digit', month: 'short', year: 'numeric',
@@ -290,20 +282,6 @@ export default function ApplyTenderForm() {
         </div>
       )}
 
-      {/* ── Frozen notice ──────────────────────────────────────────────── */}
-      {frozen && (
-        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-          <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <div>
-            <p className="text-sm font-bold text-amber-700">Application is frozen.</p>
-            <p className="text-xs text-amber-600 mt-0.5">Click Unfreeze to make changes.</p>
-          </div>
-        </div>
-      )}
-
       {/* ── Section 1: Applicant Information ──────────────────────────── */}
       <Section title="Applicant Information" icon={
         <svg {...iconProps}>
@@ -313,63 +291,63 @@ export default function ApplyTenderForm() {
       }>
         <Field label="Applicant Name" required error={errors.applicantName}>
           <input value={form.applicantName} onChange={(e) => set('applicantName', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="Full name"
+                 readOnly={isClosed} placeholder="Full name"
                  className={inputCls('applicantName')} />
         </Field>
         <Field label="Father Name">
           <input value={form.fatherName} onChange={(e) => set('fatherName', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="Father's full name"
+                 readOnly={isClosed} placeholder="Father's full name"
                  className={inputCls('')} />
         </Field>
         <Field label="Company Name" required error={errors.companyName}>
           <input value={form.companyName} onChange={(e) => set('companyName', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="Registered company name"
+                 readOnly={isClosed} placeholder="Registered company name"
                  className={inputCls('companyName')} />
         </Field>
         <Field label="Company Registration No." required error={errors.companyRegNo}>
           <input value={form.companyRegNo} onChange={(e) => set('companyRegNo', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="e.g. U12345TN2020PTC123456"
+                 readOnly={isClosed} placeholder="e.g. U12345TN2020PTC123456"
                  className={inputCls('companyRegNo')} />
         </Field>
         <Field label="GST Number" required error={errors.gstNumber}>
           <input value={form.gstNumber} onChange={(e) => set('gstNumber', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="e.g. 33AABCU9603R1ZT"
+                 readOnly={isClosed} placeholder="e.g. 33AABCU9603R1ZT"
                  className={inputCls('gstNumber')} />
         </Field>
         <Field label="PAN Number" required error={errors.panNumber}>
           <input value={form.panNumber} onChange={(e) => set('panNumber', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="e.g. ABCDE1234F"
+                 readOnly={isClosed} placeholder="e.g. ABCDE1234F"
                  className={inputCls('panNumber')} />
         </Field>
         <Field label="Email" required error={errors.email}>
           <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="company@email.com"
+                 readOnly={isClosed} placeholder="company@email.com"
                  className={inputCls('email')} />
         </Field>
         <Field label="Mobile Number" required error={errors.mobile}>
           <input value={form.mobile} onChange={(e) => set('mobile', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="10-digit mobile number"
+                 readOnly={isClosed} placeholder="10-digit mobile number"
                  className={inputCls('mobile')} />
         </Field>
         <Field label="Alternate Mobile">
           <input value={form.alternateMobile} onChange={(e) => set('alternateMobile', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="Alternate contact number"
+                 readOnly={isClosed} placeholder="Alternate contact number"
                  className={inputCls('')} />
         </Field>
         <Field label="User ID">
           <input value={form.userId} onChange={(e) => set('userId', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="Portal user ID"
+                 readOnly={isClosed} placeholder="Portal user ID"
                  className={inputCls('')} />
         </Field>
         <Field label="Address" required error={errors.address} full>
           <textarea value={form.address} onChange={(e) => set('address', e.target.value)}
-                    readOnly={frozen || isClosed} rows={3}
+                    readOnly={isClosed} rows={3}
                     placeholder="Registered office address"
                     className={inputCls('address') + ' resize-none'} />
         </Field>
         <Field label="District" required error={errors.district}>
           <input value={form.district} onChange={(e) => set('district', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="District"
+                 readOnly={isClosed} placeholder="District"
                  className={inputCls('district')} />
         </Field>
         <Field label="State">
@@ -377,7 +355,7 @@ export default function ApplyTenderForm() {
         </Field>
         <Field label="PIN Code" required error={errors.pinCode}>
           <input value={form.pinCode} onChange={(e) => set('pinCode', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="6-digit PIN code"
+                 readOnly={isClosed} placeholder="6-digit PIN code"
                  className={inputCls('pinCode')} />
         </Field>
       </Section>
@@ -417,7 +395,7 @@ export default function ApplyTenderForm() {
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-[#0A2240]">₹</span>
             <input value={form.bidAmount} onChange={(e) => set('bidAmount', e.target.value)}
-                   readOnly={frozen || isClosed} placeholder="e.g. 4,50,00,000"
+                   readOnly={isClosed} placeholder="e.g. 4,50,00,000"
                    className={inputCls('bidAmount') + ' pl-8'} />
           </div>
         </Field>
@@ -425,7 +403,7 @@ export default function ApplyTenderForm() {
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-[#0A2240]">₹</span>
             <input value={form.emdAmount} onChange={(e) => set('emdAmount', e.target.value)}
-                   readOnly={frozen || isClosed} placeholder="Earnest money deposit"
+                   readOnly={isClosed} placeholder="Earnest money deposit"
                    className={inputCls('') + ' pl-8'} />
           </div>
         </Field>
@@ -433,31 +411,31 @@ export default function ApplyTenderForm() {
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-[#0A2240]">₹</span>
             <input value={form.securityDeposit} onChange={(e) => set('securityDeposit', e.target.value)}
-                   readOnly={frozen || isClosed} placeholder="Security deposit amount"
+                   readOnly={isClosed} placeholder="Security deposit amount"
                    className={inputCls('') + ' pl-8'} />
           </div>
         </Field>
         <Field label="Experience (Years)">
           <input type="number" min={0} value={form.experienceYears}
                  onChange={(e) => set('experienceYears', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="Years of relevant experience"
+                 readOnly={isClosed} placeholder="Years of relevant experience"
                  className={inputCls('')} />
         </Field>
         <Field label="Previous Govt Projects" full>
           <textarea value={form.prevGovtProjects} onChange={(e) => set('prevGovtProjects', e.target.value)}
-                    readOnly={frozen || isClosed} rows={3}
+                    readOnly={isClosed} rows={3}
                     placeholder="List previous government projects with values..."
                     className={inputCls('') + ' resize-none'} />
         </Field>
         <Field label="Technical Qualification" full>
           <textarea value={form.technicalQual} onChange={(e) => set('technicalQual', e.target.value)}
-                    readOnly={frozen || isClosed} rows={3}
+                    readOnly={isClosed} rows={3}
                     placeholder="Describe technical qualifications and certifications..."
                     className={inputCls('') + ' resize-none'} />
         </Field>
         <Field label="Financial Capacity" full>
           <textarea value={form.financialCapacity} onChange={(e) => set('financialCapacity', e.target.value)}
-                    readOnly={frozen || isClosed} rows={3}
+                    readOnly={isClosed} rows={3}
                     placeholder="Describe financial capacity and turnover..."
                     className={inputCls('') + ' resize-none'} />
         </Field>
@@ -484,7 +462,7 @@ export default function ApplyTenderForm() {
             <div className={[
               'w-full px-4 py-2.5 text-sm rounded-xl border border-[#FFE5BF]',
               'flex items-center gap-2',
-              frozen || isClosed
+              isClosed
                 ? 'bg-[#FFF2DB] cursor-not-allowed'
                 : 'bg-white cursor-pointer hover:bg-[#FFF2DB] transition-colors',
             ].join(' ')}>
@@ -493,7 +471,7 @@ export default function ApplyTenderForm() {
                       d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-8-8l4-4m0 0l4 4m-4-4v12" />
               </svg>
               <span className="text-[#6B7A8D] text-xs">
-                {frozen || isClosed ? 'No file uploaded' : 'Click to upload'}
+                {isClosed ? 'No file uploaded' : 'Click to upload'}
               </span>
             </div>
           </Field>
@@ -508,12 +486,12 @@ export default function ApplyTenderForm() {
         </svg>
       }>
         <Field label="Accept Terms & Conditions" required error={errors.acceptTerms} full>
-          <label className={['flex items-start gap-3', frozen || isClosed ? 'cursor-not-allowed' : 'cursor-pointer'].join(' ')}>
+          <label className={['flex items-start gap-3', isClosed ? 'cursor-not-allowed' : 'cursor-pointer'].join(' ')}>
             <input
               type="checkbox"
               checked={form.acceptTerms}
-              onChange={(e) => !frozen && !isClosed && set('acceptTerms', e.target.checked)}
-              disabled={frozen || isClosed}
+              onChange={(e) => !isClosed && set('acceptTerms', e.target.checked)}
+              disabled={isClosed}
               className="mt-0.5 w-4 h-4 accent-[#0A2240]"
             />
             <span className="text-xs text-[#6B7A8D] leading-relaxed">
@@ -527,23 +505,23 @@ export default function ApplyTenderForm() {
         </Field>
         <Field label="Digital Signature">
           <input value={form.digitalSignature} onChange={(e) => set('digitalSignature', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="Digital signature ID"
+                 readOnly={isClosed} placeholder="Digital signature ID"
                  className={inputCls('')} />
         </Field>
         <Field label="Applicant Signature">
           <input value={form.applicantSignature} onChange={(e) => set('applicantSignature', e.target.value)}
-                 readOnly={frozen || isClosed} placeholder="Full name as signature"
+                 readOnly={isClosed} placeholder="Full name as signature"
                  className={inputCls('')} />
         </Field>
         <Field label="Date" required error={errors.declarationDate}>
           <input type="date" value={form.declarationDate}
                  onChange={(e) => set('declarationDate', e.target.value)}
-                 readOnly={frozen || isClosed}
+                 readOnly={isClosed}
                  className={inputCls('declarationDate')} />
         </Field>
         <Field label="Remarks" full>
           <textarea value={form.remarks} onChange={(e) => set('remarks', e.target.value)}
-                    readOnly={frozen || isClosed} rows={3}
+                    readOnly={isClosed} rows={3}
                     placeholder="Any additional remarks or notes..."
                     className={inputCls('') + ' resize-none'} />
         </Field>
@@ -555,18 +533,18 @@ export default function ApplyTenderForm() {
 
           {/* Left — form completion hint */}
           <div className="flex items-center gap-2">
-            {!isFormComplete && !frozen && !isClosed && (
+            {!isFormComplete && !isClosed && (
               <p className="text-xs text-[#6B7A8D]">
                 Fill all required fields to enable{' '}
-                <span className="font-semibold text-[#F62440]">Freeze</span>.
+                <span className="font-semibold text-[#F62440]">Next</span>.
               </p>
             )}
-            {isFormComplete && !frozen && !isClosed && (
+            {isFormComplete && !isClosed && (
               <p className="text-xs text-emerald-600 font-medium flex items-center gap-1">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                All required fields filled. Ready to freeze.
+                All required fields filled. Ready to proceed.
               </p>
             )}
           </div>
@@ -574,77 +552,60 @@ export default function ApplyTenderForm() {
           {/* Right — action buttons */}
           <div className="flex items-center gap-2 w-auto">
 
-            {/* Cancel → Back after freeze */}
+            {/* Cancel */}
             <button
               onClick={() => navigate('/apply-tenders')}
               className="px-5 py-2 rounded-xl text-sm font-semibold border border-[#FFE5BF] text-[#0A2240] bg-white hover:bg-[#FFF2DB] transition-colors"
             >
-              {frozen ? '← Back' : 'Cancel'}
+              Cancel
             </button>
 
-            {/* Save — disabled when frozen */}
-            {!frozen && (
-              <button
-                onClick={handleSave}
-                disabled={isClosed || saving}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-8 py-2.5 rounded-xl text-sm font-semibold bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {saving ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    Saving...
-                  </>
-                ) : 'Save'}
-              </button>
-            )}
+            {/* Save */}
+            <button
+              onClick={handleSave}
+              disabled={isClosed || saving}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-8 py-2.5 rounded-xl text-sm font-semibold bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Saving...
+                </>
+              ) : 'Save'}
+            </button>
 
-            {/* Freeze / Unfreeze */}
-            {!frozen ? (
-              <button
-                onClick={handleFreeze}
-                disabled={!isFormComplete || isClosed || saving}
-                title={!isFormComplete ? 'Fill all required fields to freeze' : 'Freeze application'}
-                className={[
-                  'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all',
-                  !isFormComplete || isClosed
-                    ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
-                    : 'bg-[#F62440] text-white hover:bg-red-600',
-                ].join(' ')}
-              >
-                {saving ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    Freezing...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    Freeze
-                  </>
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={handleUnfreeze}
-                disabled={isClosed}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-                </svg>
-                Unfreeze
-              </button>
-            )}
+            {/* Next → apply-tenders/payment */}
+            <button
+              onClick={handleNext}
+              disabled={!isFormComplete || isClosed || saving}
+              title={!isFormComplete ? 'Fill all required fields to continue' : 'Proceed to payment'}
+              className={[
+                'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all',
+                !isFormComplete || isClosed
+                  ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
+                  : 'bg-[#F62440] text-white hover:bg-red-600',
+              ].join(' ')}
+            >
+              {saving ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Processing...
+                </>
+              ) : (
+                <>
+                  Next
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
