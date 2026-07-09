@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import Pagination from '../components/Pagination'
 import { tenders } from '../data/tenders'
+import { useNavigate } from 'react-router-dom'
 
 // ── Flatten all non-completed tenders (pending = not yet completed) ──────────
 const PENDING_TENDERS = [
@@ -15,6 +16,7 @@ const PAGE_SIZE = 6
 
 export default function Pending() {
   const [inputVal, setInputVal] = useState('')
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState(PENDING_TENDERS)
   const [activeTab, setActiveTab] = useState('all')
@@ -131,6 +133,12 @@ export default function Pending() {
     if (approvedIds.includes(tenderId)) return 'approved'
     if (rejectedIds.includes(tenderId)) return 'rejected'
     return 'pending'
+  }
+
+  function handleCardClick(tender) {
+    navigate('/tender-details-view/' + encodeURIComponent(tender.id), {
+      state: { tender },
+    })
   }
 
   return (
@@ -349,7 +357,7 @@ export default function Pending() {
                           tender={tender}
                           viewMode="grid"
                           className="flex-1"
-                          onClick={() => { }}
+                          onClick={() => {handleCardClick(tender)}}
                           footer = {
                             <div className="flex gap-2 mt-1">
                               <button

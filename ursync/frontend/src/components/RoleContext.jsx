@@ -84,6 +84,7 @@ export const NAV_CONFIG = {
   [ROLES.FINANCIAL]: [
     { label: 'Home',                     path: '/home',              icon: 'home'    },
     { label: 'Pending',                  path: '/pending',           icon: 'pending' },
+    { label: 'Completed',                path: '/completed',         icon: 'completed'    },
     { label: 'Cancelled / Retendered',   path: '/cancelled',         icon: 'retender'},
     { label: 'Tender Financial Changes', path: '/financial-changes', icon: 'finance' },
   ],
