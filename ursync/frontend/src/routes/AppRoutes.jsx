@@ -44,6 +44,7 @@ import AdminBidderView from '../pages/AdminBidderView'
 import AdminBidderList from '../pages/AdminBidderList'
 import AdminBidderDetails from '../pages/AdminBidderDetails'
 import Conflicts from '../pages/Conflicts'
+import ConflictDetails from '../pages/ConflictDetails'
 
 export default function AppRoutes() {
   return (
@@ -93,6 +94,7 @@ export default function AppRoutes() {
         <Route path="/bidder-list/:tenderId" element={<AdminBidderList />} />
         <Route path="/bidder-list/:tenderId/:applicationId" element={<AdminBidderDetails />} />
         <Route path="/conflicts" element={<Conflicts />} />
+        <Route path="/conflicts/:id" element={<ConflictDetails />} />
       </Route>
     </Routes>
   )

@@ -108,9 +108,14 @@ export default function Conflicts() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  // ── View Details ─────────────────────────────────────────────────────────
+  // Pass the exact conflict object from this card via navigation state so
+  // ConflictDetails.jsx renders precisely what was clicked — no separate
+  // re-fetch/re-lookup required. The :id in the URL is kept for deep-linking
+  // / refresh, and ConflictDetails falls back to looking it up by id there.
   function handleViewDetails(conflict) {
-    navigate('/tender-details-view', {
-      state: { fromTab: 'conflicts', conflictId: conflict.id },
+    navigate(`/conflicts/${conflict.id}`, {
+      state: { conflict, fromTab: 'conflicts' },
     })
   }
 
