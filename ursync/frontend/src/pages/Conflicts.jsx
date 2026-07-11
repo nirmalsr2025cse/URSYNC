@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import Pagination from '../components/Pagination'
 import { CONFLICTS } from '../data/conflictMockData'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useRole, ROLES } from '../components/RoleContext'
 
 // ── Demo department for the logged-in Department Head (frontend only) ─────
@@ -68,9 +68,22 @@ function useResponsivePageSize() {
 
 export default function Conflicts() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { role } = useRole()
   const [currentPage, setCurrentPage] = useState(1)
+  const [toast, setToast] = useState(null)
   const pageSize = useResponsivePageSize()
+
+  // ── Show applied-change message coming back from Conflict Details ────────
+  useEffect(() => {
+    if (location.state?.appliedMessage) {
+      setToast(location.state.appliedMessage)
+      const timer = setTimeout(() => setToast(null), 3000)
+      // Clear the navigation state so refreshing/back doesn't re-show it.
+      navigate(location.pathname, { replace: true, state: {} })
+      return () => clearTimeout(timer)
+    }
+  }, [location.state])
 
   // ── Role-based visibility ────────────────────────────────────────────────
   // Department Head → only conflicts involving their own department.
@@ -119,14 +132,25 @@ export default function Conflicts() {
     })
   }
 
-  function handleResolve(conflict) {
-    navigate('/approvement', {
-      state: { fromTab: 'conflicts', conflictId: conflict.id },
-    })
-  }
-
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-fade-in min-h-screen">
+
+      {/* ── Toast (shows message applied from Conflict Details) ─────────── */}
+      {toast && (
+        <div className="fixed top-6 right-6 z-50 animate-fade-in">
+          <div className="flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg border text-sm font-medium bg-emerald-50 text-emerald-700 border-emerald-200">
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{toast}</span>
+            <button onClick={() => setToast(null)} className="ml-2 hover:opacity-70 transition-opacity">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Page Header + Breadcrumb ─────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -322,24 +346,13 @@ export default function Conflicts() {
                       <div className="mt-auto flex items-center gap-2 pt-1">
                         <button
                           onClick={() => handleViewDetails(conflict)}
-                          className={[
-                            'btn-secondary text-xs !py-2 flex items-center justify-center gap-1',
-                            isAdministrator ? 'w-full' : 'flex-1',
-                          ].join(' ')}
+                          className="w-full btn-secondary text-xs !py-2 flex items-center justify-center gap-1 focus:outline-none focus:ring-0"
                         >
                           View Details
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
                         </button>
-                        {!isAdministrator && (
-                          <button
-                            onClick={() => handleResolve(conflict)}
-                            className="flex-1 btn-primary text-xs !py-2"
-                          >
-                            Resolve Conflict
-                          </button>
-                        )}
                       </div>
                     </div>
                   </div>

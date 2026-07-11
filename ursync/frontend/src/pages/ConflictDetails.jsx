@@ -2,7 +2,9 @@
 import React, { useState, useMemo } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { CONFLICTS } from '../data/conflictMockData'
+import { CONFLICT_MESSAGES, DEFAULT_CONFLICT_MESSAGES } from '../data/conflictMessagesMockData'
 import { useRole, ROLES } from '../components/RoleContext'
+import { MessageCircle } from "lucide-react";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function formatDate(d) {
@@ -85,16 +87,15 @@ const TABS = [
   { id: 'ai_suggest', label: 'AI Suggest', icon: 'sparkle' },
 ]
 
+// ── Demo department for the logged-in Department Employee (frontend only) ──
+// When connecting the backend, replace with the department from the auth/JWT.
+const DEMO_EMPLOYEE_DEPARTMENT = 'Highways Department'
+
 export default function ConflictDetails() {
   const navigate = useNavigate()
   const params = useParams()
   const location = useLocation()
   const { role } = useRole()
-
-  // Edit is only enabled for Department Employee — every other role sees
-  // it disabled (greyed out, not clickable).
-  const normalizedRole = String(role || '').trim().toLowerCase()
-  const canEdit = normalizedRole === ROLES.DEPARTMENT_HEAD.toLowerCase()
 
   // ── Data source priority ───────────────────────────────────────────────
   // 1) The exact conflict object passed from the card the user clicked
@@ -109,14 +110,53 @@ export default function ConflictDetails() {
     return byId || CONFLICTS[0]
   }, [location.state, params.id])
 
+  // Edit is only enabled for Department Head — every other role never
+  // sees the button at all (hidden, not just disabled).
+  const normalizedRole = String(role || '').trim().toLowerCase()
+  const canEdit = normalizedRole === ROLES.DEPARTMENT_HEAD.toLowerCase()
+  const applyChanges = normalizedRole === ROLES.DEPARTMENT_HEAD.toLowerCase()
+
+  // Which tender in this conflict belongs to the logged-in employee's own
+  // department — that's the one they're allowed to reschedule.
+  const myTender = useMemo(() => {
+    if (conflict.tender1.department === DEMO_EMPLOYEE_DEPARTMENT) return conflict.tender1
+    if (conflict.tender2.department === DEMO_EMPLOYEE_DEPARTMENT) return conflict.tender2
+    return conflict.tender1 // fallback
+  }, [conflict])
+
   const [activeTab, setActiveTab] = useState('conflict')
   const [editModalOpen, setEditModalOpen] = useState(false)
-  const [editForm, setEditForm] = useState({
-    level: conflict.level,
-    priority: conflict.priority,
-    reason: conflict.reason,
-  })
+  const [editDate, setEditDate] = useState(myTender.startDate)
   const [toast, setToast] = useState(null)
+
+  // ── Messages (per-conflict chat thread, frontend demo only) ─────────────
+  const [messagePanelOpen, setMessagePanelOpen] = useState(false)
+  const [messages, setMessages] = useState(
+    () => CONFLICT_MESSAGES[conflict.id] || DEFAULT_CONFLICT_MESSAGES
+  )
+  const [messageDraft, setMessageDraft] = useState('')
+
+  function formatMessageTime(t) {
+    return new Date(t).toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    })
+  }
+
+  function handleSendMessage() {
+    const text = messageDraft.trim()
+    if (!text) return
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `MSG-${prev.length + 1}`,
+        sender: 'You',
+        self: true,
+        text,
+        time: new Date().toISOString(),
+      },
+    ])
+    setMessageDraft('')
+  }
 
   const styles = LEVEL_STYLES[conflict.level] || LEVEL_STYLES.Medium
 
@@ -127,13 +167,21 @@ export default function ConflictDetails() {
 
   function openEditModal() {
     if (!canEdit) return
-    setEditForm({ level: conflict.level, priority: conflict.priority, reason: conflict.reason })
+    setEditDate(myTender.startDate)
     setEditModalOpen(true)
   }
 
-  function handleSaveEdit() {
+  function handleCancelEdit() {
     setEditModalOpen(false)
-    showToast(`Conflict ${conflict.id} updated successfully.`)
+  }
+
+  function handleApplyEdit() {
+    setEditModalOpen(false)
+    navigate('/conflicts', {
+      state: {
+        appliedMessage: `"${myTender.name}" schedule updated to ${formatDate(editDate)}.`,
+      },
+    })
   }
 
   return (
@@ -154,58 +202,34 @@ export default function ConflictDetails() {
       {/* ── Edit Modal ────────────────────────────────────────────────── */}
       {editModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-tn-border p-6 w-full max-w-md mx-4">
-            <h3 className="text-base font-bold text-tn-navy mb-1">Edit Conflict</h3>
+          <div className="bg-white rounded-2xl shadow-2xl border border-tn-border p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-bold text-tn-navy mb-1">Edit Tender Schedule</h3>
             <p className="text-xs text-tn-muted mb-5">
               Conflict ID: <span className="font-mono font-semibold text-tn-navy">{conflict.id}</span>
             </p>
 
-            {/* Level */}
-            <label className="block text-xs font-semibold text-tn-navy mb-1.5">Conflict Level</label>
-            <div className="flex gap-2 mb-4">
-              {['High', 'Medium', 'Low'].map((lvl) => (
-                <button
-                  key={lvl}
-                  onClick={() => setEditForm((f) => ({ ...f, level: lvl }))}
-                  className={[
-                    'flex-1 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors',
-                    editForm.level === lvl
-                      ? 'bg-tn-navy text-white border-tn-navy'
-                      : 'bg-white text-tn-muted border-tn-border hover:border-tn-blue',
-                  ].join(' ')}
-                >
-                  {lvl}
-                </button>
-              ))}
+            {/* Tender name (read-only, matched to the employee's department) */}
+            <div className="bg-tn-light border border-tn-border rounded-lg px-3 py-2.5 mb-4">
+              <p className="text-[10px] text-tn-muted uppercase tracking-wide mb-0.5">Tender</p>
+              <p className="text-sm font-semibold text-tn-navy leading-snug">{myTender.name}</p>
+              <p className="text-[11px] text-tn-muted mt-0.5">{myTender.department}</p>
             </div>
 
-            {/* Priority */}
-            <label className="block text-xs font-semibold text-tn-navy mb-1.5">Priority</label>
-            <select
-              value={editForm.priority}
-              onChange={(e) => setEditForm((f) => ({ ...f, priority: e.target.value }))}
-              className="w-full px-3 py-2 mb-4 text-sm border border-tn-border rounded-lg text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue"
-            >
-              {['Critical', 'High', 'Medium', 'Low'].map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-
-            {/* Reason */}
-            <label className="block text-xs font-semibold text-tn-navy mb-1.5">Conflict Reason</label>
+            {/* Date field */}
+            <label className="block text-xs font-semibold text-tn-navy mb-1.5">Project Start Date</label>
             <input
-              type="text"
-              value={editForm.reason}
-              onChange={(e) => setEditForm((f) => ({ ...f, reason: e.target.value }))}
+              type="date"
+              value={editDate}
+              onChange={(e) => setEditDate(e.target.value)}
               className="w-full px-3 py-2 mb-6 text-sm border border-tn-border rounded-lg text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue"
             />
 
             <div className="flex gap-3">
-              <button onClick={() => setEditModalOpen(false)} className="flex-1 btn-secondary">
+              <button onClick={handleCancelEdit} className="flex-1 btn-secondary">
                 Cancel
               </button>
-              <button onClick={handleSaveEdit} className="flex-1 btn-primary">
-                Save Changes
+              <button onClick={handleApplyEdit} className="flex-1 btn-primary">
+                Apply
               </button>
             </div>
           </div>
@@ -236,13 +260,7 @@ export default function ConflictDetails() {
 
           {/* Top-right actions: Export Report + Edit (blue) — no Change button */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button className="btn-secondary text-xs flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-              </svg>
-              Export Report
-            </button>
-            {canEdit && (
+            {canEdit && activeTab === 'conflict' && (
               <button
                 onClick={openEditModal}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-tn-blue hover:bg-tn-navy shadow-sm transition-colors duration-200"
@@ -325,12 +343,12 @@ export default function ConflictDetails() {
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-4 items-center">
               <ProjectCard label="Project 1" tender={conflict.tender1} />
               <div className="flex justify-center">
-                <div className="w-14 h-14 rounded-full bg-red-50 border-2 border-red-200 flex flex-col items-center justify-center text-red-500">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-24 h-24 rounded-full bg-red-50 border-2 border-red-200 flex flex-col items-center justify-center text-red-500">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                       d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                   </svg>
-                  <span className="text-[9px] font-bold mt-0.5">CONFLICT</span>
+                  <span className="text-[11px] font-bold mt-1">CONFLICT</span>
                 </div>
               </div>
               <ProjectCard label="Project 2" tender={conflict.tender2} />
@@ -514,7 +532,7 @@ export default function ConflictDetails() {
                   </div>
                 ))}
               </div>
-              <button className="w-full btn-secondary text-xs mt-4 flex items-center justify-center gap-1">
+              <button className="w-full btn-secondary text-xs mt-4 flex items-center justify-center gap-1 focus:outline-none focus:ring-0">
                 View All Recommendations
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -572,12 +590,14 @@ export default function ConflictDetails() {
                 </ul>
               </div>
 
-              <button
-                onClick={() => showToast('Recommended change applied successfully.')}
-                className="w-full btn-primary text-xs mt-4"
-              >
-                Apply This Change
-              </button>
+              {applyChanges && (
+                <button
+                  onClick={() => showToast('Recommended change applied successfully.')}
+                  className="w-full btn-primary text-xs mt-4 focus:outline-none focus:ring-0"
+                >
+                  Apply This Change
+                </button>
+              )}
             </div>
 
             {/* Impact Analysis of Recommended Change */}
@@ -631,6 +651,83 @@ export default function ConflictDetails() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Floating Message Button (bottom-right) ───────────────────── */}
+      <button
+        onClick={() => setMessagePanelOpen((open) => !open)}
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-tn-blue hover:bg-tn-navy shadow-lg flex items-center justify-center text-white transition-colors duration-200"
+        title="Messages"
+      >
+        <MessageCircle className="w-6 h-6" />
+        {messages.length > 0 && !messagePanelOpen && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+            {messages.length}
+          </span>
+        )}
+      </button>
+
+      {/* ── Message Panel ─────────────────────────────────────────────── */}
+      {messagePanelOpen && (
+        <div className="fixed bottom-24 right-6 z-40 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-tn-border flex flex-col overflow-hidden animate-fade-in max-h-[70vh]">
+          {/* Panel header */}
+          <div className="bg-tn-navy text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
+            <div>
+              <p className="text-sm font-bold">Conflict Discussion</p>
+              <p className="text-[11px] text-white/70">{conflict.id} · {myTender.name}</p>
+            </div>
+            <button
+              onClick={() => setMessagePanelOpen(false)}
+              className="text-white/70 hover:text-white transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Message history */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-tn-cream/40" style={{ minHeight: '220px' }}>
+            {messages.map((msg) => (
+              <div key={msg.id} className={`flex ${msg.self ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-xl px-3 py-2 ${
+                  msg.self
+                    ? 'bg-tn-blue text-white rounded-br-sm'
+                    : 'bg-white border border-tn-border text-tn-navy rounded-bl-sm'
+                }`}>
+                  {!msg.self && (
+                    <p className="text-[10px] font-semibold text-tn-blue mb-0.5">{msg.sender}</p>
+                  )}
+                  <p className="text-xs leading-relaxed">{msg.text}</p>
+                  <p className={`text-[9px] mt-1 ${msg.self ? 'text-white/70' : 'text-tn-muted'}`}>
+                    {formatMessageTime(msg.time)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Send box */}
+          <div className="border-t border-tn-border p-3 flex items-center gap-2 flex-shrink-0">
+            <input
+              type="text"
+              value={messageDraft}
+              onChange={(e) => setMessageDraft(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="Type a message…"
+              className="flex-1 px-3 py-2 text-xs border border-tn-border rounded-lg text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue"
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={!messageDraft.trim()}
+              className="w-9 h-9 rounded-lg bg-tn-blue hover:bg-tn-navy disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white flex-shrink-0 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </button>
           </div>
         </div>
       )}
