@@ -1,3 +1,4 @@
+//src/components/Sidebar.jsx
 import React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useRole, NAV_CONFIG, ROLE_LABELS, ROLE_COLORS } from './RoleContext'

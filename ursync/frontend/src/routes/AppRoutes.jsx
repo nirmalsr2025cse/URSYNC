@@ -52,7 +52,7 @@ export default function AppRoutes() {
       <Route element={<Layout />}>
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="/home" element={<Home />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard/tender-analysis" element={<Dashboard />} />
         <Route path="/tn-tenders-act"        element={<TnTendersAct />} />
         <Route path="/tenders-by-location" element={<TendersByLocation />} />
         <Route path="/tender-status" element={<TendersStatus />} />

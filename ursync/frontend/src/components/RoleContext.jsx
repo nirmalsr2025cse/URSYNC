@@ -34,7 +34,7 @@ export const NAV_CONFIG = {
   [ROLES.PUBLIC]: [
     { label: 'Home',                      path: '/home',                icon: 'home'     },
     { label: 'TN Tenders Act',            path: '/tn-tenders-act',      icon: 'doc'      },
-    { label: 'Dashboard',                 path: '/dashboard',           icon: 'dash'     },
+    { label: 'Dashboard',                 path: '/dashboard/tender-analysis',           icon: 'dash'     },
     { label: 'Tenders by Location',       path: '/tenders-by-location', icon: 'mappin'   },
     { label: 'Tenders by Organisation',   path: '/tenders-by-org',      icon: 'building' },
     { label: 'Tenders by Classification', path: '/tenders-by-class',    icon: 'tag'      },
@@ -49,7 +49,7 @@ export const NAV_CONFIG = {
 
   [ROLES.DEPARTMENT_EMPLOYEE]: [
     { label: 'Home',                   path: '/home',             icon: 'home'     },
-    { label: 'Dashboard',              path: '/dashboard',        icon: 'dash'     },
+    { label: 'Dashboard',              path: '/dashboard/tender-analysis',        icon: 'dash'     },
     { label: 'Saved & Create Tenders', path: '/create-saved-tenders',icon: 'doc'      },
     { label: 'Reports & Feedbacks',    path: '/reports',          icon: 'chart'    },
     { label: 'Cancelled / Retendered', path: '/cancelled',        icon: 'retender' },
@@ -59,7 +59,7 @@ export const NAV_CONFIG = {
 
   [ROLES.DEPARTMENT_HEAD]: [
     { label: 'Home',                   path: '/home',             icon: 'home'     },
-    { label: 'Dashboard',              path: '/dashboard',        icon: 'dash'     },
+    { label: 'Dashboard',              path: '/dashboard/tender-analysis',        icon: 'dash'     },
     { label: 'Saved & Create Tenders', path: '/create-saved-tenders',   icon: 'doc'      },
     { label: 'Reports & Feedbacks',    path: '/reports',          icon: 'chart'    },
     { label: 'Conflicts',              path: '/conflicts',        icon: 'conflict' },
@@ -72,7 +72,7 @@ export const NAV_CONFIG = {
 
   [ROLES.ADMINISTRATOR]: [
     { label: 'Home',                   path: '/home',           icon: 'home'     },
-    { label: 'Dashboard',              path: '/dashboard',      icon: 'dash'     },
+    { label: 'Dashboard',              path: '/dashboard/tender-analysis',      icon: 'dash'     },
     { label: 'Reports & Feedbacks',    path: '/reports',        icon: 'chart'    },
     { label: 'Conflicts',              path: '/conflicts',      icon: 'conflict' },
     { label: 'Cancelled / Retendered', path: '/cancelled',      icon: 'retender' },
