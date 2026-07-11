@@ -1,5 +1,5 @@
 // src/pages/ConflictDetails.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { CONFLICTS } from '../data/conflictMockData'
 import { CONFLICT_MESSAGES, DEFAULT_CONFLICT_MESSAGES } from '../data/conflictMessagesMockData'
@@ -65,6 +65,60 @@ const AI_SOLUTIONS = [
     tagColor: 'bg-gray-100 text-gray-600',
     rankColor: 'bg-tn-navy',
   },
+  {
+    rank: 5,
+    title: 'Split Work Zones',
+    description: 'Divide the shared stretch into two non-overlapping work zones so both crews can proceed in parallel.',
+    effectiveness: 52,
+    tag: 'Fair',
+    tagColor: 'bg-blue-100 text-blue-700',
+    rankColor: 'bg-blue-500',
+  },
+  {
+    rank: 6,
+    title: 'Night-Shift Execution',
+    description: 'Shift one project to night hours to reduce daytime traffic and resource clashes.',
+    effectiveness: 48,
+    tag: 'Fair',
+    tagColor: 'bg-blue-100 text-blue-700',
+    rankColor: 'bg-blue-500',
+  },
+  {
+    rank: 7,
+    title: 'Temporary Traffic Diversion',
+    description: 'Set up a temporary diversion route to allow both projects to proceed without full road closure.',
+    effectiveness: 44,
+    tag: 'Low',
+    tagColor: 'bg-gray-100 text-gray-600',
+    rankColor: 'bg-tn-navy',
+  },
+  {
+    rank: 8,
+    title: 'Joint Department Coordination',
+    description: 'Form a joint coordination committee between both departments to align schedules weekly.',
+    effectiveness: 40,
+    tag: 'Low',
+    tagColor: 'bg-gray-100 text-gray-600',
+    rankColor: 'bg-tn-navy',
+  },
+  {
+    rank: 9,
+    title: 'Shared Equipment Pool',
+    description: 'Pool machinery and barricades between both tenders to reduce procurement delays.',
+    effectiveness: 37,
+    tag: 'Low',
+    tagColor: 'bg-gray-100 text-gray-600',
+    rankColor: 'bg-tn-navy',
+  },
+  {
+    rank: 10,
+    title: 'Defer to Next Quarter',
+    description: 'Postpone the lower-priority project entirely to the next fiscal quarter.',
+    effectiveness: 30,
+    tag: 'Low',
+    tagColor: 'bg-gray-100 text-gray-600',
+    rankColor: 'bg-tn-navy',
+  },
 ]
 
 const AI_INSIGHTS = [
@@ -96,6 +150,7 @@ export default function ConflictDetails() {
   const params = useParams()
   const location = useLocation()
   const { role } = useRole()
+  const messagesEndRef = useRef(null)
 
   // ── Data source priority ───────────────────────────────────────────────
   // 1) The exact conflict object passed from the card the user clicked
@@ -135,6 +190,9 @@ export default function ConflictDetails() {
     () => CONFLICT_MESSAGES[conflict.id] || DEFAULT_CONFLICT_MESSAGES
   )
   const [messageDraft, setMessageDraft] = useState('')
+
+  // ── View All Recommendations panel ───────────────────────────────────────
+  const [allRecommendationsOpen, setAllRecommendationsOpen] = useState(false)
 
   function formatMessageTime(t) {
     return new Date(t).toLocaleString('en-IN', {
@@ -183,6 +241,12 @@ export default function ConflictDetails() {
       },
     })
   }
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [messages]);
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-fade-in min-h-screen">
@@ -516,7 +580,7 @@ export default function ConflictDetails() {
               <h3 className="font-bold text-tn-navy text-sm mb-1">Top AI Recommended Solutions</h3>
               <p className="text-[11px] text-tn-muted mb-4">Ranked by effectiveness &amp; feasibility</p>
               <div className="space-y-3">
-                {AI_SOLUTIONS.map((sol) => (
+                {AI_SOLUTIONS.slice(0, 4).map((sol) => (
                   <div key={sol.rank} className="flex items-start gap-3 border border-tn-border rounded-xl p-3">
                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 ${sol.rankColor}`}>
                       {sol.rank}
@@ -532,7 +596,10 @@ export default function ConflictDetails() {
                   </div>
                 ))}
               </div>
-              <button className="w-full btn-secondary text-xs mt-4 flex items-center justify-center gap-1 focus:outline-none focus:ring-0">
+              <button
+                onClick={() => setAllRecommendationsOpen(true)}
+                className="w-full btn-secondary text-xs mt-4 flex items-center justify-center gap-1 focus:outline-none focus:ring-0"
+              >
                 View All Recommendations
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -655,6 +722,60 @@ export default function ConflictDetails() {
         </div>
       )}
 
+      {/* ── View All Recommendations Panel ───────────────────────────── */}
+      {allRecommendationsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-tn-border w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-tn-border flex-shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-tn-navy">All AI Recommendations</h3>
+                <p className="text-[11px] text-tn-muted mt-0.5">
+                  {AI_SOLUTIONS.length} suggestion{AI_SOLUTIONS.length !== 1 ? 's' : ''} for {conflict.id}, ranked by effectiveness
+                </p>
+              </div>
+              <button
+                onClick={() => setAllRecommendationsOpen(false)}
+                className="text-tn-muted hover:text-tn-navy transition-colors flex-shrink-0"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Full list (1 to 10 recommendations) */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+              {AI_SOLUTIONS.map((sol) => (
+                <div key={sol.rank} className="flex items-start gap-3 border border-tn-border rounded-xl p-3">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 ${sol.rankColor}`}>
+                    {sol.rank}
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-tn-navy">{sol.title}</p>
+                    <p className="text-[11px] text-tn-muted mt-0.5">{sol.description}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-xs font-bold text-tn-navy">{sol.effectiveness}%</p>
+                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${sol.tagColor}`}>{sol.tag}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-tn-border flex-shrink-0">
+              <button
+                onClick={() => setAllRecommendationsOpen(false)}
+                className="w-full btn-secondary text-xs focus:outline-none focus:ring-0"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Floating Message Button (bottom-right) ───────────────────── */}
       <button
         onClick={() => setMessagePanelOpen((open) => !open)}
@@ -707,6 +828,7 @@ export default function ConflictDetails() {
                 </div>
               </div>
             ))}
+            <div ref={messagesEndRef} /> {/* Dummy div to scroll into view */}
           </div>
 
           {/* Send box */}
