@@ -22,6 +22,8 @@ import Icon from '../components/Icon'
 import NumberWiseAnalysis from './dashboard/NumberWiseAnalysis'
 import ValueWiseAnalysis from './dashboard/ValueWiseAnalysis'
 import NumberValueWiseAnalysis from './dashboard/NumberValueWiseAnalysis'
+import PercentageWiseAnalysis from './dashboard/PercentageWiseAnalysis'
+import BidsAwardedAnalysis from './dashboard/BidsAwardedAnalysis'
 import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS } from '../data/dashboardMockData'
 
 const TOP_NAV_ITEMS = [
@@ -38,6 +40,8 @@ const TENDER_ANALYSIS_METRIC_COMPONENTS = {
   numberWise: NumberWiseAnalysis,
   valueWise: ValueWiseAnalysis,
   numberValueWise: NumberValueWiseAnalysis,
+  percentageWise: PercentageWiseAnalysis,
+  bidsAwarded: BidsAwardedAnalysis,
 }
 
 export default function Dashboard() {
