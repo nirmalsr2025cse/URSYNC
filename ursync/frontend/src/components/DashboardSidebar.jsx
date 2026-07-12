@@ -282,6 +282,7 @@ export default function DashboardSidebar({
               })}
             </>
           )}
+          <div className="pb-10"/>
         </nav>
 
         {/* Footer */}

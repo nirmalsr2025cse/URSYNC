@@ -96,3 +96,55 @@ export const TENDERS_STAGE_WISE = TENDERS_PUBLISHED_BY_FY.map(({ fy, count }) =>
   'Financial Evaluation': Math.round(count * STAGE_SPLIT['Financial Evaluation']),
   Awarded: Math.round(count * STAGE_SPLIT.Awarded),
 }))
+
+// ── TR5: Value of tenders published, by financial year (Rs. in Crores) ─────
+export const TENDERS_VALUE_BY_FY = [
+  { fy: '2007-08', value: 9800 },
+  { fy: '2008-09', value: 12400 },
+  { fy: '2009-10', value: 15800 },
+  { fy: '2010-11', value: 19500 },
+  { fy: '2011-12', value: 24200 },
+  { fy: '2012-13', value: 28700 },
+  { fy: '2013-14', value: 33200 },
+  { fy: '2014-15', value: 37700 },
+  { fy: '2015-16', value: 41200 },
+  { fy: '2016-17', value: 36500 },
+  { fy: '2017-18', value: 46800 },
+  { fy: '2018-19', value: 58200 },
+  { fy: '2019-20', value: 67300 },
+  { fy: '2020-21', value: 29800 },
+  { fy: '2021-22', value: 42621 },
+  { fy: '2022-23', value: 74560 },
+  { fy: '2023-24', value: 169460 },
+  { fy: '2024-25', value: 112606 },
+  { fy: '2025-26', value: 181613 },
+  { fy: '2026-27', value: 7963 },
+]
+
+// ── TR6: Tender value category wise — same split ratios as TR2 ─────────────
+export const TENDERS_VALUE_CATEGORY_WISE = TENDERS_VALUE_BY_FY.map(({ fy, value }) => ({
+  fy,
+  Works: Math.round(value * CATEGORY_SPLIT.Works),
+  Goods: Math.round(value * CATEGORY_SPLIT.Goods),
+  Services: Math.round(value * CATEGORY_SPLIT.Services),
+  Consultancy: Math.round(value * CATEGORY_SPLIT.Consultancy),
+}))
+
+// ── TR7: Tender value type wise — same split ratios as TR3 ──────────────────
+export const TENDERS_VALUE_TYPE_WISE = TENDERS_VALUE_BY_FY.map(({ fy, value }) => ({
+  fy,
+  'Open Tender': Math.round(value * TYPE_SPLIT['Open Tender']),
+  'Limited Tender': Math.round(value * TYPE_SPLIT['Limited Tender']),
+  'Single Tender': Math.round(value * TYPE_SPLIT['Single Tender']),
+  EOI: Math.round(value * TYPE_SPLIT.EOI),
+}))
+
+// ── TR8: Tender value stage wise — same funnel ratios as TR4 ────────────────
+export const TENDERS_VALUE_STAGE_WISE = TENDERS_VALUE_BY_FY.map(({ fy, value }) => ({
+  fy,
+  Published: Math.round(value * STAGE_SPLIT.Published),
+  'Bid Submission': Math.round(value * STAGE_SPLIT['Bid Submission']),
+  'Technical Evaluation': Math.round(value * STAGE_SPLIT['Technical Evaluation']),
+  'Financial Evaluation': Math.round(value * STAGE_SPLIT['Financial Evaluation']),
+  Awarded: Math.round(value * STAGE_SPLIT.Awarded),
+}))
