@@ -124,6 +124,7 @@ export default function ValueWiseAnalysis({ fyFrom, fyTo }) {
           datasets={chartConfig.datasets}
           stacked={chartConfig.stacked}
           yAxisLabel={chartConfig.yAxisLabel}
+          richTooltip={{ titlePrefix: 'For the Fin Year', leftHeader: 'Series', rightHeader: 'Value (Rs. in Crores)' }}
         />
       </div>
     </div>

@@ -162,6 +162,7 @@ export default function NumberValueWiseAnalysis({ fyFrom, fyTo }) {
           datasets={numberChart.datasets}
           stacked={numberChart.stacked}
           yAxisLabel={numberChart.yAxisLabel}
+          richTooltip={{ titlePrefix: 'For the Fin Year', leftHeader: 'Series', rightHeader: 'Number' }}
         />
 
         <div className="border-t border-tn-border my-5" />
@@ -171,6 +172,7 @@ export default function NumberValueWiseAnalysis({ fyFrom, fyTo }) {
           datasets={valueChart.datasets}
           stacked={valueChart.stacked}
           yAxisLabel={valueChart.yAxisLabel}
+          richTooltip={{ titlePrefix: 'For the Fin Year', leftHeader: 'Series', rightHeader: 'Value (Rs. in Crores)' }}
         />
       </div>
     </div>

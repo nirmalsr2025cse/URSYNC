@@ -237,3 +237,32 @@ export const BIDS_AWARDED_ORGANIZATIONS = [
   { sNo: 9, name: 'Tamil Nadu Medical Services Corporation', noOfTenders: 410, valOfTenders: 9870.42, bidsAwardedCount: 31, bidsAwardedValue: 890.22 },
   { sNo: 10, name: 'Chennai Metropolitan Water Supply and Sewerage Board', noOfTenders: 305, valOfTenders: 14260.90, bidsAwardedCount: 28, bidsAwardedValue: 1120.35 },
 ]
+
+// ── BI1: MSME vs Non-MSME bidders, by financial year ────────────────────────
+// MSME is 0 across the board here, same as the reference mock — this looks
+// like a real data-capture gap on the live portal (MSME flag not being
+// populated) rather than an intentional "no MSME bidders" story. Swap in
+// real ratios once that's available; the chart already handles a non-zero
+// MSME series without any code changes.
+export const BIDDER_MSME_BY_FY = [
+  { fy: '2007-08', msme: 0, nonMsme: 620 },
+  { fy: '2008-09', msme: 0, nonMsme: 850 },
+  { fy: '2009-10', msme: 0, nonMsme: 1120 },
+  { fy: '2010-11', msme: 0, nonMsme: 1450 },
+  { fy: '2011-12', msme: 0, nonMsme: 1820 },
+  { fy: '2012-13', msme: 0, nonMsme: 2200 },
+  { fy: '2013-14', msme: 0, nonMsme: 2650 },
+  { fy: '2014-15', msme: 0, nonMsme: 3080 },
+  { fy: '2015-16', msme: 0, nonMsme: 3400 },
+  { fy: '2016-17', msme: 0, nonMsme: 3000 },
+  { fy: '2017-18', msme: 0, nonMsme: 3850 },
+  { fy: '2018-19', msme: 0, nonMsme: 4700 },
+  { fy: '2019-20', msme: 0, nonMsme: 5500 },
+  { fy: '2020-21', msme: 0, nonMsme: 2400 },
+  { fy: '2021-22', msme: 0, nonMsme: 3948 },
+  { fy: '2022-23', msme: 0, nonMsme: 7247 },
+  { fy: '2023-24', msme: 0, nonMsme: 13428 },
+  { fy: '2024-25', msme: 0, nonMsme: 5184 },
+  { fy: '2025-26', msme: 0, nonMsme: 7197 },
+  { fy: '2026-27', msme: 0, nonMsme: 596 },
+].map((r) => ({ ...r, total: r.msme + r.nonMsme }))

@@ -64,6 +64,11 @@ export default function PercentageWiseAnalysis({ fyTo }) {
           labels={['Cancelled', 'Retender', 'Valid Tenders']}
           data={[row.cancelled, row.retender, row.valid]}
           colors={sliceColors}
+          richTooltip={{
+            titleOverride: `For the Fin Year ${row.fy}`,
+            leftHeader: 'Type',
+            rightHeader: activeSubTab === 'byNumber' ? 'Number' : 'Value (Rs. in Crores)',
+          }}
         />
 
         <div className="flex flex-wrap justify-center gap-x-6 gap-y-1 mt-2 text-xs font-semibold">

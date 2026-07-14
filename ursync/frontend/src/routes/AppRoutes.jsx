@@ -46,10 +46,12 @@ import AdminBidderDetails from '../pages/AdminBidderDetails'
 import Conflicts from '../pages/Conflicts'
 import ConflictDetails from '../pages/ConflictDetails'
 import SearchResourcePage from '../pages/SearchResourcePage'
+import ResourceSharing from '../pages/ResourceSharing'
 
 export default function AppRoutes() {
   return (
     <Routes>
+      <Route path="*" element={<Placeholder />} />
       <Route element={<Layout />}>
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="/home" element={<Home />} />
@@ -59,7 +61,6 @@ export default function AppRoutes() {
         <Route path="/tender-status" element={<TendersStatus />} />
         <Route path="/archive" element={<ArchiveTenderPage />} />
         <Route path="/downloads" element={<Downloads />} />
-        <Route path="*" element={<Placeholder />} />
         <Route path="/reports" element={<ReportsFeedbacks />} />
         <Route path="/cancelled" element={<CancelledRetendered />} />
         <Route path="/tenders-by-org" element={<TendersByOrganization />} />
@@ -97,6 +98,7 @@ export default function AppRoutes() {
         <Route path="/conflicts" element={<Conflicts />} />
         <Route path="/conflicts/:id" element={<ConflictDetails />} />
         <Route path="/search-resource" element={<SearchResourcePage />} />
+        <Route path="/resource-sharing" element={<ResourceSharing />} />
       </Route>
     </Routes>
   )

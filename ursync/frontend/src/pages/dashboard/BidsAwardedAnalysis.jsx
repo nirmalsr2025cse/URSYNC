@@ -143,6 +143,11 @@ export default function BidsAwardedAnalysis({ fyFrom, fyTo }) {
             datasets={chartConfig.datasets}
             stacked={chartConfig.stacked}
             yAxisLabel={chartConfig.yAxisLabel}
+            richTooltip={{
+              titlePrefix: activeSubTab === 'tenders' ? 'For the Fin Year' : '',
+              leftHeader: 'Series',
+              rightHeader: 'Number',
+            }}
           />
         )}
       </div>

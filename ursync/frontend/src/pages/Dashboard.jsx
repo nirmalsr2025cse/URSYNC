@@ -24,6 +24,7 @@ import ValueWiseAnalysis from './dashboard/ValueWiseAnalysis'
 import NumberValueWiseAnalysis from './dashboard/NumberValueWiseAnalysis'
 import PercentageWiseAnalysis from './dashboard/PercentageWiseAnalysis'
 import BidsAwardedAnalysis from './dashboard/BidsAwardedAnalysis'
+import BidderWiseAnalysis from './dashboard/BidderWiseAnalysis'
 import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS } from '../data/dashboardMockData'
 
 const TOP_NAV_ITEMS = [
@@ -42,6 +43,12 @@ const TENDER_ANALYSIS_METRIC_COMPONENTS = {
   numberValueWise: NumberValueWiseAnalysis,
   percentageWise: PercentageWiseAnalysis,
   bidsAwarded: BidsAwardedAnalysis,
+}
+
+// Groups with no sidebar sub-metrics (just the FY filter) render straight
+// off activeGroup instead of going through TENDER_ANALYSIS_METRIC_COMPONENTS.
+const GROUP_COMPONENTS = {
+  bidderAnalysis: BidderWiseAnalysis,
 }
 
 export default function Dashboard() {
@@ -68,8 +75,10 @@ export default function Dashboard() {
   }
 
   const ActiveMetricComponent =
-    activeTopNav === 'descriptive' && activeGroup === 'tenderAnalysis'
-      ? TENDER_ANALYSIS_METRIC_COMPONENTS[activeMetric]
+    activeTopNav === 'descriptive'
+      ? (activeGroup === 'tenderAnalysis'
+          ? TENDER_ANALYSIS_METRIC_COMPONENTS[activeMetric]
+          : GROUP_COMPONENTS[activeGroup])
       : null
 
   function getComingSoonTitle() {
