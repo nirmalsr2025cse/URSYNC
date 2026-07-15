@@ -25,6 +25,9 @@ import NumberValueWiseAnalysis from './dashboard/NumberValueWiseAnalysis'
 import PercentageWiseAnalysis from './dashboard/PercentageWiseAnalysis'
 import BidsAwardedAnalysis from './dashboard/BidsAwardedAnalysis'
 import BidderWiseAnalysis from './dashboard/BidderWiseAnalysis'
+import BidAnalysis from './dashboard/BidAnalysis'
+import NumberWiseTop10Analysis from './dashboard/NumberWiseTop10Analysis'
+import ValueWiseTop10Analysis from './dashboard/ValueWiseTop10Analysis'
 import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS } from '../data/dashboardMockData'
 
 const TOP_NAV_ITEMS = [
@@ -34,21 +37,28 @@ const TOP_NAV_ITEMS = [
   { id: 'monthly', label: 'Monthly Report' },
 ]
 
-// Maps a Tender Analysis metric id to the component that renders it.
-// Metrics not listed here (valueWise's siblings, other groups) fall back
-// to the ComingSoonPanel.
-const TENDER_ANALYSIS_METRIC_COMPONENTS = {
-  numberWise: NumberWiseAnalysis,
-  valueWise: ValueWiseAnalysis,
-  numberValueWise: NumberValueWiseAnalysis,
-  percentageWise: PercentageWiseAnalysis,
-  bidsAwarded: BidsAwardedAnalysis,
+// Maps [group][metric] -> component, for any sidebar group that has radio
+// sub-metrics (Tender Analysis, Top 10 Analysis, ...). Groups/metrics not
+// listed here fall back to the ComingSoonPanel.
+const GROUP_METRIC_COMPONENTS = {
+  tenderAnalysis: {
+    numberWise: NumberWiseAnalysis,
+    valueWise: ValueWiseAnalysis,
+    numberValueWise: NumberValueWiseAnalysis,
+    percentageWise: PercentageWiseAnalysis,
+    bidsAwarded: BidsAwardedAnalysis,
+  },
+  top10Analysis: {
+    numberWise: NumberWiseTop10Analysis,
+    valueWise: ValueWiseTop10Analysis,
+  },
 }
 
 // Groups with no sidebar sub-metrics (just the FY filter) render straight
-// off activeGroup instead of going through TENDER_ANALYSIS_METRIC_COMPONENTS.
+// off activeGroup instead of going through GROUP_METRIC_COMPONENTS.
 const GROUP_COMPONENTS = {
   bidderAnalysis: BidderWiseAnalysis,
+  bidAnalysis: BidAnalysis,
 }
 
 export default function Dashboard() {
@@ -66,7 +76,11 @@ export default function Dashboard() {
 
   function handleGroupChange(groupId) {
     setActiveGroup(groupId)
-    setActiveMetric((prev) => (groupId === 'tenderAnalysis' ? prev || 'numberWise' : null))
+    setActiveMetric((prev) => {
+      const metrics = GROUP_METRIC_COMPONENTS[groupId]
+      if (!metrics) return null
+      return metrics[prev] ? prev : Object.keys(metrics)[0]
+    })
   }
 
   function handleMetricChange(groupId, metricId) {
@@ -76,9 +90,7 @@ export default function Dashboard() {
 
   const ActiveMetricComponent =
     activeTopNav === 'descriptive'
-      ? (activeGroup === 'tenderAnalysis'
-          ? TENDER_ANALYSIS_METRIC_COMPONENTS[activeMetric]
-          : GROUP_COMPONENTS[activeGroup])
+      ? (GROUP_METRIC_COMPONENTS[activeGroup]?.[activeMetric] || GROUP_COMPONENTS[activeGroup])
       : null
 
   function getComingSoonTitle() {

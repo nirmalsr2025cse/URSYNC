@@ -2,7 +2,8 @@
 // Generic "Show N entries / Search / sortable columns" table, matching the
 // reference mock's Organization Wise view. Reusable for any future
 // table-only Dashboard sub-tab — just pass different columns/rows.
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import Pagination from '../Pagination'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
@@ -11,6 +12,7 @@ export default function DataTable({ columns, rows, searchKeys }) {
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState(columns[0]?.key)
   const [sortDir, setSortDir] = useState('asc')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const filtered = useMemo(() => {
     if (!search.trim()) return rows
@@ -37,7 +39,17 @@ export default function DataTable({ columns, rows, searchKeys }) {
     return copy
   }, [filtered, sortKey, sortDir])
 
-  const visible = sorted.slice(0, pageSize)
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
+
+  // Whenever the search term, page size, sort, or the underlying rows
+  // change, the previous currentPage may no longer be valid (e.g. it was
+  // page 4 of a 6-page list and a search just narrowed it to 2 pages) —
+  // reset back to page 1 rather than showing an out-of-range blank page.
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, pageSize, sortKey, sortDir, rows])
+
+  const visible = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   function toggleSort(key) {
     if (sortKey === key) {
@@ -122,9 +134,16 @@ export default function DataTable({ columns, rows, searchKeys }) {
       </div>
 
       <p className="text-[11px] text-tn-muted">
-        Showing {visible.length} of {filtered.length} entries
+        Showing {visible.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+        {' '}to {(currentPage - 1) * pageSize + visible.length} of {filtered.length} entries
         {filtered.length !== rows.length ? ` (filtered from ${rows.length} total)` : ''}
       </p>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+      />
     </div>
   )
 }

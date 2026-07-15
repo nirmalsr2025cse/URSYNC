@@ -236,6 +236,12 @@ export const BIDS_AWARDED_ORGANIZATIONS = [
   { sNo: 8, name: 'Highways Department', noOfTenders: 1980, valOfTenders: 245310.80, bidsAwardedCount: 118, bidsAwardedValue: 15420.75 },
   { sNo: 9, name: 'Tamil Nadu Medical Services Corporation', noOfTenders: 410, valOfTenders: 9870.42, bidsAwardedCount: 31, bidsAwardedValue: 890.22 },
   { sNo: 10, name: 'Chennai Metropolitan Water Supply and Sewerage Board', noOfTenders: 305, valOfTenders: 14260.90, bidsAwardedCount: 28, bidsAwardedValue: 1120.35 },
+  { sNo: 11, name: 'Road Department', noOfTenders: 305, valOfTenders: 14260.90, bidsAwardedCount: 28, bidsAwardedValue: 1120.35 },
+  { sNo: 12, name: 'PWD', noOfTenders: 305, valOfTenders: 14260.90, bidsAwardedCount: 28, bidsAwardedValue: 1120.35 },
+  { sNo: 13, name: 'Chennai Metropolitan Water Supply', noOfTenders: 305, valOfTenders: 14260.90, bidsAwardedCount: 28, bidsAwardedValue: 1120.35 },
+  { sNo: 14, name: 'Sewerage Board', noOfTenders: 305, valOfTenders: 14260.90, bidsAwardedCount: 28, bidsAwardedValue: 1120.35 },
+  { sNo: 15, name: 'Chennai Metropolitan Water Supply and Sewerage Board', noOfTenders: 305, valOfTenders: 14260.90, bidsAwardedCount: 28, bidsAwardedValue: 1120.35 },
+  { sNo: 16, name: 'Chennai Metropolitan Water Supply and Sewerage Board', noOfTenders: 305, valOfTenders: 14260.90, bidsAwardedCount: 28, bidsAwardedValue: 1120.35 },
 ]
 
 // ── BI1: MSME vs Non-MSME bidders, by financial year ────────────────────────
@@ -266,3 +272,87 @@ export const BIDDER_MSME_BY_FY = [
   { fy: '2025-26', msme: 0, nonMsme: 7197 },
   { fy: '2026-27', msme: 0, nonMsme: 596 },
 ].map((r) => ({ ...r, total: r.msme + r.nonMsme }))
+
+// ── B1: Bids Analysis — No. of Tenders vs No. of Bids received, by FY ──────
+// Last 6 years match the reference mock; earlier years reuse
+// TENDERS_PUBLISHED_BY_FY's counts for the tenders side, with bids scaled
+// up ~1.7x (roughly the ratio seen across the mock's recent years).
+const BIDS_RECEIVED_OVERRIDES = {
+  '2021-22': { tenders: 28896, bids: 56702 },
+  '2022-23': { tenders: 81780, bids: 132521 },
+  '2023-24': { tenders: 174784, bids: 293932 },
+  '2024-25': { tenders: 95047, bids: 176554 },
+  '2025-26': { tenders: 165088, bids: 283534 },
+  '2026-27': { tenders: 10763, bids: 16564 },
+}
+export const BIDS_RECEIVED_BY_FY = TENDERS_PUBLISHED_BY_FY.map(({ fy, count }) => {
+  const override = BIDS_RECEIVED_OVERRIDES[fy]
+  if (override) return { fy, ...override }
+  return { fy, tenders: count, bids: Math.round(count * 1.7) }
+})
+
+// ── B2–B4: Bids Analysis — by tender category (same split ratios as TR2) ───
+function bidsReceivedByCategory(categoryKey) {
+  const ratio = CATEGORY_SPLIT[categoryKey]
+  return BIDS_RECEIVED_BY_FY.map(({ fy, tenders, bids }) => ({
+    fy,
+    tenders: Math.round(tenders * ratio),
+    bids: Math.round(bids * ratio),
+  }))
+}
+export const BIDS_RECEIVED_GOODS = bidsReceivedByCategory('Goods')
+export const BIDS_RECEIVED_SERVICES = bidsReceivedByCategory('Services')
+export const BIDS_RECEIVED_WORKS = bidsReceivedByCategory('Works')
+
+// ── Top 10 Analysis — Tender Publishing Entities (140 total) ────────────────
+// The first 13 rows are the entities visible in the reference mock — figures
+// match exactly (same set, whether sorted by tenders or by value). The rest
+// is a deterministically-generated tail (mulberry32 seeded PRNG, not
+// Math.random) so page reloads don't reshuffle the numbers, filling the
+// list out to the "Top 140" the reference header shows.
+const TOP10_KNOWN_ENTITIES = [
+  { name: 'Rural Development and Panchayat Raj Department', tenders: 72604, value: 990363.51, bids: 108684 },
+  { name: 'MAWS', tenders: 27575, value: 1767926.70, bids: 32155 },
+  { name: 'Directorate of Town Panchayats', tenders: 23077, value: 693846.81, bids: 31257 },
+  { name: 'SE- (RD),TN', tenders: 11692, value: 415866.10, bids: 11262 },
+  { name: 'TNEB Limited', tenders: 11496, value: 3998212.04, bids: 25601 },
+  { name: 'Corporation of Chennai', tenders: 8938, value: 561487.86, bids: 20172 },
+  { name: 'Department of Sugar', tenders: 3622, value: 80956.76, bids: 13081 },
+  { name: 'Highways', tenders: 2418, value: 1294151.49, bids: 7765 },
+  { name: 'PWD', tenders: 2197, value: 518498.43, bids: 5319 },
+  { name: 'Directorate of Technical Education', tenders: 1775, value: 410184.56, bids: 5689 },
+  { name: 'CMWSS Board', tenders: 243, value: 1059468.94, bids: 1058 },
+  { name: 'Tamil Nadu Civil Supplies Corporation', tenders: 829, value: 900614.39, bids: 2241 },
+  { name: 'TWAD', tenders: 159, value: 490126.62, bids: 364 },
+]
+
+function mulberry32(seed) {
+  return function () {
+    seed |= 0
+    seed = (seed + 0x6D2B79F5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const TOP10_NAME_PREFIXES = ['District Collectorate', 'Municipal Corporation', 'Panchayat Union', 'Directorate of', 'Department of', 'Board of', 'Corporation of']
+const TOP10_NAME_SUFFIXES = ['Chennai', 'Coimbatore', 'Madurai', 'Trichy', 'Salem', 'Tirunelveli', 'Vellore', 'Erode', 'Thanjavur', 'Dindigul', 'Kanchipuram', 'Cuddalore', 'Karur', 'Namakkal', 'Sivaganga', 'Theni', 'Nagercoil', 'Krishnagiri', 'Ariyalur', 'Perambalur']
+
+function generateTop10Tail(count, seed) {
+  const rand = mulberry32(seed)
+  const entries = []
+  for (let i = 0; i < count; i++) {
+    const prefix = TOP10_NAME_PREFIXES[Math.floor(rand() * TOP10_NAME_PREFIXES.length)]
+    const suffix = TOP10_NAME_SUFFIXES[Math.floor(rand() * TOP10_NAME_SUFFIXES.length)]
+    const scale = 1 - i / (count + 20) // trends downward with rank
+    const tenders = Math.max(5, Math.round(150 * scale * (0.4 + rand() * 0.6)))
+    const value = Math.round(tenders * (20 + rand() * 60) * 100) / 100
+    const bids = Math.round(tenders * (1.2 + rand() * 1.8))
+    entries.push({ name: `${prefix} ${suffix} ${i + 1}`, tenders, value, bids })
+  }
+  return entries
+}
+
+export const TOP10_PUBLISHING_ENTITIES = [...TOP10_KNOWN_ENTITIES, ...generateTop10Tail(127, 42)]
+  .map((e, i) => ({ sNo: i + 1, ...e }))

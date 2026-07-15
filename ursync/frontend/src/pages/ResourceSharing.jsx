@@ -12,6 +12,8 @@ const TABS = [
   { id: 'Available',     label: 'Available'     },
   { id: 'Not-Available', label: 'Not Available' },
   { id: 'Request',       label: 'Requests'      },
+  { id: 'Approved',      label: 'Approved'      },
+  { id: 'Rejected',      label: 'Rejected'      },
 ]
 
 const URGENCY_STYLE = {
@@ -102,17 +104,16 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
 
         {/* Modal Body */}
         <div className="p-6 space-y-5">
-          {/* Basic Info */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {[
               { label: 'Department', value: resource.department },
-              { label: 'District', value: resource.district },
-              { label: 'Quantity', value: `${resource.quantity} ${resource.unit}` },
-              { label: 'Condition', value: resource.condition },
+              { label: 'District',   value: resource.district   },
+              { label: 'Quantity',   value: `${resource.quantity} ${resource.unit}` },
+              { label: 'Condition',  value: resource.condition  },
               ...(isAvailable
                 ? [
                     { label: 'Available From', value: new Date(resource.availableFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
-                    { label: 'Available To',   value: new Date(resource.availableTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
+                    { label: 'Available To',   value: new Date(resource.availableTo).toLocaleDateString('en-IN',   { day: '2-digit', month: 'short', year: 'numeric' }) },
                   ]
                 : [
                     { label: 'Expected Availability', value: new Date(resource.expectedAvailability).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
@@ -125,28 +126,20 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
               </div>
             ))}
           </div>
-
-          {/* Description */}
           <div className="bg-tn-cream rounded-xl p-4 border border-tn-border">
             <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide mb-1.5">Description</p>
             <p className="text-sm text-tn-navy leading-relaxed">{resource.description}</p>
           </div>
-
-          {/* Specifications */}
           <div className="bg-tn-cream rounded-xl p-4 border border-tn-border">
             <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide mb-1.5">Specifications</p>
             <p className="text-sm text-tn-navy leading-relaxed">{resource.specifications}</p>
           </div>
-
-          {/* Reason (if unavailable) */}
           {!isAvailable && resource.reason && (
             <div className="bg-red-50 rounded-xl p-4 border border-red-100">
               <p className="text-[10px] font-semibold text-red-600 uppercase tracking-wide mb-1.5">Reason for Unavailability</p>
               <p className="text-sm text-red-800 leading-relaxed">{resource.reason}</p>
             </div>
           )}
-
-          {/* Contact & Location */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl border border-tn-border p-4">
               <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide mb-2">Contact Person</p>
@@ -163,10 +156,7 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
 
         {/* Modal Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-tn-border bg-tn-cream rounded-b-2xl">
-          <button
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors"
-          >
+          <button onClick={onClose} className="px-5 py-2 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors">
             Close
           </button>
           {onEdit && (
@@ -206,7 +196,6 @@ function EditResourceModal({ resource, onClose, onSave }) {
         className="bg-white rounded-2xl shadow-2xl border border-tn-border w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-tn-border">
           <div>
             <h2 className="text-lg font-extrabold text-tn-navy">Edit Resource</h2>
@@ -218,8 +207,6 @@ function EditResourceModal({ resource, onClose, onSave }) {
             </svg>
           </button>
         </div>
-
-        {/* Body */}
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -291,8 +278,6 @@ function EditResourceModal({ resource, onClose, onSave }) {
             </div>
           </div>
         </div>
-
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-tn-border bg-tn-cream rounded-b-2xl">
           <button onClick={onClose} className="px-5 py-2 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors">
             Cancel
@@ -317,7 +302,6 @@ function RequestDetailModal({ request, onClose, onApprove, onReject }) {
         className="bg-white rounded-2xl shadow-2xl border border-tn-border w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-tn-border">
           <div>
             <h2 className="text-lg font-extrabold text-tn-navy">Request Details</h2>
@@ -334,19 +318,16 @@ function RequestDetailModal({ request, onClose, onApprove, onReject }) {
             </button>
           </div>
         </div>
-
-        {/* Body */}
         <div className="p-6 space-y-5">
-          {/* Resource Info */}
           <div className="bg-tn-cream rounded-xl p-4 border border-tn-border">
             <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide mb-3">Requested Resource</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
                 { label: 'Resource Name', value: request.resourceName },
-                { label: 'Resource ID',   value: request.resourceId },
+                { label: 'Resource ID',   value: request.resourceId   },
                 { label: 'Quantity',      value: `${request.requiredQuantity} unit(s)` },
                 { label: 'Required From', value: new Date(request.requiredFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
-                { label: 'Required To',   value: new Date(request.requiredTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
+                { label: 'Required To',   value: new Date(request.requiredTo).toLocaleDateString('en-IN',   { day: '2-digit', month: 'short', year: 'numeric' }) },
                 { label: 'Urgency',       value: request.urgency },
               ].map(({ label, value }) => (
                 <div key={label}>
@@ -356,14 +337,10 @@ function RequestDetailModal({ request, onClose, onApprove, onReject }) {
               ))}
             </div>
           </div>
-
-          {/* Purpose */}
           <div className="bg-tn-cream rounded-xl p-4 border border-tn-border">
             <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide mb-1.5">Purpose of Request</p>
             <p className="text-sm text-tn-navy leading-relaxed">{request.purpose}</p>
           </div>
-
-          {/* User Details */}
           <div>
             <p className="text-xs font-bold text-tn-navy mb-3 pb-2 border-b border-tn-border">Requester Information</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -386,8 +363,6 @@ function RequestDetailModal({ request, onClose, onApprove, onReject }) {
               </div>
             </div>
           </div>
-
-          {/* Requested Date */}
           <div className="flex items-center gap-2 text-xs text-tn-muted">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -395,8 +370,6 @@ function RequestDetailModal({ request, onClose, onApprove, onReject }) {
             Requested on {new Date(request.requestedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
           </div>
         </div>
-
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-tn-border bg-tn-cream rounded-b-2xl">
           <button onClick={onClose} className="px-5 py-2 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors">
             Close
@@ -423,17 +396,22 @@ function RequestDetailModal({ request, onClose, onApprove, onReject }) {
   )
 }
 
-/* ─────────────────────── ResourceCard ─────────────────────── */
+/* ─────────────────────── ResourceCard ─────────────────────────────
+   Available / Not-Available tabs:
+   SWAPPED (per latest request) vs the previous version:
+     First  button  → Edit   (blue, primary, opens edit modal)
+     Second button  → View   (white/border, opens detail modal)
+   i.e. label, color, position AND the handler each button calls have
+   all been swapped relative to the previous ResourceCard.
+──────────────────────────────────────────────────────────────────── */
 function ResourceCard({ resource, onView, onEdit }) {
   const isAvailable = resource.status === 'Available'
 
   return (
     <div className="bg-white rounded-2xl border border-tn-border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden">
-      {/* Card Top color strip */}
       <div className={['h-1.5 w-full', isAvailable ? 'bg-emerald-400' : 'bg-red-400'].join(' ')} />
 
       <div className="p-5 flex flex-col flex-1">
-        {/* Header row */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex items-center gap-2.5">
             <div className={[
@@ -455,7 +433,6 @@ function ResourceCard({ resource, onView, onEdit }) {
           </span>
         </div>
 
-        {/* Meta grid */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
           {[
             { label: 'Dept',      value: resource.department },
@@ -470,7 +447,6 @@ function ResourceCard({ resource, onView, onEdit }) {
           ))}
         </div>
 
-        {/* Availability window */}
         <div className="flex items-center gap-1.5 text-[10px] text-tn-muted bg-tn-cream px-3 py-1.5 rounded-lg border border-tn-border mb-4">
           <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -481,25 +457,26 @@ function ResourceCard({ resource, onView, onEdit }) {
           }
         </div>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Action Buttons */}
+        {/* SWAPPED: Edit (blue, primary) first, then View (white) second */}
         <div className="flex items-center gap-2 mt-auto pt-3 border-t border-tn-border">
+          {/* Edit — now primary blue, first position */}
           <button
             id={`edit-${resource.id}`}
             onClick={() => onEdit(resource)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-tn-border text-tn-navy bg-white hover:bg-tn-light transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
             Edit
           </button>
+          {/* View — now secondary white/border, second position */}
           <button
             id={`view-${resource.id}`}
             onClick={() => onView(resource)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-tn-border text-tn-navy bg-white hover:bg-tn-light transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -513,8 +490,13 @@ function ResourceCard({ resource, onView, onEdit }) {
   )
 }
 
-/* ─────────────────────── RequestCard ─────────────────────── */
-function RequestCard({ request, onView, onApprove, onReject }) {
+/* ─────────────────────── RequestCard ───────────────────────────────
+   Buttons vary by which tab is active:
+     Request  (Pending)  tab → View + Approve + Reject
+     Approved tab             → View + Reject   (no Approve — already approved)
+     Rejected tab              → View only       (already rejected, nothing to do)
+──────────────────────────────────────────────────────────────────── */
+function RequestCard({ request, onView, onApprove, onReject, activeTab }) {
   return (
     <div
       className="bg-white rounded-2xl border border-tn-border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden cursor-pointer"
@@ -524,7 +506,7 @@ function RequestCard({ request, onView, onApprove, onReject }) {
       <div className={[
         'h-1.5 w-full',
         request.status === 'Approved' ? 'bg-emerald-400' :
-        request.status === 'Rejected' ? 'bg-red-400' : 'bg-amber-400',
+        request.status === 'Rejected' ? 'bg-red-400'     : 'bg-amber-400',
       ].join(' ')} />
 
       <div className="p-5 flex flex-col flex-1">
@@ -542,10 +524,10 @@ function RequestCard({ request, onView, onApprove, onReject }) {
         {/* Meta */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
           {[
-            { label: 'Requested By', value: request.requestedBy   },
+            { label: 'Requested By', value: request.requestedBy },
             { label: 'Quantity',     value: `${request.requiredQuantity} unit(s)` },
             { label: 'From',         value: new Date(request.requiredFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
-            { label: 'To',           value: new Date(request.requiredTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
+            { label: 'To',           value: new Date(request.requiredTo).toLocaleDateString('en-IN',   { day: '2-digit', month: 'short', year: 'numeric' }) },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[9px] font-semibold text-tn-muted uppercase tracking-wide">{label}</p>
@@ -566,8 +548,10 @@ function RequestCard({ request, onView, onApprove, onReject }) {
 
         <div className="flex-1" />
 
-        {/* Action Buttons */}
+        {/* ── Action buttons — vary by active tab ── */}
         <div className="flex items-center gap-2 mt-auto pt-3 border-t border-tn-border" onClick={e => e.stopPropagation()}>
+
+          {/* View — always present on every tab (Request / Approved / Rejected) */}
           <button
             id={`view-req-${request.id}`}
             onClick={() => onView(request)}
@@ -579,28 +563,35 @@ function RequestCard({ request, onView, onApprove, onReject }) {
             </svg>
             View
           </button>
-          <button
-            id={`approve-req-${request.id}`}
-            onClick={() => onApprove(request.id)}
-            disabled={request.status !== 'Pending'}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Approve
-          </button>
-          <button
-            id={`reject-req-${request.id}`}
-            onClick={() => onReject(request.id)}
-            disabled={request.status !== 'Pending'}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Reject
-          </button>
+
+          {/* Approve — only on the Requests (Pending) tab */}
+          {activeTab === 'Request' && (
+            <button
+              id={`approve-req-${request.id}`}
+              onClick={() => onApprove(request.id)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Approve
+            </button>
+          )}
+
+          {/* Reject — on Requests (Pending) tab AND Approved tab; hidden on Rejected tab */}
+          {(activeTab === 'Request' || activeTab === 'Approved') && (
+            <button
+              id={`reject-req-${request.id}`}
+              onClick={() => onReject(request.id)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Reject
+            </button>
+          )}
+
         </div>
       </div>
     </div>
@@ -611,25 +602,21 @@ function RequestCard({ request, onView, onApprove, onReject }) {
 const PAGE_SIZE = 6
 
 export default function ResourceSharing() {
-  const [activeTab, setActiveTab]   = useState('Available')
-  const [animating, setAnimating]   = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [search, setSearch]         = useState('')
+  const [activeTab,     setActiveTab]     = useState('Available')
+  const [animating,     setAnimating]     = useState(false)
+  const [currentPage,   setCurrentPage]   = useState(1)
+  const [search,        setSearch]        = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
-  const [searching, setSearching]   = useState(false)
+  const [searching,     setSearching]     = useState(false)
 
-  // Resource data with local state for edits
-  const [availableList, setAvailableList] = useState(AVAILABLE_RESOURCES)
+  const [availableList,   setAvailableList]   = useState(AVAILABLE_RESOURCES)
   const [unavailableList, setUnavailableList] = useState(UNAVAILABLE_RESOURCES)
-  const [requestList, setRequestList]     = useState(RESOURCE_REQUESTS)
+  const [requestList,     setRequestList]     = useState(RESOURCE_REQUESTS)
 
-  // Modals
-  const [viewResource, setViewResource]   = useState(null)
-  const [editResource, setEditResource]   = useState(null)
-  const [viewRequest, setViewRequest]     = useState(null)
-
-  // Toast
-  const [toast, setToast] = useState(null)
+  const [viewResource, setViewResource] = useState(null)
+  const [editResource, setEditResource] = useState(null)
+  const [viewRequest,  setViewRequest]  = useState(null)
+  const [toast,        setToast]        = useState(null)
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
@@ -675,16 +662,10 @@ export default function ResourceSharing() {
     showToast('Request Rejected', 'error')
   }
 
-  // Counts for tab badges
-  const counts = useMemo(() => ({
-    'Available':     availableList.length,
-    'Not-Available': unavailableList.length,
-    'Request':       requestList.filter(r => r.status === 'Pending').length,
-  }), [availableList, unavailableList, requestList])
-
   // Filter logic
   const filtered = useMemo(() => {
     const q = appliedSearch.toLowerCase().trim()
+
     if (activeTab === 'Available') {
       return availableList.filter(r =>
         !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
@@ -697,11 +678,15 @@ export default function ResourceSharing() {
         r.department.toLowerCase().includes(q) || r.district.toLowerCase().includes(q)
       )
     }
-    // Request tab
-    return requestList.filter(r =>
-      !q || r.resourceName.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
-      r.requestedBy.toLowerCase().includes(q) || r.user.name.toLowerCase().includes(q)
-    )
+    // Request / Approved / Rejected tabs all use requestList, filtered by status
+    const statusMap = { Request: 'Pending', Approved: 'Approved', Rejected: 'Rejected' }
+    const statusFilter = statusMap[activeTab]
+    return requestList
+      .filter(r => r.status === statusFilter)
+      .filter(r =>
+        !q || r.resourceName.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
+        r.requestedBy.toLowerCase().includes(q) || r.user.name.toLowerCase().includes(q)
+      )
   }, [activeTab, appliedSearch, availableList, unavailableList, requestList])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -710,10 +695,15 @@ export default function ResourceSharing() {
     return filtered.slice(start, start + PAGE_SIZE)
   }, [filtered, currentPage])
 
+  const isResourceTab = activeTab === 'Available' || activeTab === 'Not-Available'
+  const isRequestTab  = activeTab === 'Request' || activeTab === 'Approved' || activeTab === 'Rejected'
+
   const EMPTY_TEXT = {
     'Available':     'No available resources found.',
     'Not-Available': 'No unavailable resources found.',
-    'Request':       'No resource requests found.',
+    'Request':       'No pending requests found.',
+    'Approved':      'No approved requests found.',
+    'Rejected':      'No rejected requests found.',
   }
 
   return (
@@ -748,9 +738,7 @@ export default function ResourceSharing() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="text-xl font-extrabold text-tn-navy">Resource Sharing</h1>
-          <p className="text-sm text-tn-muted mt-0.5">
-            Manage and share government resources across departments.
-          </p>
+          <p className="text-sm text-tn-muted mt-0.5">Manage and share government resources across departments.</p>
         </div>
         <nav className="flex items-center gap-1.5 text-xs text-tn-muted">
           <span>Home</span>
@@ -774,9 +762,9 @@ export default function ResourceSharing() {
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder={
-                activeTab === 'Request'
-                  ? 'Search by request ID, resource, requester…'
-                  : 'Search by name, ID, department, district…'
+                isResourceTab
+                  ? 'Search by name, ID, department, district…'
+                  : 'Search by request ID, resource, requester…'
               }
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-tn-border rounded-xl bg-white text-tn-navy placeholder-tn-muted focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue transition-all"
             />
@@ -800,35 +788,31 @@ export default function ResourceSharing() {
         </div>
       </div>
 
-      {/* Tab Bar */}
+      {/* Tab Bar — white rounded-full outer pill; active tab is a solid
+          navy filled pill, inactive tabs are plain blue text with no fill,
+          matching the reference "Cancelled / Retendered" style exactly. */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 shadow-sm gap-1 min-w-max">
+        <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 shadow-sm flex-wrap gap-1">
           {TABS.map(tab => {
             const isActive = activeTab === tab.id
-            const count = counts[tab.id]
             return (
               <button
                 key={tab.id}
-                id={`tab-${tab.id.toLowerCase().replace(' ', '-')}`}
                 onClick={() => switchTab(tab.id)}
                 className={[
-                  'flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200',
-                  isActive ? 'bg-tn-navy text-white shadow-sm' : 'text-tn-blue border border-transparent bg-transparent hover:bg-tn-light',
+                  'px-6 py-2 rounded-full text-sm font-semibold transition-all duration-200 gsp',
+                  isActive
+                    ? 'bg-tn-navy text-white shadow-sm'
+                    : 'text-tn-blue border border-tn-border bg-transparent hover:bg-tn-light',
                 ].join(' ')}
               >
                 {tab.label}
-                <span className={[
-                  'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                  isActive ? 'bg-white/20 text-white' : 'bg-tn-light text-tn-navy',
-                ].join(' ')}>
-                  {count}
-                </span>
               </button>
             )
           })}
         </div>
         <span className="text-xs font-medium text-tn-muted bg-white border border-tn-border px-3 py-1.5 rounded-full">
-          {filtered.length} {activeTab === 'Request' ? 'request' : 'resource'}{filtered.length !== 1 ? 's' : ''}
+          {filtered.length} {isResourceTab ? 'resource' : 'request'}{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -846,22 +830,23 @@ export default function ResourceSharing() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
-            {activeTab === 'Request'
-              ? paginated.map(req => (
-                  <RequestCard
-                    key={req.id}
-                    request={req}
-                    onView={setViewRequest}
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                  />
-                ))
-              : paginated.map(res => (
+            {isResourceTab
+              ? paginated.map(res => (
                   <ResourceCard
                     key={res.id}
                     resource={res}
                     onView={setViewResource}
                     onEdit={setEditResource}
+                  />
+                ))
+              : paginated.map(req => (
+                  <RequestCard
+                    key={req.id}
+                    request={req}
+                    activeTab={activeTab}
+                    onView={setViewRequest}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
                   />
                 ))
             }
