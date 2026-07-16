@@ -98,10 +98,43 @@ export function externalTooltipHandler(context, config = {}) {
       </div>`
   }
 
-  const { offsetLeft: canvasX, offsetTop: canvasY } = chart.canvas
   el.style.opacity = '1'
-  el.style.left = canvasX + tooltip.caretX + 'px'
-  el.style.top = canvasY + tooltip.caretY + 'px'
+  el.style.left = '0px'
+  el.style.top = '0px'
+
+  const { offsetLeft: canvasX, offsetTop: canvasY, offsetWidth: canvasWidth } = chart.canvas
+  const canvasRect = chart.canvas.getBoundingClientRect()
+
+  let left = canvasX + tooltip.caretX
+  let top = canvasY + tooltip.caretY
+
+  // Measured only after innerHTML is set, so this reflects the actual
+  // rendered size (which varies with how many rows the table has).
+  const tooltipWidth = el.offsetWidth
+  const tooltipHeight = el.offsetHeight
+
+  // Stay inside the chart's own canvas first...
+  if (left + tooltipWidth > canvasX + canvasWidth) left = canvasX + canvasWidth - tooltipWidth
+  if (left < canvasX) left = canvasX
+
+  // ...then clamp against the viewport as a hard backstop — this is the
+  // part that actually fixes narrow phone screens, where the canvas can
+  // be nearly as wide as the viewport itself.
+  const viewportLeft = canvasRect.left + (left - canvasX)
+  const overflowRight = viewportLeft + tooltipWidth - window.innerWidth
+  if (overflowRight > 0) left -= overflowRight + 8
+  const overflowLeft = canvasRect.left + (left - canvasX)
+  if (overflowLeft < 0) left -= overflowLeft - 8
+
+  // If it would run off the bottom of the screen, flip it above the
+  // hovered point instead of clipping.
+  const viewportTop = canvasRect.top + (top - canvasY)
+  if (viewportTop + tooltipHeight > window.innerHeight) {
+    top = canvasY + tooltip.caretY - tooltipHeight - 12
+  }
+
+  el.style.left = left + 'px'
+  el.style.top = top + 'px'
 }
 
 export function removeRichTooltipEls(canvasEl) {

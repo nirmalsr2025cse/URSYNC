@@ -356,3 +356,131 @@ function generateTop10Tail(count, seed) {
 
 export const TOP10_PUBLISHING_ENTITIES = [...TOP10_KNOWN_ENTITIES, ...generateTop10Tail(127, 42)]
   .map((e, i) => ({ sNo: i + 1, ...e }))
+
+// ── Last 12 Months Trend (L1/L2/L3 sidebar pages) ───────────────────────────
+// Unlike every other export above (fixed by-financial-year arrays), this is
+// generated from the *actual current date* each time it's called — the
+// visible window is always "the 12 months ending with the current month"
+// and rolls forward automatically once a new month starts, with no mock
+// data to edit by hand. Numbers are deterministic per calendar month
+// (seeded off year*12+monthIndex, reusing the mulberry32 PRNG already
+// defined above for the Top 10 tail) so re-rendering/reloading never
+// reshuffles a given month's values — only real time passing changes what
+// the window shows.
+const TREND_MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function generateTrendMonthRow(year, monthIndex) {
+  const seedKey = year * 12 + monthIndex
+  const rand = mulberry32(seedKey * 7919 + 13)
+
+  const wave = Math.sin(seedKey / 2.3) // slow oscillation across months
+  const noise = (rand() - 0.5)
+
+  const tenders = Math.max(50, Math.round(9000 + wave * 9000 + noise * 4000))
+  const valueCr = Math.round((tenders * (1.1 + rand() * 0.6)) * 100) / 100
+  const bids = Math.round(tenders * (1.6 + rand() * 0.9))
+  const entities = Math.max(10, Math.round(900 + wave * 700 + noise * 500))
+
+  return {
+    label: `${TREND_MONTH_LABELS[monthIndex]}-${year}`,
+    year,
+    monthIndex,
+    tenders,
+    value: valueCr,
+    bids,
+    entities,
+  }
+}
+
+/**
+ * Returns the 12 months ending with the current calendar month (oldest
+ * first), each shaped as:
+ *   { label: 'Jul-2026', year, monthIndex, tenders, value, bids, entities }
+ * Called fresh (no caching) so it always reflects "today" — once a new
+ * month begins, the window includes it and drops the oldest month
+ * automatically, with no code or data changes required.
+ */
+export function getLastTwelveMonths(referenceDate = new Date()) {
+  const rows = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(referenceDate.getFullYear(), referenceDate.getMonth() - i, 1)
+    rows.push(generateTrendMonthRow(d.getFullYear(), d.getMonth()))
+  }
+  return rows
+}
+
+// ── Year Over Year (Y1/Y2 sidebar page) ──────────────────────────────────────
+// Financial-year-ordered (Apr → Mar) monthly tender counts, reusing the same
+// generateTrendMonthRow() helper as getLastTwelveMonths() above so numbers
+// stay consistent across pages. Months that haven't happened yet in the
+// *real* calendar (relative to referenceDate) come back as 0, matching the
+// reference mock's "current partial year" look — e.g. selecting the FY
+// that's still in progress shows real data through the current month and
+// zero afterward, with no manual updates needed as time passes.
+const FY_MONTH_ORDER = [
+  { name: 'Apr', jsMonth: 3 }, { name: 'May', jsMonth: 4 }, { name: 'Jun', jsMonth: 5 },
+  { name: 'Jul', jsMonth: 6 }, { name: 'Aug', jsMonth: 7 }, { name: 'Sep', jsMonth: 8 },
+  { name: 'Oct', jsMonth: 9 }, { name: 'Nov', jsMonth: 10 }, { name: 'Dec', jsMonth: 11 },
+  { name: 'Jan', jsMonth: 0 }, { name: 'Feb', jsMonth: 1 }, { name: 'Mar', jsMonth: 2 },
+]
+
+function fyLabel(startYear) {
+  return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`
+}
+
+// One financial year (Apr of fyStartYear → Mar of fyStartYear+1) as 12
+// monthly tender counts, zeroing out any month later than referenceDate.
+function buildFyMonthlyTenders(fyStartYear, referenceDate) {
+  return FY_MONTH_ORDER.map(({ jsMonth }, i) => {
+    const calYear = i < 9 ? fyStartYear : fyStartYear + 1 // Apr-Dec vs Jan-Mar
+    const isFuture =
+      calYear > referenceDate.getFullYear() ||
+      (calYear === referenceDate.getFullYear() && jsMonth > referenceDate.getMonth())
+    if (isFuture) return 0
+    return generateTrendMonthRow(calYear, jsMonth).tenders
+  })
+}
+
+/**
+ * Y1: current FY vs previous FY, month by month, plus % growth over the
+ * same month last year. fyTo is a "2026-27"-style label (matches the
+ * sidebar's Financial Year Filter value).
+ */
+export function getYearOverYearTenders(fyTo, referenceDate = new Date()) {
+  const startYear = parseInt(fyTo.split('-')[0], 10)
+  const prevStartYear = startYear - 1
+
+  const current = buildFyMonthlyTenders(startYear, referenceDate)
+  const previous = buildFyMonthlyTenders(prevStartYear, referenceDate)
+
+  const growth = current.map((c, i) => {
+    const p = previous[i]
+    if (!p) return null // no prior-year base to compare against
+    return Math.round(((c - p) / p) * 10000) / 100
+  })
+
+  return {
+    labels: FY_MONTH_ORDER.map((m) => m.name),
+    currentFYLabel: fyLabel(startYear),
+    previousFYLabel: fyLabel(prevStartYear),
+    current,
+    previous,
+    growth,
+  }
+}
+
+/**
+ * Y2: the selected FY plus the two FYs before it, month by month — three
+ * bar series, no growth line.
+ */
+export function getLastThreeYearsTrend(fyTo, referenceDate = new Date()) {
+  const startYear = parseInt(fyTo.split('-')[0], 10)
+  const years = [startYear - 2, startYear - 1, startYear]
+  return {
+    labels: FY_MONTH_ORDER.map((m) => m.name),
+    series: years.map((y) => ({
+      label: fyLabel(y),
+      data: buildFyMonthlyTenders(y, referenceDate),
+    })),
+  }
+}

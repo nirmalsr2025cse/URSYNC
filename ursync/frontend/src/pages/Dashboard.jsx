@@ -11,10 +11,11 @@
 // ./dashboard/ and this file just picks which one to render based on the
 // sidebar's activeMetric — add the next metric's component the same way.
 //
-// Only "Descriptive Analysis → Tender Analysis" (Number Wise + Value Wise)
-// is wired up with real (mock) data per the current task. Every other
-// sidebar/top-nav entry is visible and clickable but renders a "coming
-// soon" panel — intentional, so the structure is ready for the rest later.
+// Only "Descriptive Analysis → Tender Analysis" (Number Wise + Value Wise),
+// "Top 10 Analysis", and "Last 12 Months Trend" are wired up with real
+// (mock) data per the current task. Every other sidebar/top-nav entry is
+// visible and clickable but renders a "coming soon" panel — intentional,
+// so the structure is ready for the rest later.
 import React, { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import DashboardSidebar, { DESCRIPTIVE_GROUPS } from '../components/DashboardSidebar'
@@ -28,7 +29,11 @@ import BidderWiseAnalysis from './dashboard/BidderWiseAnalysis'
 import BidAnalysis from './dashboard/BidAnalysis'
 import NumberWiseTop10Analysis from './dashboard/NumberWiseTop10Analysis'
 import ValueWiseTop10Analysis from './dashboard/ValueWiseTop10Analysis'
+import TendersPublishedTrend from './dashboard/TendersPublishedTrend'
+import BidsReceivedTrend from './dashboard/BidsReceivedTrend'
+import TenderPublishingEntitiesTrend from './dashboard/TenderPublishingEntitiesTrend'
 import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS } from '../data/dashboardMockData'
+import YearOverYearAnalysis from './dashboard/YearOverYearAnalysis'
 
 const TOP_NAV_ITEMS = [
   { id: 'descriptive', label: 'Descriptive Analysis' },
@@ -38,8 +43,11 @@ const TOP_NAV_ITEMS = [
 ]
 
 // Maps [group][metric] -> component, for any sidebar group that has radio
-// sub-metrics (Tender Analysis, Top 10 Analysis, ...). Groups/metrics not
-// listed here fall back to the ComingSoonPanel.
+// sub-metrics (Tender Analysis, Top 10 Analysis, Last 12 Months Trend,
+// ...). Groups/metrics not listed here fall back to the ComingSoonPanel.
+// Metric ids here must match DashboardSidebar's DESCRIPTIVE_GROUPS ids
+// exactly (e.g. 'publishingEntities', not 'tenderPublishingEntities') or
+// the lookup misses and this silently falls through to "coming soon".
 const GROUP_METRIC_COMPONENTS = {
   tenderAnalysis: {
     numberWise: NumberWiseAnalysis,
@@ -52,6 +60,11 @@ const GROUP_METRIC_COMPONENTS = {
     numberWise: NumberWiseTop10Analysis,
     valueWise: ValueWiseTop10Analysis,
   },
+  last12Months: {
+    tendersPublished: TendersPublishedTrend,
+    bidsReceived: BidsReceivedTrend,
+    publishingEntities: TenderPublishingEntitiesTrend,
+  },
 }
 
 // Groups with no sidebar sub-metrics (just the FY filter) render straight
@@ -59,6 +72,7 @@ const GROUP_METRIC_COMPONENTS = {
 const GROUP_COMPONENTS = {
   bidderAnalysis: BidderWiseAnalysis,
   bidAnalysis: BidAnalysis,
+  yearOverYear: YearOverYearAnalysis,
 }
 
 export default function Dashboard() {
