@@ -484,3 +484,135 @@ export function getLastThreeYearsTrend(fyTo, referenceDate = new Date()) {
     })),
   }
 }
+
+// ── Distribution Analysis → Percentage Distribution ──────────────────────────
+// "Central Organisations (Top 20)" pie/donut data. The first 15 names and
+// percentages match the reference mock exactly (Number Wise, FY 2026-27);
+// the reference list is cut off at 15 rows in the screenshot but its
+// header says "Top 20", so 5 more entries are added deterministically
+// (mulberry32-seeded, reusing the file's existing PRNG) so the pie always
+// has a full Top 20 and sums to 100%.
+const CENTRAL_ORG_NAMES = [
+  'Airports Authority of India',
+  'Archaeological Survey of India',
+  'Bhabha Atomic Research Centre',
+  'Bharat Sanchar Nigam Limited (Govt of India Enterprise)',
+  'DG, Indo-Tibetan Border Police Force',
+  'Damodar Valley Corporation',
+  'Defence Research and Development Organisation',
+  'Delhi Development Authority',
+  'Department of Posts',
+  'Directorate General Defence Estates',
+  'E-IN-C BRANCH - MILITARY ENGINEER SERVICES',
+  'Employees State Insurance Corporation',
+  'Food Corporation of India',
+  'IHQ of MoD (Army)-(OSCC)',
+  'Ministry of Road Transport and Highways',
+  'Central Water Commission',
+  'National Highways Authority of India',
+  'Central Public Works Department',
+  'Indian Railways Construction Company',
+  'Geological Survey of India',
+]
+
+// Known percentages for the first 15 (Number Wise, FY 2026-27) — matches
+// the reference mock. Remaining 5 share the leftover percentage, split
+// deterministically below rather than hand-typed (the reference screenshot
+// is cut off before showing them).
+const CENTRAL_ORG_BASE_PCT_KNOWN = [
+  1.63, 1.46, 0.47, 3.75, 0.96, 0.62, 0.87, 3.59, 1.92, 1.40, 57.49, 0.57, 0.77, 6.66, 1.92,
+]
+
+function splitRemainder(totalPct, count, seed) {
+  const rand = mulberry32(seed)
+  const weights = Array.from({ length: count }, () => 0.4 + rand() * 0.6)
+  const weightSum = weights.reduce((a, b) => a + b, 0)
+  return weights.map((w) => Math.round((w / weightSum) * totalPct * 100) / 100)
+}
+
+const CENTRAL_ORG_BASE_PCT = [
+  ...CENTRAL_ORG_BASE_PCT_KNOWN,
+  ...splitRemainder(100 - CENTRAL_ORG_BASE_PCT_KNOWN.reduce((a, b) => a + b, 0), 5, 901),
+]
+
+// Deterministically perturbs the base percentage set and renormalizes to
+// 100 — used to give "Value Wise" and any FY other than 2026-27 a related
+// but distinct distribution, instead of just reusing identical numbers.
+function seededPercentVariant(basePct, seed) {
+  const rand = mulberry32(seed)
+  const perturbed = basePct.map((p) => Math.max(0.05, p * (0.7 + rand() * 0.6)))
+  const sum = perturbed.reduce((a, b) => a + b, 0)
+  return perturbed.map((p) => Math.round((p / sum) * 10000) / 100)
+}
+
+/**
+ * metric: 'tenders' (Number Wise) | 'value' (Value Wise)
+ * Returns 20 rows sorted by descending share:
+ *   { name, percentage, amount }
+ * where `amount` is a No. of Tenders count for 'tenders' or a Rs.-in-Lakhs
+ * figure for 'value'. FY 2026-27 + 'tenders' reproduces the reference
+ * mock's exact percentages; every other FY/metric combination is a
+ * deterministic variant seeded off both, so changing either control
+ * changes the chart while staying stable across re-renders.
+ */
+export function getCentralOrganisationsDistribution(fyTo, metric) {
+  const startYear = parseInt(fyTo.split('-')[0], 10)
+  const isReferenceCase = metric === 'tenders' && fyTo === '2026-27'
+  const seed = (metric === 'value' ? 7 : 3) * (startYear + 1) + 11
+
+  const percentages = isReferenceCase
+    ? CENTRAL_ORG_BASE_PCT
+    : seededPercentVariant(CENTRAL_ORG_BASE_PCT, seed)
+
+  const totalBase = metric === 'value' ? 850000 : 5000
+
+  return CENTRAL_ORG_NAMES.map((name, i) => ({
+    name,
+    percentage: percentages[i],
+    amount: Math.round((totalBase * percentages[i]) / 100 * 100) / 100,
+  })).sort((a, b) => b.percentage - a.percentage)
+}
+
+// ── Distribution Analysis → Bidder Distribution ──────────────────────────────
+// District-wise (not state-wise) registered-bidder distribution across
+// Tamil Nadu, for the "Bidder Distribution" sidebar page (no sub-metrics,
+// no FY filter — a single cumulative view). One district (Chennai, as the
+// commercial/registration hub) dominates the share, echoing the reference
+// mock's single-slice-heavy pattern; the rest is split deterministically
+// (mulberry32-seeded, reusing the file's existing PRNG) across the
+// remaining 37 districts so it always sums to 100%.
+const TAMIL_NADU_DISTRICTS = [
+  'Chennai', 'Ariyalur', 'Chengalpattu', 'Coimbatore', 'Cuddalore', 'Dharmapuri',
+  'Dindigul', 'Erode', 'Kallakurichi', 'Kanchipuram', 'Kanyakumari', 'Karur',
+  'Krishnagiri', 'Madurai', 'Mayiladuthurai', 'Nagapattinam', 'Namakkal',
+  'Nilgiris', 'Perambalur', 'Pudukkottai', 'Ramanathapuram', 'Ranipet', 'Salem',
+  'Sivaganga', 'Tenkasi', 'Thanjavur', 'Theni', 'Thoothukudi', 'Tiruchirappalli',
+  'Tirunelveli', 'Tirupathur', 'Tiruppur', 'Tiruvallur', 'Tiruvannamalai',
+  'Tiruvarur', 'Vellore', 'Viluppuram', 'Virudhunagar',
+]
+
+const CHENNAI_SHARE_PCT = 58.4 // dominant district, echoes the reference mock's heavy single slice
+
+/**
+ * Returns 38 rows (one per TN district) sorted by descending share:
+ *   { name, percentage, amount }
+ * `amount` is an estimated registered-bidder count, derived from the
+ * portal-wide "Bidders Registered" figure in OVERVIEW_STATS.
+ */
+export function getBidderDistributionByDistrict() {
+  const rand = mulberry32(4177)
+  const remainderCount = TAMIL_NADU_DISTRICTS.length - 1
+  const weights = Array.from({ length: remainderCount }, () => 0.3 + rand() * 0.7)
+  const weightSum = weights.reduce((a, b) => a + b, 0)
+  const remainderPct = 100 - CHENNAI_SHARE_PCT
+
+  const percentages = [CHENNAI_SHARE_PCT, ...weights.map((w) => Math.round((w / weightSum) * remainderPct * 100) / 100)]
+
+  const totalBidders = 52860 // matches OVERVIEW_STATS' "Bidders Registered" figure
+
+  return TAMIL_NADU_DISTRICTS.map((name, i) => ({
+    name,
+    percentage: percentages[i],
+    amount: Math.round((totalBidders * percentages[i]) / 100),
+  })).sort((a, b) => b.percentage - a.percentage)
+}

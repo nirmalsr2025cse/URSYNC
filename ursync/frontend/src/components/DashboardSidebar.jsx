@@ -66,6 +66,34 @@ export const DESCRIPTIVE_GROUPS = [
   { id: 'yearOverYear', label: 'Year Over Year', icon: 'trend', metrics: null, filter: 'singleRange' },
 ]
 
+export const DISTRIBUTION_GROUPS = [
+  {
+    id: 'percentageDistribution',
+    label: 'Percentage Distribution',
+    icon: 'chart',
+    metrics: [
+      { id: 'numberWise', label: 'Number Wise' },
+      { id: 'valueWise', label: 'Value Wise' },
+    ],
+    filter: 'singleYear',
+  },
+  {
+    id: 'bidderDistribution',
+    label: 'Bidder Distribution',
+    icon: 'globe',   // or whatever icon name matches the globe glyph in your screenshot
+    metrics: null,
+    filter: null,
+  },
+]
+
+// Which group list to show in the sidebar per top-nav tab. Tabs not listed
+// here (e.g. 'kpi', 'monthly') fall through to the "coming soon" sidebar
+// placeholder below.
+const GROUPS_BY_TOP_NAV = {
+  descriptive: DESCRIPTIVE_GROUPS,
+  distribution: DISTRIBUTION_GROUPS,
+}
+
 export default function DashboardSidebar({
   open,
   onClose,
@@ -101,6 +129,8 @@ export default function DashboardSidebar({
     })
     onGroupChange?.(id)
   }
+
+  const groups = GROUPS_BY_TOP_NAV[activeTopNav] || null
 
   return (
     <>
@@ -152,7 +182,7 @@ export default function DashboardSidebar({
 
         {/* Nav body */}
         <nav className="overflow-y-auto py-3 px-2 space-y-1.5" style={{ flex: '1 1 0', minHeight: 0 }}>
-          {activeTopNav !== 'descriptive' ? (
+          {!groups ? (
             <div className="text-center text-tn-muted text-xs px-3 py-10">
               <Icon name="clock" className="w-6 h-6 mx-auto mb-2 opacity-60" />
               This section is coming soon.
@@ -163,7 +193,7 @@ export default function DashboardSidebar({
                 Apply Filters
               </p>
 
-              {DESCRIPTIVE_GROUPS.map((group) => {
+              {groups.map((group) => {
                 const isExpanded = expanded.has(group.id)
                 const isActiveGroup = activeGroup === group.id
                 return (
@@ -272,8 +302,22 @@ export default function DashboardSidebar({
                           </div>
                         )}
 
-                        {!group.metrics && group.filter === null && (
-                          <p className="text-[11px] text-tn-muted italic px-1">More options coming soon.</p>
+                        {group.filter === 'singleYear' && (
+                          <div className="bg-tn-navy/5 rounded-lg p-2.5 space-y-1.5">
+                            <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide">
+                              Financial Year Filter
+                            </p>
+                            <select
+                              value={fyTo}
+                              onChange={(e) => onFyToChange?.(e.target.value)}
+                              disabled={!isActiveGroup}
+                              className="w-full bg-white border border-tn-border rounded-md px-2 py-1 text-xs text-tn-navy focus:outline-none focus:ring-1 focus:ring-tn-blue/50 disabled:opacity-50"
+                            >
+                              {financialYears.map((fy) => (
+                                <option key={fy} value={fy}>{fy}</option>
+                              ))}
+                            </select>
+                          </div>
                         )}
                       </div>
                     )}
@@ -282,6 +326,7 @@ export default function DashboardSidebar({
               })}
             </>
           )}
+          
           <div className="pb-10"/>
         </nav>
 

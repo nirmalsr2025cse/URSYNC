@@ -11,14 +11,15 @@
 // ./dashboard/ and this file just picks which one to render based on the
 // sidebar's activeMetric — add the next metric's component the same way.
 //
-// Only "Descriptive Analysis → Tender Analysis" (Number Wise + Value Wise),
-// "Top 10 Analysis", and "Last 12 Months Trend" are wired up with real
-// (mock) data per the current task. Every other sidebar/top-nav entry is
-// visible and clickable but renders a "coming soon" panel — intentional,
-// so the structure is ready for the rest later.
+// "Descriptive Analysis" (Tender Analysis, Top 10 Analysis, Last 12 Months
+// Trend, Year Over Year) and "Distribution Analysis" (Percentage
+// Distribution) are wired up with real (mock) data per the current task.
+// Every other sidebar/top-nav entry is visible and clickable but renders a
+// "coming soon" panel — intentional, so the structure is ready for the
+// rest later.
 import React, { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import DashboardSidebar, { DESCRIPTIVE_GROUPS } from '../components/DashboardSidebar'
+import DashboardSidebar, { DESCRIPTIVE_GROUPS, DISTRIBUTION_GROUPS } from '../components/DashboardSidebar'
 import Icon from '../components/Icon'
 import NumberWiseAnalysis from './dashboard/NumberWiseAnalysis'
 import ValueWiseAnalysis from './dashboard/ValueWiseAnalysis'
@@ -32,8 +33,11 @@ import ValueWiseTop10Analysis from './dashboard/ValueWiseTop10Analysis'
 import TendersPublishedTrend from './dashboard/TendersPublishedTrend'
 import BidsReceivedTrend from './dashboard/BidsReceivedTrend'
 import TenderPublishingEntitiesTrend from './dashboard/TenderPublishingEntitiesTrend'
-import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS } from '../data/dashboardMockData'
 import YearOverYearAnalysis from './dashboard/YearOverYearAnalysis'
+import NumberWisePercentageDistribution from './dashboard/NumberWisePercentageDistribution'
+import ValueWisePercentageDistribution from './dashboard/ValueWisePercentageDistribution'
+import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS } from '../data/dashboardMockData'
+import BidderDistributionAnalysis from './dashboard/BidderDistributionAnalysis'
 
 const TOP_NAV_ITEMS = [
   { id: 'descriptive', label: 'Descriptive Analysis' },
@@ -42,12 +46,25 @@ const TOP_NAV_ITEMS = [
   { id: 'monthly', label: 'Monthly Report' },
 ]
 
+// Which top-nav tabs currently render real content (as opposed to falling
+// through to the "coming soon" panel below).
+const SUPPORTED_TOP_NAVS = ['descriptive', 'distribution']
+
+// Default group/metric to select when switching into a given top-nav tab,
+// so e.g. clicking "Distribution Analysis" doesn't keep showing whatever
+// Tender Analysis metric was last active under Descriptive Analysis.
+const TOP_NAV_DEFAULTS = {
+  descriptive: { group: 'tenderAnalysis', metric: 'numberWise' },
+  distribution: { group: 'percentageDistribution', metric: 'numberWise' },
+}
+
 // Maps [group][metric] -> component, for any sidebar group that has radio
 // sub-metrics (Tender Analysis, Top 10 Analysis, Last 12 Months Trend,
-// ...). Groups/metrics not listed here fall back to the ComingSoonPanel.
-// Metric ids here must match DashboardSidebar's DESCRIPTIVE_GROUPS ids
-// exactly (e.g. 'publishingEntities', not 'tenderPublishingEntities') or
-// the lookup misses and this silently falls through to "coming soon".
+// Percentage Distribution, ...). Groups/metrics not listed here fall back
+// to the ComingSoonPanel. Metric ids here must match DashboardSidebar's
+// group definitions exactly (e.g. 'publishingEntities', not
+// 'tenderPublishingEntities') or the lookup misses and this silently falls
+// through to "coming soon".
 const GROUP_METRIC_COMPONENTS = {
   tenderAnalysis: {
     numberWise: NumberWiseAnalysis,
@@ -65,6 +82,10 @@ const GROUP_METRIC_COMPONENTS = {
     bidsReceived: BidsReceivedTrend,
     publishingEntities: TenderPublishingEntitiesTrend,
   },
+  percentageDistribution: {
+    numberWise: NumberWisePercentageDistribution,
+    valueWise: ValueWisePercentageDistribution,
+  },
 }
 
 // Groups with no sidebar sub-metrics (just the FY filter) render straight
@@ -73,6 +94,7 @@ const GROUP_COMPONENTS = {
   bidderAnalysis: BidderWiseAnalysis,
   bidAnalysis: BidAnalysis,
   yearOverYear: YearOverYearAnalysis,
+  bidderDistribution: BidderDistributionAnalysis,
 }
 
 export default function Dashboard() {
@@ -86,6 +108,11 @@ export default function Dashboard() {
 
   function handleTopNavChange(id) {
     setActiveTopNav(id)
+    const defaults = TOP_NAV_DEFAULTS[id]
+    if (defaults) {
+      setActiveGroup(defaults.group)
+      setActiveMetric(defaults.metric)
+    }
   }
 
   function handleGroupChange(groupId) {
@@ -102,16 +129,16 @@ export default function Dashboard() {
     setActiveMetric(metricId)
   }
 
-  const ActiveMetricComponent =
-    activeTopNav === 'descriptive'
-      ? (GROUP_METRIC_COMPONENTS[activeGroup]?.[activeMetric] || GROUP_COMPONENTS[activeGroup])
-      : null
+  const ActiveMetricComponent = SUPPORTED_TOP_NAVS.includes(activeTopNav)
+    ? (GROUP_METRIC_COMPONENTS[activeGroup]?.[activeMetric] || GROUP_COMPONENTS[activeGroup])
+    : null
 
   function getComingSoonTitle() {
-    if (activeTopNav !== 'descriptive') {
+    if (!SUPPORTED_TOP_NAVS.includes(activeTopNav)) {
       return TOP_NAV_ITEMS.find((t) => t.id === activeTopNav)?.label || 'This section'
     }
-    const group = DESCRIPTIVE_GROUPS.find((g) => g.id === activeGroup)
+    const groupList = activeTopNav === 'distribution' ? DISTRIBUTION_GROUPS : DESCRIPTIVE_GROUPS
+    const group = groupList.find((g) => g.id === activeGroup)
     if (activeGroup === 'tenderAnalysis') {
       const metric = group?.metrics?.find((m) => m.id === activeMetric)
       return `Tender Analysis — ${metric?.label || 'this view'}`
@@ -159,7 +186,7 @@ export default function Dashboard() {
           </div>
 
           {ActiveMetricComponent ? (
-            <ActiveMetricComponent fyFrom={fyFrom} fyTo={fyTo} />
+            <ActiveMetricComponent fyFrom={fyFrom} fyTo={fyTo} metric={activeMetric} />
           ) : (
             <ComingSoonPanel title={getComingSoonTitle()} />
           )}
