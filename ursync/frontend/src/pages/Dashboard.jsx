@@ -6,20 +6,27 @@
 // this page has its own top nav + DashboardSidebar instead. This page fills
 // the remaining height under the Navbar (h-full, not h-screen).
 //
-// Each Tender Analysis metric is its own component (one page = one
-// component): NumberWiseAnalysis.jsx and ValueWiseAnalysis.jsx live in
-// ./dashboard/ and this file just picks which one to render based on the
-// sidebar's activeMetric — add the next metric's component the same way.
+// Each metric is its own component (one page = one component); this file
+// just picks which one to render based on the sidebar's activeGroup /
+// activeMetric — add the next metric's component the same way.
 //
-// "Descriptive Analysis" (Tender Analysis, Top 10 Analysis, Last 12 Months
-// Trend, Year Over Year) and "Distribution Analysis" (Percentage
-// Distribution) are wired up with real (mock) data per the current task.
-// Every other sidebar/top-nav entry is visible and clickable but renders a
-// "coming soon" panel — intentional, so the structure is ready for the
-// rest later.
+// Built so far: Descriptive Analysis → Tender Analysis, Top 10 Analysis,
+// Last 12 Months Trend, Bidder Analysis, Bid Analysis, Year Over Year;
+// Key Performance Indicators → Tender Published, Bids Submission,
+// Tech. and Fin., Bids Awarded, Bids Validity period; Distribution
+// Analysis → Percentage Distribution, Bidder Distribution; and
+// Monthly Report → MSR Report. Every other sidebar/top-nav entry is
+// visible and clickable but renders a "coming soon" panel — intentional,
+// so the structure is ready for the rest later.
+//
+// 'monthly' (Monthly Report) is special-cased: it has no sidebar
+// group/metric structure (see DashboardSidebar's 'monthly' branch), so its
+// component is resolved directly instead of going through
+// GROUP_METRIC_COMPONENTS/GROUP_COMPONENTS, and it reads msrYear/msrMonth
+// instead of fyFrom/fyTo.
 import React, { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import DashboardSidebar, { DESCRIPTIVE_GROUPS, DISTRIBUTION_GROUPS } from '../components/DashboardSidebar'
+import DashboardSidebar, { DESCRIPTIVE_GROUPS, KPI_GROUPS, DISTRIBUTION_GROUPS } from '../components/DashboardSidebar'
 import Icon from '../components/Icon'
 import NumberWiseAnalysis from './dashboard/NumberWiseAnalysis'
 import ValueWiseAnalysis from './dashboard/ValueWiseAnalysis'
@@ -34,10 +41,16 @@ import TendersPublishedTrend from './dashboard/TendersPublishedTrend'
 import BidsReceivedTrend from './dashboard/BidsReceivedTrend'
 import TenderPublishingEntitiesTrend from './dashboard/TenderPublishingEntitiesTrend'
 import YearOverYearAnalysis from './dashboard/YearOverYearAnalysis'
+import KpiTenderPublishedAnalysis from './dashboard/KpiTenderPublishedAnalysis'
+import KpiBidsSubmissionAnalysis from './dashboard/KpiBidsSubmissionAnalysis'
+import KpiTechAndFinAnalysis from './dashboard/KpiTechAndFinAnalysis'
+import KpiBidsAwardedAnalysis from './dashboard/KpiBidsAwardedAnalysis'
+import KpiBidsValidityAnalysis from './dashboard/KpiBidsValidityAnalysis'
 import NumberWisePercentageDistribution from './dashboard/NumberWisePercentageDistribution'
 import ValueWisePercentageDistribution from './dashboard/ValueWisePercentageDistribution'
-import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS } from '../data/dashboardMockData'
 import BidderDistributionAnalysis from './dashboard/BidderDistributionAnalysis'
+import MsrReport from './dashboard/MsrReport'
+import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS, MSR_MONTHS } from '../data/dashboardMockData'
 
 const TOP_NAV_ITEMS = [
   { id: 'descriptive', label: 'Descriptive Analysis' },
@@ -46,25 +59,28 @@ const TOP_NAV_ITEMS = [
   { id: 'monthly', label: 'Monthly Report' },
 ]
 
-// Which top-nav tabs currently render real content (as opposed to falling
-// through to the "coming soon" panel below).
-const SUPPORTED_TOP_NAVS = ['descriptive', 'distribution']
+// Top-nav sections that currently have real content wired up. Any other
+// section always shows "coming soon", regardless of what activeGroup
+// happens to be left over from before. 'monthly' has no groups/metrics of
+// its own (see ActiveMetricComponent below) but is still "built".
+const BUILT_TOP_NAV = ['descriptive', 'distribution', 'kpi', 'monthly']
 
-// Default group/metric to select when switching into a given top-nav tab,
-// so e.g. clicking "Distribution Analysis" doesn't keep showing whatever
-// Tender Analysis metric was last active under Descriptive Analysis.
+// The default group + metric to select whenever a top-nav section becomes
+// active (first visit, or switching back to it) — keeps the sidebar's
+// highlighted item in sync with what the top nav shows. 'monthly'
+// deliberately has no entry here since it has no group/metric concept.
 const TOP_NAV_DEFAULTS = {
   descriptive: { group: 'tenderAnalysis', metric: 'numberWise' },
   distribution: { group: 'percentageDistribution', metric: 'numberWise' },
+  kpi: { group: 'analysisOn', metric: 'tenderPublished' },
 }
 
 // Maps [group][metric] -> component, for any sidebar group that has radio
-// sub-metrics (Tender Analysis, Top 10 Analysis, Last 12 Months Trend,
-// Percentage Distribution, ...). Groups/metrics not listed here fall back
-// to the ComingSoonPanel. Metric ids here must match DashboardSidebar's
-// group definitions exactly (e.g. 'publishingEntities', not
-// 'tenderPublishingEntities') or the lookup misses and this silently falls
-// through to "coming soon".
+// sub-metrics (Tender Analysis, Top 10 Analysis, Last 12 Months Trend, KPI
+// Analysis on, Percentage Distribution, ...). Groups/metrics not listed
+// here fall back to the ComingSoonPanel. Metric ids here must match
+// DashboardSidebar's group definitions exactly or the lookup misses and
+// this silently falls through to "coming soon".
 const GROUP_METRIC_COMPONENTS = {
   tenderAnalysis: {
     numberWise: NumberWiseAnalysis,
@@ -82,14 +98,22 @@ const GROUP_METRIC_COMPONENTS = {
     bidsReceived: BidsReceivedTrend,
     publishingEntities: TenderPublishingEntitiesTrend,
   },
+  analysisOn: {
+    tenderPublished: KpiTenderPublishedAnalysis,
+    bidsSubmission: KpiBidsSubmissionAnalysis,
+    techAndFin: KpiTechAndFinAnalysis,
+    bidsAwarded: KpiBidsAwardedAnalysis,
+    bidsValidityPeriod: KpiBidsValidityAnalysis,
+  },
   percentageDistribution: {
     numberWise: NumberWisePercentageDistribution,
     valueWise: ValueWisePercentageDistribution,
   },
 }
 
-// Groups with no sidebar sub-metrics (just the FY filter) render straight
-// off activeGroup instead of going through GROUP_METRIC_COMPONENTS.
+// Groups with no sidebar sub-metrics (just the FY filter, or nothing at
+// all) render straight off activeGroup instead of going through
+// GROUP_METRIC_COMPONENTS.
 const GROUP_COMPONENTS = {
   bidderAnalysis: BidderWiseAnalysis,
   bidAnalysis: BidAnalysis,
@@ -105,6 +129,11 @@ export default function Dashboard() {
   const [fyFrom, setFyFrom] = useState('2021-22')
   const [fyTo, setFyTo] = useState('2026-27')
   const [yearRange, setYearRange] = useState(YEAR_RANGE_OPTIONS[0])
+
+  // Monthly Report (MSR Report) filter state — controlled by
+  // DashboardSidebar's 'monthly' branch, consumed by MsrReport.
+  const [msrYear, setMsrYear] = useState('2026-27')
+  const [msrMonth, setMsrMonth] = useState('June')
 
   function handleTopNavChange(id) {
     setActiveTopNav(id)
@@ -129,19 +158,27 @@ export default function Dashboard() {
     setActiveMetric(metricId)
   }
 
-  const ActiveMetricComponent = SUPPORTED_TOP_NAVS.includes(activeTopNav)
-    ? (GROUP_METRIC_COMPONENTS[activeGroup]?.[activeMetric] || GROUP_COMPONENTS[activeGroup])
-    : null
+  // 'monthly' has no group/metric structure, so it's resolved directly
+  // rather than through GROUP_METRIC_COMPONENTS/GROUP_COMPONENTS.
+  const ActiveMetricComponent =
+    activeTopNav === 'monthly'
+      ? MsrReport
+      : BUILT_TOP_NAV.includes(activeTopNav)
+        ? (GROUP_METRIC_COMPONENTS[activeGroup]?.[activeMetric] || GROUP_COMPONENTS[activeGroup])
+        : null
 
   function getComingSoonTitle() {
-    if (!SUPPORTED_TOP_NAVS.includes(activeTopNav)) {
+    if (!BUILT_TOP_NAV.includes(activeTopNav)) {
       return TOP_NAV_ITEMS.find((t) => t.id === activeTopNav)?.label || 'This section'
     }
-    const groupList = activeTopNav === 'distribution' ? DISTRIBUTION_GROUPS : DESCRIPTIVE_GROUPS
-    const group = groupList.find((g) => g.id === activeGroup)
-    if (activeGroup === 'tenderAnalysis') {
-      const metric = group?.metrics?.find((m) => m.id === activeMetric)
-      return `Tender Analysis — ${metric?.label || 'this view'}`
+    const groupsList =
+      activeTopNav === 'kpi' ? KPI_GROUPS :
+      activeTopNav === 'distribution' ? DISTRIBUTION_GROUPS :
+      DESCRIPTIVE_GROUPS
+    const group = groupsList.find((g) => g.id === activeGroup)
+    if (group?.metrics) {
+      const metric = group.metrics.find((m) => m.id === activeMetric)
+      return `${group.label} — ${metric?.label || 'this view'}`
     }
     return group?.label || 'This section'
   }
@@ -164,6 +201,11 @@ export default function Dashboard() {
         yearRangeOptions={YEAR_RANGE_OPTIONS}
         yearRange={yearRange}
         onYearRangeChange={setYearRange}
+        msrMonths={MSR_MONTHS}
+        msrYear={msrYear}
+        onMsrYearChange={setMsrYear}
+        msrMonth={msrMonth}
+        onMsrMonthChange={setMsrMonth}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -186,7 +228,12 @@ export default function Dashboard() {
           </div>
 
           {ActiveMetricComponent ? (
-            <ActiveMetricComponent fyFrom={fyFrom} fyTo={fyTo} metric={activeMetric} />
+            <ActiveMetricComponent
+              fyFrom={fyFrom}
+              fyTo={fyTo}
+              msrYear={msrYear}
+              msrMonth={msrMonth}
+            />
           ) : (
             <ComingSoonPanel title={getComingSoonTitle()} />
           )}

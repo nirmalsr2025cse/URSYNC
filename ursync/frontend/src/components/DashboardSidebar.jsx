@@ -1,11 +1,16 @@
 // src/components/DashboardSidebar.jsx
 // A separate sidebar used ONLY inside the Dashboard module (Dashboard.jsx).
 // It intentionally does not touch the existing Sidebar.jsx — same mobile
-// overlay / slide-in mechanics and footer treatment, and now matches
+// overlay / slide-in mechanics and footer treatment, and matches
 // Sidebar.jsx's light (white bg / tn-navy text) look, with collapsible
 // sections layered on top since the Dashboard's content structure is
 // quite different from the rest of the app.
-import React, { useState } from 'react'
+//
+// The 'monthly' top-nav section (MSR Report) renders a different shape
+// entirely — a single highlighted "MSR Report" nav item plus a Select
+// Year / Select Month filter block, no accordion groups — driven by the
+// msrYear/msrMonth props lifted up into Dashboard.jsx.
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRole, NAV_CONFIG } from './RoleContext'
 
@@ -19,6 +24,7 @@ function Icon({ name, className }) {
     chart:    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />,
     clock:    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
     trend:    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 17l6-6 4 4 8-8m0 0h-5m5 0v5" />,
+    globe:    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 21a9 9 0 100-18 9 9 0 000 18zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 014 9 15 15 0 01-4 9 15 15 0 01-4-9 15 15 0 014-9z" />,
     chevron:  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />,
   }
   return <svg {...props}>{paths[name] || paths.chart}</svg>
@@ -66,6 +72,31 @@ export const DESCRIPTIVE_GROUPS = [
   { id: 'yearOverYear', label: 'Year Over Year', icon: 'trend', metrics: null, filter: 'singleRange' },
 ]
 
+// Sidebar structure for the "Key Performance Indicators" top-nav section.
+// Only Tender Published has a wired-up component today — the other four
+// sub-metrics are visible and selectable, same "coming soon" pattern used
+// elsewhere in this sidebar for not-yet-built pages.
+export const KPI_GROUPS = [
+  {
+    id: 'analysisOn',
+    label: 'Analysis on',
+    icon: 'edit',
+    metrics: [
+      { id: 'tenderPublished', label: 'Tender Published' },
+      { id: 'bidsSubmission', label: 'Bids Submission' },
+      { id: 'techAndFin', label: 'Tech. and Fin.' },
+      { id: 'bidsAwarded', label: 'Bids Awarded' },
+      { id: 'bidsValidityPeriod', label: 'Bids Validity period' },
+    ],
+    filter: 'range',
+  },
+]
+
+// Sidebar structure for the "Distribution Analysis" top-nav section.
+// Percentage Distribution has a Number Wise / Value Wise toggle plus a
+// single Financial Year dropdown ('singleYear' — one select, not a
+// From/To range). Bidder Distribution has no sub-metrics and no filter at
+// all — a single cumulative district-wise view.
 export const DISTRIBUTION_GROUPS = [
   {
     id: 'percentageDistribution',
@@ -80,18 +111,20 @@ export const DISTRIBUTION_GROUPS = [
   {
     id: 'bidderDistribution',
     label: 'Bidder Distribution',
-    icon: 'globe',   // or whatever icon name matches the globe glyph in your screenshot
+    icon: 'globe',
     metrics: null,
     filter: null,
   },
 ]
 
-// Which group list to show in the sidebar per top-nav tab. Tabs not listed
-// here (e.g. 'kpi', 'monthly') fall through to the "coming soon" sidebar
-// placeholder below.
+// Which top-nav sections have a groups array (and therefore render the
+// filter accordion below instead of "coming soon"). 'monthly' is
+// deliberately absent — it has its own dedicated render branch below,
+// not a groups accordion.
 const GROUPS_BY_TOP_NAV = {
   descriptive: DESCRIPTIVE_GROUPS,
   distribution: DISTRIBUTION_GROUPS,
+  kpi: KPI_GROUPS,
 }
 
 export default function DashboardSidebar({
@@ -110,6 +143,11 @@ export default function DashboardSidebar({
   yearRangeOptions,
   yearRange,
   onYearRangeChange,
+  msrMonths,
+  msrYear,
+  onMsrYearChange,
+  msrMonth,
+  onMsrMonthChange,
 }) {
   const navigate = useNavigate()
   const { role } = useRole()
@@ -119,6 +157,16 @@ export default function DashboardSidebar({
   const homePath = NAV_CONFIG[role]?.[0]?.path || '/'
 
   const [expanded, setExpanded] = useState(() => new Set([activeGroup]))
+
+  // Whichever group becomes active (including via the top nav switching
+  // sections and picking a new default group) should auto-expand, not just
+  // the one that was active when the sidebar first mounted.
+  useEffect(() => {
+    setExpanded((prev) => {
+      if (prev.has(activeGroup)) return prev
+      return new Set(prev).add(activeGroup)
+    })
+  }, [activeGroup])
 
   function toggleGroup(id) {
     setExpanded((prev) => {
@@ -130,7 +178,7 @@ export default function DashboardSidebar({
     onGroupChange?.(id)
   }
 
-  const groups = GROUPS_BY_TOP_NAV[activeTopNav] || null
+  const activeGroupsList = GROUPS_BY_TOP_NAV[activeTopNav] || null
 
   return (
     <>
@@ -182,7 +230,53 @@ export default function DashboardSidebar({
 
         {/* Nav body */}
         <nav className="overflow-y-auto py-3 px-2 space-y-1.5" style={{ flex: '1 1 0', minHeight: 0 }}>
-          {!groups ? (
+          {activeTopNav === 'monthly' ? (
+            <>
+              <p className="px-2 text-[10px] font-semibold text-tn-muted uppercase tracking-wider mb-1">
+                Reports
+              </p>
+              <button
+                type="button"
+                className="relative w-full flex items-center gap-2.5 pl-4 pr-3 py-3 rounded-xl text-sm font-semibold bg-tn-light text-tn-navy"
+              >
+                <span className="absolute left-0 top-1 bottom-1 w-1 rounded-full bg-tn-navy" aria-hidden="true" />
+                <Icon name="chart" className="w-4 h-4 flex-shrink-0" />
+                MSR Report
+              </button>
+
+              <div className="px-2 pt-4">
+                <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wider mb-2">
+                  Financial Year Filter
+                </p>
+                <div className="bg-tn-navy/5 rounded-lg p-2.5 space-y-2">
+                  <label className="block text-[11px] text-tn-muted">
+                    Select Year :-
+                    <select
+                      value={msrYear}
+                      onChange={(e) => onMsrYearChange?.(e.target.value)}
+                      className="mt-1 w-full bg-white border border-tn-border rounded-md px-2 py-1 text-xs text-tn-navy focus:outline-none focus:ring-1 focus:ring-tn-blue/50"
+                    >
+                      {financialYears.map((fy) => (
+                        <option key={fy} value={fy}>{fy}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-[11px] text-tn-muted">
+                    Select Month :-
+                    <select
+                      value={msrMonth}
+                      onChange={(e) => onMsrMonthChange?.(e.target.value)}
+                      className="mt-1 w-full bg-white border border-tn-border rounded-md px-2 py-1 text-xs text-tn-navy focus:outline-none focus:ring-1 focus:ring-tn-blue/50"
+                    >
+                      {msrMonths.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </>
+          ) : !activeGroupsList ? (
             <div className="text-center text-tn-muted text-xs px-3 py-10">
               <Icon name="clock" className="w-6 h-6 mx-auto mb-2 opacity-60" />
               This section is coming soon.
@@ -193,7 +287,7 @@ export default function DashboardSidebar({
                 Apply Filters
               </p>
 
-              {groups.map((group) => {
+              {activeGroupsList.map((group) => {
                 const isExpanded = expanded.has(group.id)
                 const isActiveGroup = activeGroup === group.id
                 return (
@@ -319,6 +413,10 @@ export default function DashboardSidebar({
                             </select>
                           </div>
                         )}
+
+                        {!group.metrics && group.filter === null && group.id !== 'bidderDistribution' && (
+                          <p className="text-[11px] text-tn-muted italic px-1">More options coming soon.</p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -326,8 +424,7 @@ export default function DashboardSidebar({
               })}
             </>
           )}
-          
-          <div className="pb-10"/>
+          <div className="pb-10" />
         </nav>
 
         {/* Footer */}

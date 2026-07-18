@@ -17,11 +17,11 @@ function buildFinancialYears(startYear, endYear) {
 export const FINANCIAL_YEARS = buildFinancialYears(2007, 2026)
 
 // Preset ranges for the single "Select Year Range" control used by
-// Year Over Year (sidebar-only for now, not yet wired to a page).
+// Year Over Year — each option is a consecutive year pair (step of 1).
 export const YEAR_RANGE_OPTIONS = (() => {
   const ranges = []
-  for (let i = 0; i + 5 < FINANCIAL_YEARS.length; i++) {
-    ranges.push(`${FINANCIAL_YEARS[i].split('-')[0]}–${FINANCIAL_YEARS[i + 5].split('-')[0]}`)
+  for (let i = 0; i + 1 < FINANCIAL_YEARS.length; i++) {
+    ranges.push(`${FINANCIAL_YEARS[i].split('-')[0]}–${FINANCIAL_YEARS[i + 1].split('-')[0]}`)
   }
   return ranges
 })()
@@ -616,3 +616,265 @@ export function getBidderDistributionByDistrict() {
     amount: Math.round((totalBidders * percentages[i]) / 100),
   })).sort((a, b) => b.percentage - a.percentage)
 }
+
+// ── Key Performance Indicators → Tender Published ────────────────────────────
+// Avg. no. of days between "Tender Published" and each downstream milestone
+// (K1–K5), split by tender type (Open / Limited / Others). K5 ("Published
+// to Fin. Evaluation" — the full pipeline) matches the reference mock's
+// last 6 years exactly, including 2026-27 coming back as 0/0/0 since that
+// year hasn't run its course yet. Earlier years are a plausible steady
+// lead-in. K1–K4 are derived as a fraction of the K5 (full pipeline) days,
+// since each is an earlier checkpoint in the same process — e.g. document
+// download happens much sooner after publishing than financial evaluation
+// does.
+const KPI_TENDER_PUBLISHED_K5_BASE = [
+  { fy: '2007-08', Open: 65, Limited: 110, Others: 58 },
+  { fy: '2008-09', Open: 68, Limited: 115, Others: 60 },
+  { fy: '2009-10', Open: 70, Limited: 120, Others: 62 },
+  { fy: '2010-11', Open: 72, Limited: 125, Others: 64 },
+  { fy: '2011-12', Open: 74, Limited: 130, Others: 66 },
+  { fy: '2012-13', Open: 76, Limited: 135, Others: 68 },
+  { fy: '2013-14', Open: 78, Limited: 140, Others: 70 },
+  { fy: '2014-15', Open: 80, Limited: 145, Others: 72 },
+  { fy: '2015-16', Open: 82, Limited: 150, Others: 74 },
+  { fy: '2016-17', Open: 79, Limited: 148, Others: 71 },
+  { fy: '2017-18', Open: 84, Limited: 155, Others: 76 },
+  { fy: '2018-19', Open: 87, Limited: 160, Others: 79 },
+  { fy: '2019-20', Open: 89, Limited: 165, Others: 82 },
+  { fy: '2020-21', Open: 95, Limited: 175, Others: 90 },
+  { fy: '2021-22', Open: 100, Limited: 181, Others: 88 },
+  { fy: '2022-23', Open: 90, Limited: 163, Others: 46 },
+  { fy: '2023-24', Open: 91, Limited: 142, Others: 103 },
+  { fy: '2024-25', Open: 75, Limited: 75, Others: 60 },
+  { fy: '2025-26', Open: 56, Limited: 75, Others: 55 },
+  { fy: '2026-27', Open: 0, Limited: 0, Others: 0 },
+]
+
+const KPI_STAGE_RATIOS = {
+  docDownload: 0.12,
+  techOpening: 0.35,
+  techEvaluation: 0.58,
+  finOpening: 0.78,
+  finEvaluation: 1,
+}
+
+// stageKey: 'docDownload' | 'techOpening' | 'techEvaluation' | 'finOpening' | 'finEvaluation'
+export function getKpiTenderPublishedStage(stageKey) {
+  const ratio = KPI_STAGE_RATIOS[stageKey] ?? 1
+  return KPI_TENDER_PUBLISHED_K5_BASE.map((row) => ({
+    fy: row.fy,
+    Open: row.fy === '2026-27' ? 0 : Math.round(row.Open * ratio),
+    Limited: row.fy === '2026-27' ? 0 : Math.round(row.Limited * ratio),
+    Others: row.fy === '2026-27' ? 0 : Math.round(row.Others * ratio),
+  }))
+}
+
+const KPI_BIDS_SUBMISSION_BASE = [
+  { fy: '2007-08', Open: 10, Limited: 110, Others: 190 },
+  { fy: '2008-09', Open: 20, Limited: 115, Others: 180 },
+  { fy: '2009-10', Open: 30, Limited: 120, Others: 170 },
+  { fy: '2010-11', Open: 40, Limited: 125, Others: 160 },
+  { fy: '2011-12', Open: 50, Limited: 130, Others: 150 },
+  { fy: '2012-13', Open: 60, Limited: 135, Others: 140 },
+  { fy: '2013-14', Open: 70, Limited: 140, Others: 130 },
+  { fy: '2014-15', Open: 80, Limited: 145, Others: 120 },
+  { fy: '2015-16', Open: 90, Limited: 150, Others: 110 },
+  { fy: '2016-17', Open: 100, Limited: 148, Others: 100 },
+  { fy: '2017-18', Open: 110, Limited: 155, Others: 90 },
+  { fy: '2018-19', Open: 120, Limited: 160, Others: 80 },
+  { fy: '2019-20', Open: 130, Limited: 165, Others: 70 },
+  { fy: '2020-21', Open: 140, Limited: 175, Others: 60 },
+  { fy: '2021-22', Open: 150, Limited: 181, Others: 50 },
+  { fy: '2022-23', Open: 160, Limited: 163, Others: 40 },
+  { fy: '2023-24', Open: 170, Limited: 142, Others: 30 },
+  { fy: '2024-25', Open: 180, Limited: 75, Others: 20 },
+  { fy: '2025-26', Open: 190, Limited: 75, Others: 10 },
+  { fy: '2026-27', Open: 0, Limited: 0, Others: 0 },
+]
+
+const KPI_BIDS_SUBMISSION_RATIOS = {
+  submitted: 1,
+  qualified: 0.72,
+  rejected: 0.18,
+}
+
+export function getKpiBidsSubmissionByFy(stageKey) {
+  const ratio = KPI_BIDS_SUBMISSION_RATIOS[stageKey] ?? 1
+  return KPI_BIDS_SUBMISSION_BASE.map((row) => ({
+    fy: row.fy,
+    Open: row.fy === '2026-27' ? 0 : Math.round(row.Open * ratio),
+    Limited: row.fy === '2026-27' ? 0 : Math.round(row.Limited * ratio),
+    Others: row.fy === '2026-27' ? 0 : Math.round(row.Others * ratio),
+  }))
+}
+
+// ── KPI: Tech. and Fin. ──────────────────────────────────────────────────
+// One row per FY, per K-metric. 2026-27 is the current/in-progress FY so
+// it's zeroed, same convention as the other KPI base data.
+export const KPI_TECH_OPEN_EVAL = [
+  { fy: '2007-08', Limited: 6,  Open: 10, Others: 4 },
+  { fy: '2008-09', Limited: 7,  Open: 11, Others: 5 },
+  { fy: '2009-10', Limited: 7,  Open: 12, Others: 5 },
+  { fy: '2010-11', Limited: 8,  Open: 13, Others: 6 },
+  { fy: '2011-12', Limited: 8,  Open: 14, Others: 6 },
+  { fy: '2012-13', Limited: 9,  Open: 15, Others: 7 },
+  { fy: '2013-14', Limited: 9,  Open: 16, Others: 7 },
+  { fy: '2014-15', Limited: 10, Open: 17, Others: 8 },
+  { fy: '2015-16', Limited: 10, Open: 18, Others: 8 },
+  { fy: '2016-17', Limited: 11, Open: 19, Others: 9 },
+  { fy: '2017-18', Limited: 11, Open: 20, Others: 9 },
+  { fy: '2018-19', Limited: 12, Open: 21, Others: 10 },
+  { fy: '2019-20', Limited: 12, Open: 22, Others: 10 },
+  { fy: '2020-21', Limited: 13, Open: 23, Others: 11 },
+  { fy: '2021-22', Limited: 14, Open: 28, Others: 68 },
+  { fy: '2022-23', Limited: 16, Open: 20, Others: 12 },
+  { fy: '2023-24', Limited: 18, Open: 23, Others: 23 },
+  { fy: '2024-25', Limited: 15, Open: 24, Others: 9 },
+  { fy: '2025-26', Limited: 11, Open: 18, Others: 9 },
+  { fy: '2026-27', Limited: 0,  Open: 0,  Others: 0 },
+]
+
+// Derived placeholders for the other three K-metrics until real numbers
+// land — same base FY/row shape, scaled by a ratio. Swap for real data
+// whenever it's available; the component doesn't care how these are built.
+function scaleKpiRows(base, ratio) {
+  return base.map((row) => ({
+    fy: row.fy,
+    Limited: row.fy === '2026-27' ? 0 : Math.round(row.Limited * ratio),
+    Open: row.fy === '2026-27' ? 0 : Math.round(row.Open * ratio),
+    Others: row.fy === '2026-27' ? 0 : Math.round(row.Others * ratio),
+  }))
+}
+
+export const KPI_TECH_EVAL_FIN_OPEN = scaleKpiRows(KPI_TECH_OPEN_EVAL, 0.55)
+export const KPI_FIN_OPEN_FIN_EVAL = scaleKpiRows(KPI_TECH_OPEN_EVAL, 0.35)
+export const KPI_TECH_OPEN_FIN_OPEN = KPI_TECH_OPEN_EVAL
+
+// ── KPI: Bids Awarded ─────────────────────────────────────────────────────
+// One row per FY, per K-metric. 2026-27 is the current/in-progress FY so
+// it's zeroed. K11 values for 2021-22 → 2025-26 are the real figures from
+// the reference dashboard; earlier years and K12/K13 are placeholders —
+// swap in real numbers once available.
+export const KPI_PUBLISH_TO_AWARDED = [
+  { fy: '2007-08', Others: 40,  Open: 55,  Limited: 15 },
+  { fy: '2008-09', Others: 45,  Open: 60,  Limited: 17 },
+  { fy: '2009-10', Others: 50,  Open: 65,  Limited: 18 },
+  { fy: '2010-11', Others: 55,  Open: 70,  Limited: 20 },
+  { fy: '2011-12', Others: 60,  Open: 75,  Limited: 22 },
+  { fy: '2012-13', Others: 65,  Open: 80,  Limited: 24 },
+  { fy: '2013-14', Others: 70,  Open: 85,  Limited: 26 },
+  { fy: '2014-15', Others: 75,  Open: 90,  Limited: 28 },
+  { fy: '2015-16', Others: 80,  Open: 95,  Limited: 30 },
+  { fy: '2016-17', Others: 85,  Open: 100, Limited: 32 },
+  { fy: '2017-18', Others: 90,  Open: 105, Limited: 34 },
+  { fy: '2018-19', Others: 95,  Open: 110, Limited: 36 },
+  { fy: '2019-20', Others: 100, Open: 115, Limited: 38 },
+  { fy: '2020-21', Others: 110, Open: 130, Limited: 42 },
+  { fy: '2021-22', Others: 156, Open: 190, Limited: 40 },
+  { fy: '2022-23', Others: 244, Open: 164, Limited: 53 },
+  { fy: '2023-24', Others: 109, Open: 129, Limited: 51 },
+  { fy: '2024-25', Others: 66,  Open: 111, Limited: 49 },
+  { fy: '2025-26', Others: 65,  Open: 80,  Limited: 48 },
+  { fy: '2026-27', Others: 0,   Open: 0,   Limited: 0 },
+]
+
+// Derived placeholders for the other two K-metrics until real numbers
+// land — same base FY/row shape, scaled by a ratio.
+function scaleKpiAwardedRows(base, ratio) {
+  return base.map((row) => ({
+    fy: row.fy,
+    Others: row.fy === '2026-27' ? 0 : Math.round(row.Others * ratio),
+    Open: row.fy === '2026-27' ? 0 : Math.round(row.Open * ratio),
+    Limited: row.fy === '2026-27' ? 0 : Math.round(row.Limited * ratio),
+  }))
+}
+
+export const KPI_FIN_OPEN_TO_AWARDED = scaleKpiAwardedRows(KPI_PUBLISH_TO_AWARDED, 0.42)
+export const KPI_TECH_OPEN_TO_AWARDED = scaleKpiAwardedRows(KPI_PUBLISH_TO_AWARDED, 0.65)
+
+// ── KPI: Bids Validity Period ────────────────────────────────────────────
+// One row per FY, per K-metric. Values are percentages (0-100), so they
+// don't get the ₹/count treatment other KPI rows do. 2026-27 is the
+// current/in-progress FY so it's zeroed.
+export const KPI_AWARDED_WITHIN_VALIDITY = [
+  { fy: '2007-08', Open: 40, Others: 55, Limited: 50 },
+  { fy: '2008-09', Open: 42, Others: 57, Limited: 52 },
+  { fy: '2009-10', Open: 44, Others: 58, Limited: 53 },
+  { fy: '2010-11', Open: 45, Others: 59, Limited: 55 },
+  { fy: '2011-12', Open: 46, Others: 60, Limited: 56 },
+  { fy: '2012-13', Open: 47, Others: 61, Limited: 57 },
+  { fy: '2013-14', Open: 48, Others: 62, Limited: 58 },
+  { fy: '2014-15', Open: 49, Others: 63, Limited: 59 },
+  { fy: '2015-16', Open: 50, Others: 64, Limited: 60 },
+  { fy: '2016-17', Open: 51, Others: 65, Limited: 61 },
+  { fy: '2017-18', Open: 52, Others: 66, Limited: 62 },
+  { fy: '2018-19', Open: 53, Others: 67, Limited: 63 },
+  { fy: '2019-20', Open: 54, Others: 68, Limited: 64 },
+  { fy: '2020-21', Open: 55, Others: 69, Limited: 65 },
+  { fy: '2021-22', Open: 48, Others: 66, Limited: 71 },
+  { fy: '2022-23', Open: 52, Others: 83, Limited: 57 },
+  { fy: '2023-24', Open: 64, Others: 60, Limited: 39 },
+  { fy: '2024-25', Open: 69, Others: 44, Limited: 62 },
+  { fy: '2025-26', Open: 76, Others: 62, Limited: 60 },
+  { fy: '2026-27', Open: 0,  Others: 0,  Limited: 0 },
+]
+
+// K15: "beyond validity period" is the natural complement of K14 (100 -
+// within%), per series, per FY — placeholder until real data is available.
+export const KPI_AWARDED_BEYOND_VALIDITY = KPI_AWARDED_WITHIN_VALIDITY.map((row) => ({
+  fy: row.fy,
+  Open: row.fy === '2026-27' ? 0 : 100 - row.Open,
+  Others: row.fy === '2026-27' ? 0 : 100 - row.Others,
+  Limited: row.fy === '2026-27' ? 0 : 100 - row.Limited,
+}))
+
+
+export const MSR_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+// ── MSR Report: District-wise Data Analysis (Tamil Nadu) ─────────────────
+// One row per TN district, for a given FY + month selection. Real app:
+// this would be an API call keyed by { fy, month }; wired as static mock
+// data for now so the page/table/pagination can be built and tested.
+export const MSR_DISTRICTS_DATA = [
+  { sno: 1,  name: 'Ariyalur',            monthTenders: 210,   monthValue: 320.45,   prevTenders: 195,   prevValue: 290.10,   cumFyTenders: 610,   cumFyValue: 980.00,    inceptionTenders: 18420,  inceptionValue: 42100.50,  awardedTenders: 480,  awardedValue: 610.20 },
+  { sno: 2,  name: 'Chengalpattu',        monthTenders: 1840,  monthValue: 4200.80,  prevTenders: 1720,  prevValue: 3890.30,  cumFyTenders: 5200,  cumFyValue: 11400.00,  inceptionTenders: 210340, inceptionValue: 480230.60, awardedTenders: 3980, awardedValue: 5620.90 },
+  { sno: 3,  name: 'Chennai',             monthTenders: 3420,  monthValue: 9800.60,  prevTenders: 3180,  prevValue: 8900.40,  cumFyTenders: 9800,  cumFyValue: 26400.00,  inceptionTenders: 480560, inceptionValue: 1120450.30,awardedTenders: 7620, awardedValue: 12400.55 },
+  { sno: 4,  name: 'Coimbatore',          monthTenders: 2960,  monthValue: 7100.25,  prevTenders: 2740,  prevValue: 6400.10,  cumFyTenders: 8100,  cumFyValue: 18900.00,  inceptionTenders: 398450, inceptionValue: 860230.40, awardedTenders: 6210, awardedValue: 9840.35 },
+  { sno: 5,  name: 'Cuddalore',           monthTenders: 980,   monthValue: 1850.30,  prevTenders: 910,   prevValue: 1620.20,  cumFyTenders: 2780,  cumFyValue: 4900.00,   inceptionTenders: 112340, inceptionValue: 240560.80, awardedTenders: 2140, awardedValue: 2980.44 },
+  { sno: 6,  name: 'Dharmapuri',          monthTenders: 640,   monthValue: 1120.40,  prevTenders: 590,   prevValue: 980.15,   cumFyTenders: 1820,  cumFyValue: 3100.00,   inceptionTenders: 76340,  inceptionValue: 148230.60, awardedTenders: 1420, awardedValue: 1890.22 },
+  { sno: 7,  name: 'Dindigul',            monthTenders: 870,   monthValue: 1640.55,  prevTenders: 800,   prevValue: 1420.30,  cumFyTenders: 2460,  cumFyValue: 4300.00,   inceptionTenders: 98450,  inceptionValue: 192340.70, awardedTenders: 1890, awardedValue: 2450.18 },
+  { sno: 8,  name: 'Erode',               monthTenders: 1320,  monthValue: 2900.70,  prevTenders: 1240,  prevValue: 2600.40,  cumFyTenders: 3800,  cumFyValue: 7600.00,   inceptionTenders: 168230, inceptionValue: 340450.90, awardedTenders: 2860, awardedValue: 3980.60 },
+  { sno: 9,  name: 'Kallakurichi',        monthTenders: 420,   monthValue: 780.20,   prevTenders: 390,   prevValue: 680.10,   cumFyTenders: 1180,  cumFyValue: 2000.00,   inceptionTenders: 42340,  inceptionValue: 82340.30,  awardedTenders: 980,  awardedValue: 1240.15 },
+  { sno: 10, name: 'Kanchipuram',         monthTenders: 1580,  monthValue: 3400.60,  prevTenders: 1460,  prevValue: 3000.30,  cumFyTenders: 4500,  cumFyValue: 9200.00,   inceptionTenders: 182340, inceptionValue: 398450.60, awardedTenders: 3240, awardedValue: 4620.28 },
+  { sno: 11, name: 'Kanyakumari',         monthTenders: 760,   monthValue: 1420.35,  prevTenders: 700,   prevValue: 1240.20,  cumFyTenders: 2140,  cumFyValue: 3700.00,   inceptionTenders: 86340,  inceptionValue: 168230.50, awardedTenders: 1640, awardedValue: 2140.30 },
+  { sno: 12, name: 'Karur',               monthTenders: 540,   monthValue: 980.40,   prevTenders: 500,   prevValue: 850.20,   cumFyTenders: 1520,  cumFyValue: 2600.00,   inceptionTenders: 58230,  inceptionValue: 112340.40, awardedTenders: 1180, awardedValue: 1520.18 },
+  { sno: 13, name: 'Krishnagiri',         monthTenders: 780,   monthValue: 1480.50,  prevTenders: 720,   prevValue: 1280.30,  cumFyTenders: 2200,  cumFyValue: 3800.00,   inceptionTenders: 92340,  inceptionValue: 180230.60, awardedTenders: 1720, awardedValue: 2280.24 },
+  { sno: 14, name: 'Madurai',             monthTenders: 1920,  monthValue: 4400.70,  prevTenders: 1780,  prevValue: 3900.40,  cumFyTenders: 5400,  cumFyValue: 11800.00,  inceptionTenders: 224560, inceptionValue: 490340.70, awardedTenders: 4120, awardedValue: 5980.42 },
+  { sno: 15, name: 'Mayiladuthurai',      monthTenders: 380,   monthValue: 680.25,   prevTenders: 350,   prevValue: 600.15,   cumFyTenders: 1080,  cumFyValue: 1800.00,   inceptionTenders: 38230,  inceptionValue: 72340.30,  awardedTenders: 880,  awardedValue: 1080.12 },
+  { sno: 16, name: 'Nagapattinam',        monthTenders: 460,   monthValue: 840.30,   prevTenders: 420,   prevValue: 730.20,   cumFyTenders: 1300,  cumFyValue: 2200.00,   inceptionTenders: 46340,  inceptionValue: 88450.40,  awardedTenders: 1020, awardedValue: 1290.15 },
+  { sno: 17, name: 'Namakkal',            monthTenders: 680,   monthValue: 1240.40,  prevTenders: 630,   prevValue: 1080.25,  cumFyTenders: 1920,  cumFyValue: 3300.00,   inceptionTenders: 78340,  inceptionValue: 152340.50, awardedTenders: 1480, awardedValue: 1920.20 },
+  { sno: 18, name: 'Nilgiris',            monthTenders: 320,   monthValue: 560.20,   prevTenders: 300,   prevValue: 480.10,   cumFyTenders: 900,   cumFyValue: 1500.00,   inceptionTenders: 32340,  inceptionValue: 60230.20,  awardedTenders: 720,  awardedValue: 890.08 },
+  { sno: 19, name: 'Perambalur',          monthTenders: 190,   monthValue: 340.15,   prevTenders: 175,   prevValue: 290.10,   cumFyTenders: 550,   cumFyValue: 900.00,    inceptionTenders: 18230,  inceptionValue: 34230.20,  awardedTenders: 440,  awardedValue: 540.10 },
+  { sno: 20, name: 'Pudukkottai',         monthTenders: 620,   monthValue: 1100.35,  prevTenders: 570,   prevValue: 960.20,   cumFyTenders: 1760,  cumFyValue: 3000.00,   inceptionTenders: 72340,  inceptionValue: 138230.40, awardedTenders: 1360, awardedValue: 1740.18 },
+  { sno: 21, name: 'Ramanathapuram',      monthTenders: 480,   monthValue: 860.30,   prevTenders: 440,   prevValue: 750.20,   cumFyTenders: 1360,  cumFyValue: 2300.00,   inceptionTenders: 54230,  inceptionValue: 102340.30, awardedTenders: 1060, awardedValue: 1340.14 },
+  { sno: 22, name: 'Ranipet',             monthTenders: 720,   monthValue: 1340.45,  prevTenders: 660,   prevValue: 1160.30,  cumFyTenders: 2040,  cumFyValue: 3500.00,   inceptionTenders: 82340,  inceptionValue: 160230.50, awardedTenders: 1580, awardedValue: 2040.22 },
+  { sno: 23, name: 'Salem',               monthTenders: 1680,  monthValue: 3700.60,  prevTenders: 1560,  prevValue: 3300.40,  cumFyTenders: 4800,  cumFyValue: 10200.00,  inceptionTenders: 196340, inceptionValue: 420450.60, awardedTenders: 3620, awardedValue: 5120.36 },
+  { sno: 24, name: 'Sivaganga',           monthTenders: 440,   monthValue: 800.25,   prevTenders: 400,   prevValue: 690.20,   cumFyTenders: 1240,  cumFyValue: 2100.00,   inceptionTenders: 48340,  inceptionValue: 92340.30,  awardedTenders: 960,  awardedValue: 1220.13 },
+  { sno: 25, name: 'Tenkasi',             monthTenders: 390,   monthValue: 700.20,   prevTenders: 360,   prevValue: 610.15,   cumFyTenders: 1100,  cumFyValue: 1900.00,   inceptionTenders: 40340,  inceptionValue: 76340.30,  awardedTenders: 860,  awardedValue: 1080.11 },
+  { sno: 26, name: 'Thanjavur',           monthTenders: 1140,  monthValue: 2400.50,  prevTenders: 1060,  prevValue: 2100.30,  cumFyTenders: 3240,  cumFyValue: 6300.00,   inceptionTenders: 134340, inceptionValue: 260340.60, awardedTenders: 2420, awardedValue: 3220.28 },
+  { sno: 27, name: 'Theni',               monthTenders: 420,   monthValue: 760.25,   prevTenders: 390,   prevValue: 660.20,   cumFyTenders: 1180,  cumFyValue: 2000.00,   inceptionTenders: 44340,  inceptionValue: 84340.30,  awardedTenders: 920,  awardedValue: 1160.12 },
+  { sno: 28, name: 'Thoothukudi',         monthTenders: 860,   monthValue: 1620.40,  prevTenders: 800,   prevValue: 1420.30,  cumFyTenders: 2440,  cumFyValue: 4200.00,   inceptionTenders: 96340,  inceptionValue: 186340.50, awardedTenders: 1880, awardedValue: 2440.20 },
+  { sno: 29, name: 'Tiruchirappalli',     monthTenders: 1740,  monthValue: 3800.55,  prevTenders: 1620,  prevValue: 3400.40,  cumFyTenders: 4960,  cumFyValue: 10600.00,  inceptionTenders: 204340, inceptionValue: 440340.60, awardedTenders: 3760, awardedValue: 5340.34 },
+  { sno: 30, name: 'Tirunelveli',         monthTenders: 940,   monthValue: 1780.45,  prevTenders: 870,   prevValue: 1560.30,  cumFyTenders: 2660,  cumFyValue: 4600.00,   inceptionTenders: 106340, inceptionValue: 204340.50, awardedTenders: 2060, awardedValue: 2660.22 },
+  { sno: 31, name: 'Tirupattur',          monthTenders: 340,   monthValue: 620.20,   prevTenders: 310,   prevValue: 540.15,   cumFyTenders: 960,   cumFyValue: 1600.00,   inceptionTenders: 34340,  inceptionValue: 64340.30,  awardedTenders: 760,  awardedValue: 940.10 },
+  { sno: 32, name: 'Tiruppur',            monthTenders: 1260,  monthValue: 2700.50,  prevTenders: 1170,  prevValue: 2380.30,  cumFyTenders: 3560,  cumFyValue: 7400.00,   inceptionTenders: 148340, inceptionValue: 300340.60, awardedTenders: 2680, awardedValue: 3660.30 },
+  { sno: 33, name: 'Tiruvallur',          monthTenders: 1420,  monthValue: 3100.55,  prevTenders: 1320,  prevValue: 2740.40,  cumFyTenders: 4020,  cumFyValue: 8400.00,   inceptionTenders: 166340, inceptionValue: 340340.60, awardedTenders: 3020, awardedValue: 4180.32 },
+  { sno: 34, name: 'Tiruvannamalai',      monthTenders: 680,   monthValue: 1240.35,  prevTenders: 630,   prevValue: 1080.25,  cumFyTenders: 1920,  cumFyValue: 3300.00,   inceptionTenders: 78340,  inceptionValue: 150340.40, awardedTenders: 1480, awardedValue: 1900.18 },
+  { sno: 35, name: 'Tiruvarur',           monthTenders: 360,   monthValue: 640.20,   prevTenders: 330,   prevValue: 560.15,   cumFyTenders: 1020,  cumFyValue: 1700.00,   inceptionTenders: 36340,  inceptionValue: 68340.30,  awardedTenders: 800,  awardedValue: 1000.10 },
+  { sno: 36, name: 'Vellore',             monthTenders: 900,   monthValue: 1700.40,  prevTenders: 840,   prevValue: 1500.30,  cumFyTenders: 2560,  cumFyValue: 4400.00,   inceptionTenders: 100340, inceptionValue: 194340.50, awardedTenders: 1960, awardedValue: 2560.22 },
+  { sno: 37, name: 'Viluppuram',          monthTenders: 820,   monthValue: 1520.35,  prevTenders: 760,   prevValue: 1320.25,  cumFyTenders: 2320,  cumFyValue: 4000.00,   inceptionTenders: 90340,  inceptionValue: 174340.40, awardedTenders: 1780, awardedValue: 2320.20 },
+  { sno: 38, name: 'Virudhunagar',        monthTenders: 620,   monthValue: 1120.30,  prevTenders: 570,   prevValue: 960.20,   cumFyTenders: 1760,  cumFyValue: 3000.00,   inceptionTenders: 68340,  inceptionValue: 132340.40, awardedTenders: 1340, awardedValue: 1720.16 },
+]
