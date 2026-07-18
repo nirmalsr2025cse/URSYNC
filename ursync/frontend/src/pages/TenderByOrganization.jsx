@@ -204,9 +204,10 @@ export default function TenderByOrganization() {
                 aria-label="Organisation name"
               />
             </div>
+            
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !filters.organization.trim()}
               className="btn-primary flex items-center justify-center gap-2 min-w-[120px]"
             >
               {loading ? (
@@ -228,7 +229,7 @@ export default function TenderByOrganization() {
             <button
                 type="button"
                 onClick={handleReset}
-                className="text-xs text-tn-muted hover:text-tn-danger underline ml-1"
+                className="text-xs text-tn-muted  underline ml-1"
               >
                 Clear all
               </button>
@@ -269,21 +270,6 @@ export default function TenderByOrganization() {
               className={TextBoxStyle}
             />
           </div>
-
-          {activeFilters.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="text-xs text-tn-muted mr-1">Active filters:</span>
-              {activeFilters.map(([key, val]) => (
-                <span
-                  key={key}
-                  className="text-xs font-medium bg-tn-blue/10 text-tn-blue
-                             px-2.5 py-0.5 rounded-full border border-tn-blue/20"
-                >
-                  {val}
-                </span>
-              ))}
-            </div>
-          )}
         </form>
 
         {error && (

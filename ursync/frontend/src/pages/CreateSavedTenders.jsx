@@ -309,7 +309,7 @@ export default function CreateSavedTenders() {
         {(search || statusFilter !== 'All' || catFilter !== 'All') && (
           <button
             onClick={() => { setSearch(''); setStatus('All'); setCat('All') }}
-            className="px-4 py-2.5 text-sm font-semibold text-[#F62440] border border-red-200 rounded-xl hover:bg-red-50 transition-colors whitespace-nowrap"
+            className="text-xs text-tn-muted underline whitespace-nowrap"
           >
             Clear All
           </button>

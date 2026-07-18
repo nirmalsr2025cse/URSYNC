@@ -1,5 +1,6 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import Login from "../pages/Login"
 import Layout from '../components/Layout'
 import TendersByLocation from '../pages/TenderByLocation'
 import Home from '../pages/Home'
@@ -45,13 +46,16 @@ import AdminBidderList from '../pages/AdminBidderList'
 import AdminBidderDetails from '../pages/AdminBidderDetails'
 import Conflicts from '../pages/Conflicts'
 import ConflictDetails from '../pages/ConflictDetails'
-import SearchResourcePage from '../pages/SearchResourcePage'
+import SearchResourcePage from '../pages/SearchResourcepage'
 import ResourceSharing from '../pages/ResourceSharing'
+import GetResourcePage from '../pages/GetResourcePage'
+import ResourceDetailPage from '../pages/ResourceDetailPage'
 
 export default function AppRoutes() {
   return (
     <Routes>
       <Route path="*" element={<Placeholder />} />
+      <Route path="/login" element={<Login />} />
       <Route element={<Layout />}>
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="/home" element={<Home />} />
@@ -98,6 +102,8 @@ export default function AppRoutes() {
         <Route path="/conflicts" element={<Conflicts />} />
         <Route path="/conflicts/:id" element={<ConflictDetails />} />
         <Route path="/search-resource" element={<SearchResourcePage />} />
+        <Route path="/search-resource/get-resource" element={<GetResourcePage />} />
+        <Route path="/search-resource/details" element={<ResourceDetailPage />} />
         <Route path="/resource-sharing" element={<ResourceSharing />} />
       </Route>
     </Routes>

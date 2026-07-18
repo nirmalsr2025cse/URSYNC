@@ -1,20 +1,161 @@
-// RESOURSE DATA PAGE
-
-
-// Shared resource data — import this in SearchResourcePage, ResourceDetailPage and GetResourcePage
+// src/data/resourceData.js
 const RESOURCES = [
-  { id:"RES001", name:"JCB Excavator",       category:"Heavy Equipment",    district:"Chennai",     owner:"Tamil Nadu PWD",               dailyRate:8500,  available:true,  quantity:3, specs:"3.5 ton, 0.3m³ bucket",       image:"https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=600&q=80", description:"Hydraulic excavator suitable for foundation digging, trench work and general earthmoving operations." },
-  { id:"RES002", name:"Tower Crane",         category:"Lifting Equipment",  district:"Coimbatore",  owner:"TANGEDCO",                     dailyRate:15000, available:true,  quantity:1, specs:"Max lift 6 ton, 50m jib",      image:"https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&q=80", description:"High-capacity tower crane for multi-storey construction projects. Includes certified operator." },
-  { id:"RES003", name:"Bulldozer",           category:"Heavy Equipment",    district:"Salem",       owner:"Highways Department",          dailyRate:9000,  available:false, quantity:0, specs:"D6 class, 152HP",              image:"https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80", description:"Heavy bulldozer for land clearing, grading and large earthwork operations on highway projects." },
-  { id:"RES004", name:"Concrete Mixer Truck",category:"Concrete Equipment", district:"Trichy",      owner:"Tamil Nadu PWD",               dailyRate:5500,  available:true,  quantity:4, specs:"6m³ drum capacity",            image:"https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=600&q=80", description:"Transit mixer for transporting ready-mix concrete to construction sites across the district." },
-  { id:"RES005", name:"Water Tanker",        category:"Support Equipment",  district:"Madurai",     owner:"TWAD Board",                   dailyRate:3500,  available:true,  quantity:6, specs:"10,000 litre capacity",        image:"https://images.unsplash.com/photo-1558618047-3c8c76ca9e68?w=600&q=80", description:"Large water tanker for construction site water supply, road compaction and dust suppression." },
-  { id:"RES006", name:"Roller Compactor",    category:"Road Equipment",     district:"Erode",       owner:"Highways Department",          dailyRate:7000,  available:false, quantity:0, specs:"8–10 ton vibratory",           image:"https://images.unsplash.com/photo-1590736969596-5697b16e2b44?w=600&q=80", description:"Vibratory roller compactor for road sub-base and surface compaction during highway construction." },
-  { id:"RES007", name:"Mobile Crane",        category:"Lifting Equipment",  district:"Chennai",     owner:"Tamil Nadu PWD",               dailyRate:12000, available:true,  quantity:2, specs:"30 ton capacity, all-terrain", image:"https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=600&q=80", description:"All-terrain mobile crane for lifting heavy structural components and bridge girders." },
-  { id:"RES008", name:"Tipper Lorry",        category:"Transport Equipment",district:"Coimbatore",  owner:"Rural Development Department", dailyRate:4000,  available:true,  quantity:8, specs:"10 ton payload, 8m³",          image:"https://images.unsplash.com/photo-1519003722824-194d4455a60c?w=600&q=80", description:"Heavy-duty tipper trucks for transporting soil, aggregate and construction debris." },
-  { id:"RES009", name:"Generator Set",       category:"Power Equipment",    district:"Vellore",     owner:"TANGEDCO",                     dailyRate:3000,  available:true,  quantity:5, specs:"125 KVA, diesel",              image:"https://images.unsplash.com/photo-1518005068251-37900150dfca?w=600&q=80", description:"Industrial diesel generator for providing temporary power supply at remote construction sites." },
-  { id:"RES010", name:"Piling Machine",      category:"Foundation Equipment",district:"Salem",      owner:"Tamil Nadu PWD",               dailyRate:18000, available:false, quantity:0, specs:"Hydraulic rotary, 800mm dia",  image:"https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&q=80", description:"Hydraulic piling rig for bored pile foundations in high-rise and bridge construction projects." },
-  { id:"RES011", name:"Asphalt Paver",       category:"Road Equipment",     district:"Trichy",      owner:"Highways Department",          dailyRate:11000, available:true,  quantity:1, specs:"6m paving width",              image:"https://images.unsplash.com/photo-1590736969596-5697b16e2b44?w=600&q=80", description:"Self-propelled asphalt paver for laying bituminous road surfaces on highway projects." },
-  { id:"RES012", name:"Backhoe Loader",      category:"Heavy Equipment",    district:"Madurai",     owner:"Chennai Corporation",          dailyRate:6500,  available:true,  quantity:3, specs:"1.0m³ bucket, 4WD",           image:"https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=600&q=80", description:"Versatile backhoe loader for digging, loading and general construction site tasks." },
-];
+  {
+    id: "RES001",
+    name: "JCB Excavator",
+    category: "Heavy Equipment",
+    district: "Chennai",
+    owner: "Tamil Nadu PWD",
+    dailyRate: 8500,
+    available: true,
+    quantity: 3,
+    specs: "3.5 ton, 0.3m³ bucket",
+    image: "https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=800&q=80",
+    description: "Hydraulic excavator suitable for foundation digging, trench work and general earthmoving operations."
+  },
+  {
+    id: "RES002",
+    name: "Tower Crane",
+    category: "Lifting Equipment",
+    district: "Coimbatore",
+    owner: "TANGEDCO",
+    dailyRate: 15000,
+    available: true,
+    quantity: 1,
+    specs: "Max lift 6 ton, 50m jib",
+    image: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&q=80",
+    description: "High-capacity tower crane for multi-storey construction projects. Includes certified operator."
+  },
+  {
+    id: "RES003",
+    name: "Bulldozer",
+    category: "Heavy Equipment",
+    district: "Salem",
+    owner: "Highways Department",
+    dailyRate: 9000,
+    available: false,
+    quantity: 0,
+    specs: "D6 class, 152HP",
+    image: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80",
+    description: "Heavy bulldozer for land clearing, grading and large earthwork operations on highway projects."
+  },
+  {
+    id: "RES004",
+    name: "Concrete Mixer Truck",
+    category: "Concrete Equipment",
+    district: "Trichy",
+    owner: "Tamil Nadu PWD",
+    dailyRate: 5500,
+    available: true,
+    quantity: 4,
+    specs: "6m³ drum capacity",
+    image: "https://images.unsplash.com/photo-1599707367072-cd6ada2bc375?w=800&q=80",
+    description: "Transit mixer for transporting ready-mix concrete to construction sites across the district."
+  },
+  {
+    id: "RES005",
+    name: "Water Tanker",
+    category: "Support Equipment",
+    district: "Madurai",
+    owner: "TWAD Board",
+    dailyRate: 3500,
+    available: true,
+    quantity: 6,
+    specs: "10,000 litre capacity",
+    image: "https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=800&q=80",
+    description: "Large water tanker for construction site water supply, road compaction and dust suppression."
+  },
+  {
+    id: "RES006",
+    name: "Roller Compactor",
+    category: "Road Equipment",
+    district: "Erode",
+    owner: "Highways Department",
+    dailyRate: 7000,
+    available: false,
+    quantity: 0,
+    specs: "8–10 ton vibratory",
+    image: "https://images.unsplash.com/photo-1590736969596-5697b16e2b44?w=800&q=80",
+    description: "Vibratory roller compactor for road sub-base and surface compaction during highway construction."
+  },
+  {
+    id: "RES007",
+    name: "Mobile Crane",
+    category: "Lifting Equipment",
+    district: "Chennai",
+    owner: "Tamil Nadu PWD",
+    dailyRate: 12000,
+    available: true,
+    quantity: 2,
+    specs: "30 ton capacity, all-terrain",
+    image: "https://images.unsplash.com/photo-1521295121783-8a321d551ad2?w=800&q=80",
+    description: "All-terrain mobile crane for lifting heavy structural components and bridge girders."
+  },
+  {
+    id: "RES008",
+    name: "Tipper Lorry",
+    category: "Transport Equipment",
+    district: "Coimbatore",
+    owner: "Rural Development Department",
+    dailyRate: 4000,
+    available: true,
+    quantity: 8,
+    specs: "10 ton payload, 8m³",
+    image: "https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=800&q=80",
+    description: "Heavy-duty tipper trucks for transporting soil, aggregate and construction debris."
+  },
+  {
+    id: "RES009",
+    name: "Generator Set",
+    category: "Power Equipment",
+    district: "Vellore",
+    owner: "TANGEDCO",
+    dailyRate: 3000,
+    available: true,
+    quantity: 5,
+    specs: "125 KVA, diesel",
+    image: "https://images.unsplash.com/photo-1595078475328-1ab05d0a6a0e?w=800&q=80",
+    description: "Industrial diesel generator for providing temporary power supply at remote construction sites."
+  },
+  {
+    id: "RES010",
+    name: "Piling Machine",
+    category: "Foundation Equipment",
+    district: "Salem",
+    owner: "Tamil Nadu PWD",
+    dailyRate: 18000,
+    available: false,
+    quantity: 0,
+    specs: "Hydraulic rotary, 800mm dia",
+    image: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&q=80",
+    description: "Hydraulic piling rig for bored pile foundations in high-rise and bridge construction projects."
+  },
+  {
+    id: "RES011",
+    name: "Asphalt Paver",
+    category: "Road Equipment",
+    district: "Trichy",
+    owner: "Highways Department",
+    dailyRate: 11000,
+    available: true,
+    quantity: 1,
+    specs: "6m paving width",
+    image: "https://images.unsplash.com/photo-1573804633927-bfcbcd909acd?w=800&q=80",
+    description: "Self-propelled asphalt paver for laying bituminous road surfaces on highway projects."
+  },
+  {
+    id: "RES012",
+    name: "Backhoe Loader",
+    category: "Heavy Equipment",
+    district: "Madurai",
+    owner: "Chennai Corporation",
+    dailyRate: 6500,
+    available: true,
+    quantity: 3,
+    specs: "1.0m³ bucket, 4WD",
+    image: "https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=800&q=80",
+    description: "Versatile backhoe loader for digging, loading and general construction site tasks."
+  },
+]
 
-export default RESOURCES;
+export default RESOURCES

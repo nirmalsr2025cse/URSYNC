@@ -11,6 +11,8 @@ export default function ArchiveSearchCard({
     if (e.key === "Enter" && tenderId.trim().length > 0) onTenderIdSearch();
   };
 
+  const [searchBox, setSearchBox] = React.useState(false);
+
   return (
     <div className="bg-white rounded-2xl shadow-card border border-tn-gold p-5 sm:p-6">
       {/* Search by Tender ID — only search on this page, no captcha */}
@@ -27,7 +29,10 @@ export default function ArchiveSearchCard({
             <input
               type="text"
               value={tenderId}
-              onChange={(e) => onTenderIdChange(e.target.value)}
+              onChange={(e) =>{ 
+                onTenderIdChange(e.target.value)
+                setSearchBox(e.target.value.length > 0)
+              }}
               onKeyDown={handleKeyDown}
               placeholder="e.g. TN/PWD/2025/014"
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
@@ -42,13 +47,14 @@ export default function ArchiveSearchCard({
               <Search size={16} />
               Search
             </button>
-            <button
-              onClick={onReset}
-              className="flex items-center gap-2 border border-rust-200 text-rust-700 hover:bg-cream-50 font-semibold text-sm px-4 py-2.5 rounded-md transition-colors"
-            >
-              <RotateCcw size={15} />
-              Reset
-            </button>
+            {searchBox &&
+              <button
+                onClick={onReset}
+                className="text-xs text-tn-muted  underline ml-1"
+              >
+                Clear All
+              </button>
+            }
           </div>
         </div>
       </div>
