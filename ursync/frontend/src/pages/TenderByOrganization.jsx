@@ -207,8 +207,7 @@ export default function TenderByOrganization() {
             
             <button
               type="submit"
-              disabled={loading || !filters.organization.trim()}
-              className="btn-primary flex items-center justify-center gap-2 min-w-[120px]"
+              className="btn-primary flex items-center justify-center gap-2 min-w-[120px] focus:outline-none focus:ring-0"
             >
               {loading ? (
                 <>

@@ -82,6 +82,7 @@ export default function CancelledRetendered() {
   }, [normalised, appliedSearch])
 
   function handleSearch() {
+    if (!searchInput.trim()) return
     setSearching(true)
     setAppliedSearch(searchInput)
     setTimeout(() => {
@@ -187,7 +188,11 @@ export default function CancelledRetendered() {
             <div className="flex items-center gap-2">
             <button
               onClick={handleSearch}
-              className="btn-primary flex items-center gap-2 focus:outline-none focus:ring-0"
+              disabled={!searchInput.trim() || searching}
+              className={[
+                'btn-primary flex items-center justify-center gap-2 min-w-[120px]',
+                'disabled:opacity-40 disabled:blur-[0.5px] disabled:cursor-not-allowed disabled:pointer-events-none',
+              ].join(' ')}
             >
               {searching ? (
                 <>

@@ -198,7 +198,7 @@ export default function TendersByClassification() {
           <button
             onClick={handleSearch}
             disabled={searching}
-            className="btn-primary flex items-center justify-center gap-2 min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary flex items-center justify-center gap-2 min-w-[120px] focus:outline-none focus:ring-0"
           >
             {searching ? (
               <>

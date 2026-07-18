@@ -144,9 +144,9 @@ export default function TenderStatusPage() {
   const [activeMarker, setActiveMarker] = useState(null)
   const [statusTab, setStatusTab] = useState('all')
   const navigate = useNavigate()
-  const loca1tion = useLocation()
+  const location = useLocation()
 
-  const rootPath = location.state?.fromPath||location.pathname
+  const rootPath = location.state?.fromPath || location.pathname
 
   const activeValues = useMemo(() => {
     if (activeTab === 'criteria1') return criteria1
@@ -156,33 +156,25 @@ export default function TenderStatusPage() {
 
   const hasAnyValue = Object.values(activeValues).some((v) => v && v.trim() !== '')
 
+  // No field is mandatory — an empty date/select just means "don't filter
+  // on this, include all". The only thing that can make a search invalid
+  // is an actual bad date range (from date later than to date).
   const isValid = useMemo(() => {
     if (activeTab === 'criteria1') {
-        const allFilled =
-        criteria1.tenderStatus &&
-        criteria1.fromDate &&
-        criteria1.toDate &&
-        criteria1.tenderCategory &&
-        criteria1.productCategory;
-
-        if (!allFilled) return false;
-
-        return criteria1.fromDate <= criteria1.toDate;
+        if (criteria1.fromDate && criteria1.toDate) {
+          return criteria1.fromDate <= criteria1.toDate;
+        }
+        return true;
     }
 
     if (activeTab === 'criteria2') {
-        const allFilled =
-        criteria2.organization &&
-        criteria2.department &&
-        criteria2.publishedFrom &&
-        criteria2.publishedTo;
-
-        if (!allFilled) return false;
-
-        return criteria2.publishedFrom <= criteria2.publishedTo;
+        if (criteria2.publishedFrom && criteria2.publishedTo) {
+          return criteria2.publishedFrom <= criteria2.publishedTo;
+        }
+        return true;
     }
 
-    return criteria3.tenderId.trim() !== '';
+    return true;
     }, [activeTab, criteria1, criteria2, criteria3]);
 
   const handleTabChange = (tabId) => {
@@ -196,7 +188,7 @@ export default function TenderStatusPage() {
 
   const handleSearch = (e) => {
     e?.preventDefault()
-    if (!isValid) return
+    if (!isValid || loading) return
     setLoading(true)
     setStatusTab('all')
     setSearched(true)
@@ -230,7 +222,6 @@ export default function TenderStatusPage() {
     if (statusTab === 'completed') return results.filter((t) => t.status === 'Completed')
     return results
   }, [results, statusTab, activeTab])
-
 
   const totalPages = Math.ceil(displayResults.length / ITEMS_PER_PAGE)
   const paginated  = displayResults.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
@@ -317,7 +308,7 @@ export default function TenderStatusPage() {
               />
               <div className="flex items-center gap-2 lg:col-span-1 pt-4 justify-end lg:justify-start" >
                 <button type="submit" disabled={!isValid || loading}
-                  className="btn-primary flex items-center justify-center gap-2 flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                  className="btn-primary flex items-center justify-center gap-2 flex-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-0">
                   {loading ? (
                     <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Searching…</>
                   ) : (
@@ -326,8 +317,8 @@ export default function TenderStatusPage() {
                     </svg>Search</>
                   )}
                 </button>
-                <button type="button" onClick={handleReset}
-                  className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap">
+                <button type="button" onClick={handleReset} disabled={loading}
+                  className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
                   Clear all
                 </button>
               </div>
@@ -362,7 +353,7 @@ export default function TenderStatusPage() {
               />
               <div className="flex items-center gap-2 lg:col-span-1 pb-0.5 justify-end lg:justify-start ">
                 <button type="submit" disabled={!isValid || loading}
-                  className="btn-primary flex items-center justify-center gap-2 flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                  className="btn-primary flex items-center justify-center gap-2 flex-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-0">
                   {loading ? (
                     <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Searching…</>
                   ) : (
@@ -371,8 +362,8 @@ export default function TenderStatusPage() {
                     </svg>Search</>
                   )}
                 </button>
-                <button type="button" onClick={handleReset}
-                  className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap">
+                <button type="button" onClick={handleReset} disabled={loading}
+                  className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
                   Clear all
                 </button>
               </div>
@@ -388,7 +379,7 @@ export default function TenderStatusPage() {
                 placeholder="e.g. TN-2026-0123"
               />
               <div className="flex items-center gap-2 lg:col-span-1 pt-4 justify-end lg:justify-start ">
-                <button type="submit" disabled={!isValid || loading}
+                <button type="submit" disabled={!isValid || loading || criteria3.tenderId.trim() === ''}
                   className="btn-primary flex items-center justify-center gap-2 flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
                   {loading ? (
                     <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Searching…</>
@@ -398,8 +389,8 @@ export default function TenderStatusPage() {
                     </svg>Search</>
                   )}
                 </button>
-                <button type="button" onClick={handleReset}
-                  className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap">
+                <button type="button" onClick={handleReset} disabled={loading}
+                  className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
                   Clear all
                 </button>
               </div>

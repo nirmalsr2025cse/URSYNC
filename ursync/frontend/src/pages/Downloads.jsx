@@ -41,25 +41,27 @@ const SearchBox = ({ searchTerm, setSearchTerm, onSearch, onReset }) => {
         </div>
 
         <div className="flex gap-3 shrink-0">
-          {/* Search — always navy, blurred/disabled when empty */}
+          {/* Search — always navy, disabled (not blurred) when empty; fixed size regardless of Clear all's presence */}
           <button
             onClick={!isEmpty ? onSearch : undefined}
             style={{ backgroundColor: "#1B3D6E", color: "#fff" }}
-            className={`flex items-center justify-center gap-2 font-body font-medium text-sm px-5 py-3 rounded-xl transition-smooth
+            className={`flex items-center justify-center gap-2 font-body font-medium text-sm px-5 py-3 rounded-xl transition-smooth shrink-0
               ${isEmpty ? "opacity-40 cursor-not-allowed" : "hover:brightness-90 cursor-pointer"}`}
           >
             <MdSearch className="text-lg" />
             Search
           </button>
 
-          {/* Reset */}
-          <button
-            onClick={onReset}
-            className="flex items-center justify-center gap-2 bg-white text-[#555] border border-cardBorder font-body font-medium text-sm px-5 py-3 rounded-xl hover:bg-[#FAF6F0] transition-smooth"
-          >
-            <MdRefresh className="text-lg" />
-            Reset
-          </button>
+          {/* Reset — only rendered once the user has typed something */}
+          {!isEmpty && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-xs text-tn-muted underline ml-1 shrink-0 self-center"
+            >
+              Clear all
+            </button>
+          )}
         </div>
       </div>
     </div>
