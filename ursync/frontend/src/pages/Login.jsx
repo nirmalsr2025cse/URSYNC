@@ -108,13 +108,16 @@ function checkPasswordFormat(value) {
 // ── Small inline icons (no icon-library dependency) ─────────────────────
 function IconEye({ open }) {
   return open ? (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4.5 h-4.5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-[18px] h-[18px]">
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z" />
       <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ) : (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4.5 h-4.5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 004.24 4.24M6.6 6.7C4.5 8.1 3 12 3 12s3.5 7 9.5 7c1.9 0 3.5-.6 4.8-1.4M17.4 15.5c1.8-1.5 3.1-3.5 3.1-3.5s-1-2-2.6-3.6" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-[18px] h-[18px]">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 9.88a3 3 0 104.24 4.24" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10.73 5.08A10.43 10.43 0 0112 5c7 0 10 7 10 7a13.16 13.16 0 01-1.67 2.68" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.61 6.61A13.526 13.526 0 002 12s3 7 10 7a9.74 9.74 0 005.39-1.61" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2 2l20 20" />
     </svg>
   )
 }
@@ -366,7 +369,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
   const integrityState = isLocked ? 'locked' : (fieldErrors.identifier || fieldErrors.password) ? 'flagged' : 'clear'
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-tn-cream">
+    <div className="min-h-screen w-full overflow-x-hidden flex flex-col lg:flex-row bg-tn-cream">
       <style>{`
         @keyframes loginShake {
           10%, 90% { transform: translateX(-1px); }
@@ -410,12 +413,6 @@ export default function Login({ onSubmit, onForgotPassword }) {
             Sign in to manage tenders, bids, and awards in one place.
           </p>
         </div>
-        {/* Curved edge into the cream body — the same navy/cream boundary
-            the desktop layout draws as a hard vertical line, reshaped for
-            a stacked mobile layout. */}
-        <svg viewBox="0 0 400 24" preserveAspectRatio="none" className="block w-full h-5 text-tn-cream" aria-hidden="true">
-          <path d="M0 24 Q200 0 400 24 Z" fill="currentColor" />
-        </svg>
       </header>
 
       {/* Branding panel — hidden on small screens */}
@@ -463,14 +460,14 @@ export default function Login({ onSubmit, onForgotPassword }) {
         <div className="relative space-y-3 max-w-sm">
           <div className="grid grid-cols-2 gap-4 pt-5 border-t border-white/10">
             <div className="flex items-start gap-2.5">
-              <IconDocument className="w-4.5 h-4.5 text-white/40 mt-0.5 flex-shrink-0" />
+              <IconDocument className="w-[18px] h-[18px] text-white/40 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xl font-bold">8,65,773</p>
-                <p className="text-[11px] text-white/50">Tenders published since 2007</p>
+                <p className="text-[11px] text-white/50">Tenders&nbsp;published&nbsp;since&nbsp;2007</p>
               </div>
             </div>
             <div className="flex items-start gap-2.5">
-              <IconUsers className="w-4.5 h-4.5 text-white/40 mt-0.5 flex-shrink-0" />
+              <IconUsers className="w-[18px] h-[18px] text-white/40 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xl font-bold">52,860</p>
                 <p className="text-[11px] text-white/50">Registered bidders</p>
@@ -516,7 +513,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
                     disabled={submitting}
                     aria-invalid={!!fieldErrors.identifier}
                     aria-describedby={fieldErrors.identifier ? 'login-identifier-error' : undefined}
-                    className={`w-full px-3.5 py-2.5 text-sm rounded-xl border bg-white text-tn-navy placeholder-tn-muted transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
+                    className={`w-full px-3.5 py-3 text-sm rounded-xl border bg-white text-tn-navy placeholder-tn-muted transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
                       fieldErrors.identifier ? 'border-red-300' : 'border-tn-border'
                     }`}
                     placeholder="you@department.tn.gov.in"
@@ -550,7 +547,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
                       disabled={submitting}
                       aria-invalid={!!fieldErrors.password}
                       aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
-                      className={`w-full px-3.5 py-2.5 pr-10 text-sm rounded-xl border bg-white text-tn-navy placeholder-tn-muted transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
+                      className={`w-full px-3.5 py-3 pr-11 text-sm rounded-xl border bg-white text-tn-navy placeholder-tn-muted transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
                         fieldErrors.password ? 'border-red-300' : 'border-tn-border'
                       }`}
                       placeholder="••••••••"
@@ -558,7 +555,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-tn-muted hover:text-tn-navy transition-colors"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 text-tn-muted hover:text-tn-navy transition-colors"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       tabIndex={-1}
                     >
@@ -586,7 +583,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-60"
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-60"
                 >
                   {submitting && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
                   {submitting ? 'Signing in…' : 'Sign in'}
@@ -604,20 +601,20 @@ export default function Login({ onSubmit, onForgotPassword }) {
       {/* Trust footer — mobile & tablet only, mirrors the stats shown in
           the desktop branding panel so the page doesn't end on empty
           cream space. */}
-      <footer className="lg:hidden border-t border-tn-border bg-white/60 px-6 sm:px-10 py-6">
-        <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto">
-          <div className="flex items-start gap-2.5">
-            <IconDocument className="w-4.5 h-4.5 text-tn-navy/40 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-lg font-bold text-tn-navy">8,65,773</p>
-              <p className="text-[11px] text-tn-muted">Tenders published since 2007</p>
+      <footer className="lg:hidden border-t border-tn-border bg-white/60 px-5 sm:px-10 py-6 overflow-hidden">
+        <div className="grid grid-cols-2 gap-3 w-full max-w-sm mx-auto">
+          <div className="flex items-start gap-2 min-w-0">
+            <IconDocument className="w-[18px] h-[18px] text-tn-navy/40 mt-0.5 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-lg font-bold text-tn-navy truncate">8,65,773</p>
+              <p className="text-[11px] text-tn-muted leading-snug">Tenders published since 2007</p>
             </div>
           </div>
-          <div className="flex items-start gap-2.5">
-            <IconUsers className="w-4.5 h-4.5 text-tn-navy/40 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-lg font-bold text-tn-navy">52,860</p>
-              <p className="text-[11px] text-tn-muted">Registered bidders</p>
+          <div className="flex items-start gap-2 min-w-0">
+            <IconUsers className="w-[18px] h-[18px] text-tn-navy/40 mt-0.5 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-lg font-bold text-tn-navy truncate">52,860</p>
+              <p className="text-[11px] text-tn-muted leading-snug">Registered bidders</p>
             </div>
           </div>
         </div>
