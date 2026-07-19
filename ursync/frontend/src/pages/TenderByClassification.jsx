@@ -79,6 +79,12 @@ export default function TendersByClassification() {
   const [searching,      setSearching]      = useState(false)
   const [activeMarker, setActiveMarker] = useState(null)
 
+  // Only true once the user has actually triggered a search
+  // (Search button / Enter, or a popular-category chip).
+  // Drives whether we show the blank "search to see results" state
+  // or the actual results grid.
+  const [hasSearched, setHasSearched] = useState(false)
+
   const rootPath = location.state?.fromPath||location.pathname
 
   function handleSearch() {
@@ -87,6 +93,7 @@ export default function TendersByClassification() {
       setAppliedKeyword(keyword)
       setCurrentPage(1)
       setSearching(false)
+      setHasSearched(true)
     }, 500)
   }
 
@@ -96,11 +103,13 @@ export default function TendersByClassification() {
     setKeyword(next)
     setAppliedKeyword(next)
     setCurrentPage(1)
+    setHasSearched(true)
   }
 
   function handleReset() {
     setKeyword(''); setAppliedKeyword(''); setActiveChip('')
     setFilters(EMPTY_FILTERS); setSortBy('Latest'); setCurrentPage(1)
+    setHasSearched(false)
   }
 
   function setF(key) {
@@ -267,19 +276,37 @@ export default function TendersByClassification() {
           </svg>
           Tender Results
         </h2>
-        <span className="text-xs font-medium text-tn-muted bg-tn-light px-2.5 py-1 rounded-full border border-tn-border">
-          {filtered.length} tender{filtered.length !== 1 ? 's' : ''} found
-        </span>
+        {hasSearched && (
+          <span className="text-xs font-medium text-tn-muted bg-tn-light px-2.5 py-1 rounded-full border border-tn-border">
+            {filtered.length} tender{filtered.length !== 1 ? 's' : ''} found
+          </span>
+        )}
       </div>
 
-      {/* ── Results Grid ──────────────────────────────────────────────── */}
+      {/* ── Results Grid / Empty States ───────────────────────────────── */}
       {searching && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => <TenderCardSkeleton key={i} />)}
         </div>
       )}
 
-      {!searching && filtered.length === 0 && (
+      {!searching && !hasSearched && (
+        // ── Prompt-to-search state (matches Cancelled/Retendered pattern) ──
+        <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-xl border border-dashed border-tn-border">
+          <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
+            <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <h3 className="font-bold text-tn-navy mb-1">Search for tenders</h3>
+          <p className="text-sm text-tn-muted max-w-xs">
+            Enter a keyword above, pick a popular category, or click Search to find matching tenders.
+          </p>
+        </div>
+      )}
+
+      {!searching && hasSearched && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-xl border border-dashed border-tn-border">
           <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
             <svg className="w-7 h-7 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -297,7 +324,7 @@ export default function TendersByClassification() {
         </div>
       )}
 
-      {!searching && filtered.length > 0 && (
+      {!searching && hasSearched && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
           {paginated.map((tender, idx) => (
             <div key={tender.id} className="flex">
@@ -316,11 +343,13 @@ export default function TendersByClassification() {
         </div>
       )}
 
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-      />
+      {hasSearched && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
+      )}
     </div>
   )
 }

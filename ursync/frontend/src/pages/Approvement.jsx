@@ -66,7 +66,7 @@ function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove,
   return (
     <div
       onClick={() => onView(tender)}
-      className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col cursor-pointer"
+      className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col cursor-pointer h-full"
     >
       <div className="h-48 overflow-hidden bg-[#FFF2DB]">
         <img src={tender.image} alt={tender.projectName} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
@@ -94,8 +94,10 @@ function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove,
           <p className="text-[10px] text-[#6B7A8D]">Updated {formatDate(tender.lastUpdated)}</p>
         </div>
 
-        {/* ── Action row: every button MUST stopPropagation ── */}
-        <div className="flex items-center gap-2 pt-1">
+        {/* ── Action row: pinned to bottom via mt-auto so buttons line up ── */}
+        {/* across cards regardless of description/meta length above them. ── */}
+        {/* Every button MUST stopPropagation. ── */}
+        <div className="flex items-center gap-2 pt-1 mt-auto">
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -147,7 +149,7 @@ function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove,
 // ── Bidder Card ───────────────────────────────────────────────────────────────
 function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove, onConfirmReject, onDelete  }) {
   return (
-    <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">
+    <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col h-full">
       <div className="h-48 overflow-hidden bg-[#FFF2DB]">
         <img src={bidder.image} alt={bidder.companyName} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
       </div>
@@ -172,7 +174,8 @@ function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove
           <p className="text-sm font-extrabold text-[#0A2240]">₹ {bidder.bidAmount}</p>
           <p className="text-[10px] text-[#6B7A8D]">Updated {formatDate(bidder.lastUpdated)}</p>
         </div>
-        <div className="flex items-center gap-2 pt-1">
+        {/* ── Action row: pinned to bottom via mt-auto so buttons line up ── */}
+        <div className="flex items-center gap-2 pt-1 mt-auto">
           <button onClick={() => onConfirmReject(bidder)}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-sky text-white border border-tn-sky hover:bg-tn-sky transition-colors">
             <RejectIcon /> Reject

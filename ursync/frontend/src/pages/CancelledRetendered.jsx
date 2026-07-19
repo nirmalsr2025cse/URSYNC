@@ -70,8 +70,11 @@ export default function CancelledRetendered() {
   }, [rawData, activeTab])
 
   // ── Filter ────────────────────────────────────────────────────────────────
+  // NOTE: only returns results once a search has actually been applied
+  // (i.e. the user typed something and pressed Enter / clicked Search).
+  // Before that, this stays empty so the "prompt to search" state shows.
   const filtered = useMemo(() => {
-    if (!appliedSearch.trim()) return normalised
+    if (!appliedSearch.trim()) return []
     const q = appliedSearch.toLowerCase()
     return normalised.filter(
       (t) =>
@@ -81,11 +84,13 @@ export default function CancelledRetendered() {
     )
   }, [normalised, appliedSearch])
 
+  const hasSearched = appliedSearch.trim().length > 0
+
   function handleSearch() {
     if (!searchInput.trim()) return
     setSearching(true)
-    setAppliedSearch(searchInput)
     setTimeout(() => {
+      setAppliedSearch(searchInput)
       setSearching(false)
     }, 600)
   }
@@ -209,7 +214,7 @@ export default function CancelledRetendered() {
                 </>
               )}
             </button>
-              {(searchInput || appliedSearch) && (
+              {searchInput && (
                 <button
                   onClick={handleClear}
                   className="text-xs text-tn-muted underline whitespace-nowrap"
@@ -233,22 +238,44 @@ export default function CancelledRetendered() {
             <h2 className="font-bold text-tn-navy text-base">
               {activeTab === 'cancelled' ? 'Cancelled Tenders' : 'Retendered Tenders'}
             </h2>
-            <p className="text-xs text-tn-muted">
-              {filtered.length} tender{filtered.length !== 1 ? 's' : ''} found
-            </p>
+            {hasSearched && (
+              <p className="text-xs text-tn-muted">
+                {filtered.length} tender{filtered.length !== 1 ? 's' : ''} found
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ── Cards Grid ────────────────────────────────────────────────── */}
+      {/* ── Cards Grid / Empty States ─────────────────────────────────── */}
       <div className={[
-        'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch',
         'transition-opacity duration-150',
         animating ? 'opacity-0' : 'opacity-100',
       ].join(' ')}>
 
-        {filtered.length === 0 ? (
-          <div className="col-span-full flex flex-col items-center justify-center py-20
+        {!hasSearched ? (
+          // ── Prompt-to-search state (matches reference image) ──────────
+          <div className="flex flex-col items-center justify-center py-20
+                          bg-white rounded-2xl border border-tn-border border-dashed">
+            <div className="w-14 h-14 rounded-full bg-tn-light flex items-center
+                            justify-center mb-4 border border-tn-border">
+              <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <p className="font-bold text-tn-navy mb-1">
+              Search for {activeTab === 'cancelled' ? 'cancelled' : 'retendered'} tenders
+            </p>
+            <p className="text-sm text-tn-muted text-center px-4">
+              Enter a Tender ID or organisation name above to
+              <br />
+              find {activeTab === 'cancelled' ? 'cancelled' : 'retendered'} tenders.
+            </p>
+          </div>
+        ) : filtered.length === 0 ? (
+          // ── No matches for the search that was applied ─────────────────
+          <div className="flex flex-col items-center justify-center py-20
                           bg-white rounded-2xl border border-tn-border border-dashed">
             <div className="w-14 h-14 rounded-full bg-tn-light flex items-center
                             justify-center mb-4 border border-tn-border">
@@ -261,26 +288,27 @@ export default function CancelledRetendered() {
               No {activeTab} tenders found
             </p>
             <p className="text-sm text-tn-muted">
-              {appliedSearch
-                ? 'Try a different search term.'
-                : isTenderPerson
-                  ? 'No cancelled tenders found for your account.'
-                  : 'No records available.'
+              {isTenderPerson
+                ? 'No cancelled tenders found for your account.'
+                : 'Try a different search term.'
               }
             </p>
           </div>
         ) : (
-          filtered.map((tender, idx) => (
-            <div key={tender.id} className="flex">
-              <TenderCard
-                tender={tender}
-                viewMode="grid"
-                className="flex-1"
-                highlighted={activeMarker === idx}
-                onClick={() => setActiveMarker(idx)}
-              />
-            </div>
-          ))
+          // ── Matching results ─────────────────────────────────────────
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch">
+            {filtered.map((tender, idx) => (
+              <div key={tender.id} className="flex">
+                <TenderCard
+                  tender={tender}
+                  viewMode="grid"
+                  className="flex-1"
+                  highlighted={activeMarker === idx}
+                  onClick={() => setActiveMarker(idx)}
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

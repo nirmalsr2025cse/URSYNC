@@ -51,7 +51,7 @@ export default function Completed() {
 
   function handleCardClick(tender) {
     navigate('/tender-details-view/' + encodeURIComponent(tender.id), {
-      state: { tender },
+      state: { tender , fromPath: '/completed'},
     })
   }
 

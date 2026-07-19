@@ -135,9 +135,11 @@ export default function Pending() {
     return 'pending'
   }
 
+  // NOTE: pass fromPath so Sidebar's getRootSidebarPath can walk back to
+  // '/pending' and keep the "Pending" nav item highlighted on the details page.
   function handleCardClick(tender) {
     navigate('/tender-details-view/' + encodeURIComponent(tender.id), {
-      state: { tender },
+      state: { tender, fromPath: '/pending' },
     })
   }
 

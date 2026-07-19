@@ -137,9 +137,12 @@ export default function ApplicationApplicants() {
     showToast('Applicant Approved Successfully')
   }
 
+  // NOTE: fromPath must match a real sidebar route ('/applications', with the
+  // leading slash) so Sidebar.jsx's getRootSidebarPath can match it and keep
+  // "Applications" highlighted while on the ApplicantDetails page.
   function handleView(applicant) {
     navigate('/Applicant/' + encodeURIComponent(applicant.applicationId), {
-      state: { tenderId: tender.id },
+      state: { tenderId: tender.id, fromPath: '/applications' },
     })
   }
 

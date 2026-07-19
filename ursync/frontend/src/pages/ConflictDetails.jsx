@@ -292,7 +292,7 @@ export default function ConflictDetails() {
               <button onClick={handleCancelEdit} className="flex-1 btn-secondary">
                 Cancel
               </button>
-              <button onClick={handleApplyEdit} className="flex-1 btn-primary">
+              <button onClick={handleApplyEdit} className="flex-1 btn-primary focus:outline-none focus:ring-0">
                 Apply
               </button>
             </div>

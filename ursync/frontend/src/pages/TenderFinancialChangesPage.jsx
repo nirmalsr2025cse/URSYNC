@@ -354,8 +354,12 @@ export default function TenderFinancialChangesPage() {
             <button onClick={()=>{setAppliedKeyword(keyword);setPage(1);}} className="flex items-center gap-2 bg-tn-blue hover:bg-tn-navy text-white font-semibold text-sm px-5 py-2.5 rounded-lg transition-colors">
               <Search size={15}/>Search
             </button>
-            <button onClick={handleReset} className="flex items-center gap-1.5 text-tn-muted hover:text-tn-navy font-medium text-sm px-2 py-2.5 transition-colors">
-              <RotateCcw size={14}/>Reset
+            <button
+              type="button"
+              onClick={handleReset}
+              className="text-xs text-tn-muted  underline ml-1"
+            >
+              Clear all
             </button>
           </div>
         </div>
