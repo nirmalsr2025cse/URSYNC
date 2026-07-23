@@ -7,14 +7,14 @@
  */
 export function waitForGoogleMaps(timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
-    if (window.googleMapsReady && window.google?.maps) {
+    if (window.googleMapsReady && window.google?.maps) {//Checks whether the map is already loaded
       return resolve(window.google.maps)
     }
-    const timer = setTimeout(() => {
+    const timer = setTimeout(() => { // Wait for 10 seconds to Load map
       reject(new Error('Google Maps failed to load within the timeout period.'))
     }, timeoutMs)
 
-    window.addEventListener('google-maps-ready', () => {
+    window.addEventListener('google-maps-ready', () => { //When map loaded it clears the timeout and Solve it .
       clearTimeout(timer)
       resolve(window.google.maps)
     })
@@ -25,7 +25,7 @@ export function waitForGoogleMaps(timeoutMs = 10000) {
  * Creates a styled Google Map centred on the given coordinates.
  */
 export function createMap(container, center, zoom = 12) {
-  return new window.google.maps.Map(container, {
+  return new window.google.maps.Map(container, { //Creates a Map , Conatiner --> place to load <div> , center --> place to start , zoom - default zoom value
     center,
     zoom,
     mapTypeControl: false,
@@ -42,7 +42,7 @@ export function createMap(container, center, zoom = 12) {
 /**
  * Adds markers to the map and returns the marker array.
  */
-export function addMarkers(map, places, onMarkerClick) {
+export function addMarkers(map, places, onMarkerClick) { //map --> Gmap Object Created, places --> Places JSON Object , onMarkerClick --> Use to point markers in map
   return places.map((place, idx) => {
     const marker = new window.google.maps.Marker({
       position: { lat: place.lat, lng: place.lng },
@@ -64,7 +64,7 @@ export function addMarkers(map, places, onMarkerClick) {
       },
     })
 
-    const infoWindow = new window.google.maps.InfoWindow({
+    const infoWindow = new window.google.maps.InfoWindow({ //popup when click on marked place
       content: `<div style="font-family:Inter,sans-serif;padding:4px 8px;font-size:13px;font-weight:600;color:#0A2240">${place.name}</div>`,
     })
 

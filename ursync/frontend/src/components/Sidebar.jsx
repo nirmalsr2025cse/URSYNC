@@ -66,16 +66,17 @@ function getRootSidebarPath(location, navPaths) {
 
 export default function Sidebar({ open, onClose }) {
   const { role } = useRole()
-  const navItems = NAV_CONFIG[role] || []
+  const navItems = NAV_CONFIG[role] || [] //Gets all the pages of the role
   const location = useLocation()
 
-  const navPaths = navItems.map((item) => item.path)
+  const navPaths = navItems.map((item) => item.path) //render all items
 
   // Find the root sidebar path from the navigation chain
   const activeSidebarPath = getRootSidebarPath(location, navPaths)
 
   return (
     <>
+      {/*Close sideBar When we click outside of sideBar */}
       {open && (
         <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} aria-hidden="true" />
       )}
@@ -90,7 +91,7 @@ export default function Sidebar({ open, onClose }) {
         ].join(' ')}
         aria-label="Sidebar navigation"
       >
-        {/* Mobile header */}
+        {/* Mobile header lg --> Used to Specify Mobile and Tab Size . Sticky used to Stick in Screen when it is lap*/}
         <div className="flex items-center justify-between px-4 py-3 bg-tn-navy lg:hidden flex-shrink-0">
           <span className="text-white font-semibold text-sm">Menu</span>
           <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">

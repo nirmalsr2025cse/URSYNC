@@ -11,7 +11,7 @@ export const ROLES = {
 }
 
 export const ROLE_LABELS = {
-  [ROLES.PUBLIC]:              'Public User',
+  [ROLES.PUBLIC]:              'Public User', // [ROLES.PUBLIC] becomes "public"
   [ROLES.DEPARTMENT_EMPLOYEE]: 'Department Employee',
   [ROLES.DEPARTMENT_HEAD]:     'Department Head',
   [ROLES.ADMINISTRATOR]:       'Administrator',

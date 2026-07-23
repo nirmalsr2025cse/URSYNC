@@ -14,23 +14,23 @@ import RoleSwitcher from './RoleSwitcher'
 // the page itself.
 // Update DASHBOARD_ROOT if the Dashboard route ends up living at a
 // different path than /dashboard.
-const DASHBOARD_ROOT = '/dashboard'
+const DASHBOARD_ROOT = '/dashboard' //Easy Root handling
 
 export default function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false) // set false and use setSidebarOpen
+  const location = useLocation() //Saves the URL in Location
   const isDashboardRoute = location.pathname.startsWith(DASHBOARD_ROOT)
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <Navbar onToggleSidebar={() => setSidebarOpen((o) => !o)} />
+      <Navbar onToggleSidebar={() => setSidebarOpen((o) => !o)} /> {/* Used to Open or close Sidebar Triggred in Navbar Page */}
 
       {isDashboardRoute ? (
         // Dashboard.jsx owns everything below the Navbar. The Navbar's
         // hamburger still controls sidebarOpen — Dashboard just reads it
         // via useOutletContext() and applies it to DashboardSidebar.
         <div className="flex-1 overflow-hidden">
-          <Outlet context={{ sidebarOpen, closeSidebar: () => setSidebarOpen(false) }} />
+          <Outlet context={{ sidebarOpen, closeSidebar: () => setSidebarOpen(false) }} /> {/*Outlet is a placeholder component that renders the matching child route element inside a parent route's layout . Used for Nested Routing */}
         </div>
       ) : (
         <>

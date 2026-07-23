@@ -52,7 +52,7 @@ const LOCK_DURATION_MS = 30_000
 const LS_LOCK_UNTIL = 'ep_login_lock_until'
 const LS_VIOLATIONS = 'ep_login_violations'
 
-function readStorage(key, fallback) {
+function readStorage(key, fallback) {  //Use to Get the Violation and Lock Until Value
   try {
     const raw = window.localStorage.getItem(key)
     return raw === null ? fallback : JSON.parse(raw)
@@ -199,7 +199,7 @@ function LedgerMark({ className }) {
 // Reads like an audit-log line rather than a decorative badge — its state
 // (clear / flagged / locked) is directly driven by the real detection
 // logic above, not just for show.
-function IntegrityStrip({ state, secondsLeft }) {
+function IntegrityStrip({ state, secondsLeft }) { //Show the Current Violation Status
   const config = {
     clear: { dot: 'bg-emerald-500', text: 'Input integrity check: clear' },
     flagged: { dot: 'bg-amber-500', text: 'Input integrity check: suspicious pattern blocked' },
@@ -224,13 +224,12 @@ export default function Login({ onSubmit, onForgotPassword }) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [remember, setRemember] = useState(false)
 
   const [fieldErrors, setFieldErrors] = useState({ identifier: '', password: '' })
   const [formError, setFormError] = useState('')
   const [capsLockOn, setCapsLockOn] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [shake, setShake] = useState(false)
+  const [shake, setShake] = useState(false) // For Small Animation
 
   const [violations, setViolations] = useState(() => readStorage(LS_VIOLATIONS, 0))
   const [lockUntil, setLockUntil] = useState(() => readStorage(LS_LOCK_UNTIL, 0))

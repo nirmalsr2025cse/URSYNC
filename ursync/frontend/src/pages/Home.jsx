@@ -76,7 +76,7 @@ export default function Home() {
   }, [activeTab, searchQuery, filterCat])
 
   // ── All categories across all tabs ───────────────────────────────────────
-  const allCategories = useMemo(() => {
+  const allCategories = useMemo(() => { //Use to Store Expensive Calculation . a built-in React Hook that optimizes performance by caching (memoizing) the result of a calculation between component re-renders .
     const all = [...tenders.ongoing, ...tenders.upcoming, ...tenders.completed]
     return ['All', ...new Set(all.map((t) => t.category).filter(Boolean))]
   }, [])
@@ -101,7 +101,7 @@ export default function Home() {
     }
 
     return list
-  }, [activeTab, role, searchQuery, filterCat])
+  }, [activeTab, role, searchQuery, filterCat]) //Arguments
 
   const ITEMS_PER_PAGE = 6
   const totalPages = Math.ceil(currentTenders.length / ITEMS_PER_PAGE)
@@ -213,6 +213,7 @@ export default function Home() {
             placeholder="Search by title"
             className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
           />
+          {/* Bridge Button ❌ Button */}
           {searchQuery && (
             <button
               onClick={() => setSearch('')}

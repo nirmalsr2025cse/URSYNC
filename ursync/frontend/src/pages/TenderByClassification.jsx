@@ -107,8 +107,12 @@ export default function TendersByClassification() {
   }
 
   function handleReset() {
-    setKeyword(''); setAppliedKeyword(''); setActiveChip('')
-    setFilters(EMPTY_FILTERS); setSortBy('Latest'); setCurrentPage(1)
+    setKeyword(''); 
+    setAppliedKeyword(''); 
+    setActiveChip('')
+    setFilters(EMPTY_FILTERS); 
+    setSortBy('Latest'); 
+    setCurrentPage(1)
     setHasSearched(false)
   }
 

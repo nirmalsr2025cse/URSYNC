@@ -1,13 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react' //export hooks
 import { useRole, ROLES, ROLE_LABELS, ROLE_COLORS } from './RoleContext'
 
 export default function Navbar({ onToggleSidebar }) {
   const { role, setRole } = useRole()
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const dropdownRef = useRef(null)
+  const [dropdownOpen, setDropdownOpen] = useState(false) //This is used to chnage the state of the variable
+  const dropdownRef = useRef(null) //useRef is a React Hook that lets you store a value that persists across renders without causing the component to re-render when it changes.
 
   // Close dropdown when clicking outside
-  useEffect(() => {
+  /*useEffect(() => {
     function handleClickOutside(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setDropdownOpen(false)
@@ -15,7 +15,7 @@ export default function Navbar({ onToggleSidebar }) {
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  }, [])*/
 
   const isLoggedIn = role !== ROLES.PUBLIC
 
@@ -128,7 +128,7 @@ export default function Navbar({ onToggleSidebar }) {
                         {roleLabel}
                       </span>
 
-                      {role === roleKey && (
+                      {role === roleKey && ( /*Used for Blue tick in Role Option*/
                         <svg className="w-3 h-3 text-tn-blue ml-auto flex-shrink-0"
                              fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}

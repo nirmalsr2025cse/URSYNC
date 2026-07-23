@@ -19,14 +19,14 @@ const CATEGORY_COLORS = {
   'Housing':            'bg-pink-50 text-pink-600',
 }
 
-function formatDate(dateStr) {
+function formatDate(dateStr) { //Used for Date Rendering
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
   })
 }
 
-function daysLeft(dateStr) {
+function daysLeft(dateStr) { // Calculate the Date
   if (!dateStr) return null
   return Math.ceil((new Date(dateStr) - Date.now()) / (1000 * 60 * 60 * 24))
 }
@@ -35,7 +35,7 @@ function DownloadBtn({ tender }) {
   var url = tender && tender.documentUrl ? tender.documentUrl : null
 
   function handleClick(e) {
-    e.stopPropagation()
+    e.stopPropagation() // Prevent From Opening The Card
   }
 
   if (url) {
@@ -45,6 +45,9 @@ function DownloadBtn({ tender }) {
         href: url,
         target: '_blank',
         rel: 'noopener noreferrer',
+        /*
+        noopener: A security feature that prevents the newly opened tab from taking control of the original page (preventing malicious attacks known as "tabnabbing").noreferrer: A privacy feature that hides your website's address from the destination website, so they won't see where the traffic came from in their analytics.
+        */
         download: tender.id + '-tender.pdf',
         onClick: handleClick,
         title: 'Download Tender Document',
@@ -82,7 +85,7 @@ function DownloadBtn({ tender }) {
   )
 }
 
-export default function TenderCard({ tender, highlighted, onClick, viewMode, className , footer = false }) {
+export default function TenderCard({ tender, highlighted, onClick, viewMode, className , footer = false }) { //viewMode = 'grid' , footer use to add custom buttons
   highlighted = highlighted || false
   viewMode = viewMode || 'grid'
   className = className || ''
@@ -231,7 +234,7 @@ export default function TenderCard({ tender, highlighted, onClick, viewMode, cla
   )
 }
 
-export function TenderCardSkeleton() {
+export function TenderCardSkeleton() { //Use to Show Blank Screen When screen is not loading
   return (
     <div className="bg-white border border-tn-border rounded-2xl overflow-hidden animate-pulse">
       <div className="h-1 bg-tn-border" />
@@ -255,7 +258,7 @@ export function TenderCardSkeleton() {
   )
 }
 
-function MetaRow({ icon, label }) {
+function MetaRow({ icon, label }) { // Use to render icon
   return (
     <div className="flex items-start gap-1.5">
       <span className="mt-px flex-shrink-0 text-tn-blue">{icon}</span>
@@ -266,6 +269,7 @@ function MetaRow({ icon, label }) {
 
 const ip = { className: 'w-3 h-3', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }
 
+//icons
 function BuildingIcon() {
   return (
     <svg {...ip}>
