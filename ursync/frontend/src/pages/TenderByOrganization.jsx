@@ -231,7 +231,7 @@ export default function TenderByOrganization() {
                 className="text-xs text-tn-muted  underline ml-1"
               >
                 Clear all
-              </button>
+            </button>
             )}
           </div>
 

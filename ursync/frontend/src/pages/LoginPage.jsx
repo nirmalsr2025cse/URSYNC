@@ -1,0 +1,42 @@
+// src/pages/LoginPage.jsx
+//
+// Mounts the Login component and wires its onSubmit prop to the real
+// auth API. Kept separate from Login.jsx so Login.jsx itself stays a
+// pure, reusable presentational component with no networking logic.
+
+import { useNavigate } from 'react-router-dom'
+import Login from './Login'
+
+const BASE_URL = 'http://localhost:5000/api'
+
+export default function LoginPage() {
+  const navigate = useNavigate()
+
+  async function handleLoginSubmit({ identifier, password }) {
+    const res = await fetch(`${BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password }),
+    })
+
+    const data = await res.json().catch(() => ({}))
+
+    if (!res.ok) {
+      // Surfaces in Login.jsx's existing formError state via its own
+      // try/catch in handleSubmit — no change needed there.
+      throw new Error(data.message || 'Invalid email or password.')
+    }
+
+    localStorage.setItem('token', data.token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+
+    navigate('/home')
+  }
+
+  return (
+    <Login
+      onSubmit={handleLoginSubmit}
+      onForgotPassword={() => navigate('/forgot-password')}
+    />
+  )
+}

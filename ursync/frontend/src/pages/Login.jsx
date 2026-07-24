@@ -224,6 +224,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [remember, setRemember] = useState(false)
 
   const [fieldErrors, setFieldErrors] = useState({ identifier: '', password: '' })
   const [formError, setFormError] = useState('')
@@ -570,6 +571,20 @@ export default function Login({ onSubmit, onForgotPassword }) {
                       Caps Lock is on.
                     </p>
                   )}
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    id="login-remember"
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                    disabled={submitting}
+                    className="w-4 h-4 rounded border-tn-border text-tn-blue focus:ring-tn-blue/30"
+                  />
+                  <label htmlFor="login-remember" className="ml-2 text-xs text-tn-muted select-none">
+                    Remember me on this device
+                  </label>
                 </div>
 
                 {formError && (

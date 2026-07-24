@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useRole } from '../components/RoleContext'
+import LocationPicker from '../components/LocationPicker'
+import LatLngInput from '../components/LatLngInput'
 import {
   TENDER_CATEGORIES, TENDER_TYPES, PRIORITY_LEVELS,
   TN_DISTRICTS, DEPARTMENT_MAP,
@@ -82,6 +84,10 @@ export default function CreateTender() {
     taluk:             editData?.taluk             || '',
     village:           editData?.village           || '',
     address:           '',
+    // Each holds { address, lat, lng, placeId } once a place is selected via
+    // LocationPicker — the user never types coordinates directly.
+    startLocation:      editData?.startLocation     || null,
+    endLocation:        editData?.endLocation       || null,
     eligibility:       '',
     technical:         '',
     resources:         '',
@@ -108,6 +114,9 @@ export default function CreateTender() {
       e.endDate = 'End date must be after start date.'
     }
     if (!form.district.trim())         e.district         = 'District is required.'
+    if (!form.startLocation)           e.startLocation    = 'Please select a starting point from the suggestions.'
+    // Ending point is optional — only relevant for stretch-type projects
+    // (roads, pipelines, cabling). Point-location tenders can leave it blank.
     return e
   }
 
@@ -356,6 +365,21 @@ export default function CreateTender() {
                  placeholder="Enter village or area" className={inputClass} />
         </Field>
 
+        <Field label="Starting Point (lat, long)" required error={errors.startLocation}>
+          <LatLngInput
+            value={form.startLocation}
+            onChange={(loc) => set('startLocation', loc)}
+            inputClassName={errors.startLocation ? inputError : inputClass}
+          />
+        </Field>
+
+        <Field label="Ending Point (lat, long) — for road / stretch projects">
+          <LatLngInput
+            value={form.endLocation}
+            onChange={(loc) => set('endLocation', loc)}
+            inputClassName={inputClass}
+          />
+        </Field>
         <Field label="Full Address" fullWidth>
           <textarea value={form.address}
                     onChange={e => set('address', e.target.value)}

@@ -1,7 +1,7 @@
 // src/pages/Home.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import TenderCard from '../components/TenderCard'
-import { tenders, DEMO_ROLE_DEPARTMENT } from '../data/tenders'
+import { useApi } from '../api/client'
 import { useRole, ROLES, ROLE_LABELS } from '../components/RoleContext'
 import Pagination from '../components/Pagination'
 import { useNavigate , useLocation } from 'react-router-dom'
@@ -46,6 +46,7 @@ const DEPARTMENT_RESTRICTED_ROLES = [
 
 export default function Home() {
   const { role } = useRole()
+  const {apiFetch} = useApi()
   const [activeTab,  setActiveTab]  = useState('ongoing')
   const [viewMode,   setViewMode]   = useState('grid')
   const [searchQuery, setSearch]    = useState('')
@@ -59,15 +60,10 @@ export default function Home() {
 
   const rootPath = location.state?.fromPath || location.pathname
 
-  // ── Department filtering (FRONTEND DEMO ONLY) ────────────────────────────
-  // NOTE: For production, DELETE this block and fetch from backend with
-  // Authorization header — backend returns only the department's tenders.
-  const filterByDepartment = (list) => {
-    if (!DEPARTMENT_RESTRICTED_ROLES.includes(role)) return list
-    const deptCode = DEMO_ROLE_DEPARTMENT[role]
-    if (!deptCode) return list
-    return list.filter((t) => t.departmentCode === deptCode)
-  }
+  const [tendersData, setTendersData] = useState({ tenders: [], totalPages: 1, totalCount: 0 })
+  const [stats, setStats] = useState({ ongoing: 0, upcoming: 0, completed: 0, total: 0 })
+  const [allCategories, setAllCategories] = useState(['All'])
+  const [loading, setLoading] = useState(true)
 
   // Reset to page 1 whenever tab/search/filter changes
   React.useEffect(() => { 
@@ -76,54 +72,43 @@ export default function Home() {
   }, [activeTab, searchQuery, filterCat])
 
   // ── All categories across all tabs ───────────────────────────────────────
-  const allCategories = useMemo(() => { //Use to Store Expensive Calculation . a built-in React Hook that optimizes performance by caching (memoizing) the result of a calculation between component re-renders .
-    const all = [...tenders.ongoing, ...tenders.upcoming, ...tenders.completed]
-    return ['All', ...new Set(all.map((t) => t.category).filter(Boolean))]
-  }, [])
+   // Fetch tenders whenever tab/search/filter/page/role changes
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams({
+      status: activeTab,
+      search: searchQuery,
+      category: filterCat,
+      page: currentPage,
+      limit: 6,
+    })
+    apiFetch(`/tenders?${params}`)
+      .then(setTendersData)
+      .catch((err) => console.error('Failed to fetch tenders:', err))
+      .finally(() => setLoading(false))
+  }, [activeTab, searchQuery, filterCat, currentPage, role])
 
-  // ── Final filtered list ───────────────────────────────────────────────────
-  const currentTenders = useMemo(() => {
-    let list = filterByDepartment(tenders[activeTab] || [])
+  // Fetch stats whenever role changes
+  useEffect(() => {
+    apiFetch('/tenders/stats')
+      .then(setStats)
+      .catch((err) => console.error('Failed to fetch stats:', err))
+  }, [role])
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      list = list.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          t.department.toLowerCase().includes(q) ||
-          t.location.toLowerCase().includes(q) ||
-          t.id.toLowerCase().includes(q)
-      )
-    }
+  // Fetch category list once (and when role changes, since it's department-scoped too)
+  useEffect(() => {
+    apiFetch('/tenders/categories')
+      .then((d) => setAllCategories(d.categories))
+      .catch((err) => console.error('Failed to fetch categories:', err))
+  }, [role])
 
-    if (filterCat !== 'All') {
-      list = list.filter((t) => t.category === filterCat)
-    }
+  const currentTenders = tendersData.tenders
+  const totalPages = tendersData.totalPages
+  const paginated = tendersData.tenders // already paginated server-side, no .slice() needed
 
-    return list
-  }, [activeTab, role, searchQuery, filterCat]) //Arguments
-
-  const ITEMS_PER_PAGE = 6
-  const totalPages = Math.ceil(currentTenders.length / ITEMS_PER_PAGE)
-  const paginated  = currentTenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
-
-
-  // ── Stats (per role) ─────────────────────────────────────────────────────
-  const stats = useMemo(() => ({
-    ongoing:   filterByDepartment(tenders.ongoing).length,
-    upcoming:  filterByDepartment(tenders.upcoming).length,
-    completed: filterByDepartment(tenders.completed).length,
-  }), [role])
-
-  const total = stats.ongoing + stats.upcoming + stats.completed
-
-  // ── Department badge info ─────────────────────────────────────────────────
-  const deptCode     = DEMO_ROLE_DEPARTMENT[role]
-  const isDeptRole   = DEPARTMENT_RESTRICTED_ROLES.includes(role)
-  const deptName     = deptCode
-    ? [...tenders.ongoing, ...tenders.upcoming, ...tenders.completed]
-        .find((t) => t.departmentCode === deptCode)?.department
-    : null
+  const isDeptRole = DEPARTMENT_RESTRICTED_ROLES.includes(role)
+  const deptName = isDeptRole ? currentTenders[0]?.department || null : null
+  const total = stats.total
 
   return (
     <div className="p-4 lg:p-6 space-y-5">

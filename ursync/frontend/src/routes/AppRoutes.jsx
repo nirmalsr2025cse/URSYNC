@@ -2,6 +2,8 @@ import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Login from "../pages/Login"
 import Layout from '../components/Layout'
+import ProtectedRoute from './ProtectedRoute'
+import PublicRoute from './PublicRoute'
 import TendersByLocation from '../pages/TenderByLocation'
 import Home from '../pages/Home'
 import Dashboard from '../pages/Dashboard'
@@ -51,12 +53,32 @@ import ResourceSharing from '../pages/ResourceSharing'
 import GetResourcePage from '../pages/GetResourcePage'
 import ResourceDetailPage from '../pages/ResourceDetailPage'
 
+
 export default function AppRoutes() {
   return (
     <Routes>
-      <Route path="*" element={<Placeholder />} />
-      <Route path="/login" element={<Login />} />
-      <Route element={<Layout />}>
+      {/* /login: if already authenticated, PublicRoute bounces to /home
+          instead of showing the form again. Otherwise renders Login. */}
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        }
+      />
+
+      {/* Everything under Layout now requires a valid token. If there's
+          no token, ProtectedRoute sends the user to /login and STOPS
+          there — it never mounts Home/Layout at all, so there's nothing
+          left inside those pages to bounce the user back out again. */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="/home" element={<Home />} />
         <Route path="/dashboard/tender-analysis" element={<Dashboard />} />
@@ -106,6 +128,12 @@ export default function AppRoutes() {
         <Route path="/search-resource/details" element={<ResourceDetailPage />} />
         <Route path="/resource-sharing" element={<ResourceSharing />} />
       </Route>
+
+      {/* Wildcard MUST stay last. It was previously listed first — with
+          nested/relative routing that risks matching before your real
+          routes get a chance, especially with dynamic ":id"-style
+          segments. Keeping it last is the conventional, safe order. */}
+      <Route path="*" element={<Placeholder />} />
     </Routes>
   )
 }
