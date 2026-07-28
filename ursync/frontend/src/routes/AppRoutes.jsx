@@ -1,6 +1,8 @@
 import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate , useNavigate } from 'react-router-dom'
+import { signupRequest, loginRequest } from '../api/authApi'
 import Login from "../pages/Login"
+import Signup from '../pages/SignUP'
 import Layout from '../components/Layout'
 import ProtectedRoute from './ProtectedRoute'
 import PublicRoute from './PublicRoute'
@@ -55,15 +57,41 @@ import ResourceDetailPage from '../pages/ResourceDetailPage'
 
 
 export default function AppRoutes() {
+  const navigate = useNavigate()
+
+  async function handleSignup(formValues) {
+    const { token, user } = await signupRequest(formValues)
+    localStorage.setItem('token', token)
+    localStorage.setItem('user', JSON.stringify(user))
+    navigate('/home')
+  }
+
+  async function handleLogin(formValues) {
+    const { token, user } = await loginRequest({
+      email: formValues.identifier,
+      password: formValues.password,
+    })
+    localStorage.setItem('token', token)
+    localStorage.setItem('user', JSON.stringify(user))
+    navigate('/home')
+  }
   return (
     <Routes>
+      <Route 
+        path='/signup'
+        element={
+          <PublicRoute>
+            <Signup onSubmit={handleSignup} onGoToLogin={() => navigate('/login')} />
+          </PublicRoute>
+        }
+      />
       {/* /login: if already authenticated, PublicRoute bounces to /home
           instead of showing the form again. Otherwise renders Login. */}
       <Route
         path="/login"
         element={
           <PublicRoute>
-            <Login />
+            <Login onSubmit={handleLogin} />
           </PublicRoute>
         }
       />

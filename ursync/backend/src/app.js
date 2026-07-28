@@ -5,7 +5,6 @@ const tenderRoutes = require('./routes/tenderRoutes')
 const authRoutes = require('./routes/authRoutes')
 
 const app = express()
-
 app.use(
   cors({
     origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
@@ -17,6 +16,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' })) //Checks the se
 
 app.use('/api/tenders', tenderRoutes) // Main Part
 app.use('/api/auth', authRoutes) //Authentication
+
 
 // 404 handler
 app.use((req, res) => {

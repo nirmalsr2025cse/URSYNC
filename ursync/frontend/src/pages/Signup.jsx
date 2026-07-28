@@ -1,34 +1,29 @@
-// src/pages/Login.jsx
+// src/pages/Signup.jsx
 //
-// Standalone login page for the E-procurement Dashboard — not nested
-// inside the authenticated Dashboard shell (no DashboardSidebar/Navbar
-// dependency), so it works as its own route (e.g. "/login").
+// Standalone signup page for the E-procurement Dashboard — mirrors
+// Login.jsx's structure, styling, and validation approach so the two
+// pages feel like one product. Not nested inside the authenticated
+// Dashboard shell, so it works as its own route (e.g. "/signup").
 //
 // ─────────────────────────────────────────────────────────────────────────
 // SECURITY NOTE — read before wiring this to a real backend:
 // The suspicious-input lockout below is a *frontend UX layer*. It catches
 // careless or casual bad input and gives the user clear, immediate
 // feedback. It is NOT a substitute for backend validation. A real NoSQL
-// injection attempt (e.g. POSTing raw JSON like
-// {"username":{"$ne":null},"password":{"$ne":null}}, or form-encoded
-// "username[$ne]=" which some body-parsers turn into a nested object)
-// never touches this component's JS — it goes straight to your API.
-// Your Node/Express + MongoDB backend must independently:
-//   - reject any body where username/password aren't plain strings
-//     (e.g. `if (typeof username !== 'string') return res.status(400)...`)
+// injection attempt never touches this component's JS — it goes straight
+// to your API. Your Node/Express + MongoDB backend must independently:
+//   - reject any body where fields aren't plain strings
 //   - sanitize request bodies (e.g. express-mongo-sanitize middleware)
-//   - hash + compare passwords with bcrypt/argon2, never store plaintext
-//   - rate-limit login attempts server-side per IP/account (this file's
-//     lockout is easily bypassed by clearing localStorage or calling the
-//     API directly, so it must not be relied on as the only limiter)
+//   - hash passwords with bcrypt/argon2, never store plaintext
+//   - rate-limit signup attempts server-side per IP
+//   - re-validate department against an allow-list server-side
+//   - re-validate district against an allow-list server-side
+//   - re-validate mobile number format server-side
 // Treat everything below as "good citizen" UX, not a security control.
 // ─────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 
-// ── Suspicious-input detection ──────────────────────────────────────────
-// Each pattern targets a specific, well-known injection style. This list
-// is intentionally not exhaustive — regex pattern-matching never is —
-// it's a deterrent/UX layer, not a security boundary (see note above).
+// ── Suspicious-input detection (same list as Login.jsx) ────────────────
 const SUSPICIOUS_PATTERNS = [
   { test: /^\s*\$/, reason: 'Starts with $' },
   { test: /\$(ne|eq|gt|gte|lt|lte|in|nin|or|and|not|nor|exists|regex|where|expr|type|mod|all|elemMatch|size)\b/i, reason: 'MongoDB operator keyword' },
@@ -42,17 +37,20 @@ const SUSPICIOUS_PATTERNS = [
   { test: /[\x00-\x08\x0B\x0C\x0E-\x1F]/, reason: 'Control characters' },
 ]
 
-const IDENTIFIER_MAX_LEN = 254 // practical email-length cap
+const NAME_MAX_LEN = 100
+const NAME_MIN_LEN = 3
+const EMAIL_MAX_LEN = 254
+const PHONE_LEN = 10
 const PASSWORD_MAX_LEN = 128
 const PASSWORD_MIN_LEN = 6
 
 const MAX_VIOLATIONS = 3
 const LOCK_DURATION_MS = 30_000
 
-const LS_LOCK_UNTIL = 'ep_login_lock_until'
-const LS_VIOLATIONS = 'ep_login_violations'
+const LS_LOCK_UNTIL = 'ep_signup_lock_until'
+const LS_VIOLATIONS = 'ep_signup_violations'
 
-function readStorage(key, fallback) {  //Use to Get the Violation and Lock Until Value
+function readStorage(key, fallback) {
   try {
     const raw = window.localStorage.getItem(key)
     return raw === null ? fallback : JSON.parse(raw)
@@ -79,25 +77,24 @@ function checkSuspicious(value) {
   return null
 }
 
-// ── Identifier format validation ────────────────────────────────────────
-// This portal only accepts official Tamil Nadu government addresses — the
-// identifier must end in tn.gov.in (e.g. name@tn.gov.in or
-// name@department.tn.gov.in, with any number of department subdomains in
-// between). A perfectly well-formed email on another domain, such as
-// nirmal@gmail.com, is still rejected, since it isn't a *.tn.gov.in
-// account. This only runs on submit (see handleSubmit), so nothing is
-// flagged while the user is still typing.
+// ── Field format validation (only runs on submit, same timing as Login) ─
 const GOV_EMAIL_REGEX = /^[^\s@]+@(?:[a-zA-Z0-9-]+\.)*tn\.gov\.in$/i
+const PHONE_REGEX = /^[6-9]\d{9}$/ // 10-digit Indian mobile number, starts 6-9
 
-function checkIdentifierFormat(value) {
+function checkEmailFormat(value) {
   if (!value) return null
   return GOV_EMAIL_REGEX.test(value)
     ? null
     : 'Enter a valid @tn.gov.in email address (e.g. name@department.tn.gov.in).'
 }
 
-// Same submit-only timing as checkIdentifierFormat above — nothing is
-// flagged while the user is still typing, only once they click Sign in.
+function checkPhoneFormat(value) {
+  if (!value) return null
+  return PHONE_REGEX.test(value)
+    ? null
+    : 'Enter a valid 10-digit mobile number.'
+}
+
 function checkPasswordFormat(value) {
   if (!value) return null
   return value.length < PASSWORD_MIN_LEN
@@ -105,7 +102,14 @@ function checkPasswordFormat(value) {
     : null
 }
 
-// ── Small inline icons (no icon-library dependency) ─────────────────────
+function checkNameFormat(value) {
+  if (!value) return null
+  return value.trim().length < NAME_MIN_LEN
+    ? `Name must be at least ${NAME_MIN_LEN} characters.`
+    : null
+}
+
+// ── Small inline icons (no icon-library dependency, shared style with Login) ─
 function IconEye({ open }) {
   return open ? (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-[18px] h-[18px]">
@@ -139,7 +143,6 @@ function IconAlert({ className }) {
   )
 }
 
-// Icons used on the branding panel below (value-prop list + stat labels).
 function IconShield({ className }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
@@ -176,10 +179,25 @@ function IconDocument({ className }) {
   )
 }
 
-// Signature mark for the branding panel: a stack of tender documents under
-// an approval seal. It's the one deliberate decorative flourish on the
-// page, kept quiet (low opacity, single color) and tied directly to the
-// e-procurement subject matter rather than generic ornament.
+// Small phone icon for the mobile number field
+function IconPhone({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z" />
+    </svg>
+  )
+}
+
+// Small map-pin icon for the new district field
+function IconMapPin({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21z" />
+      <circle cx="12" cy="9.5" r="2.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function LedgerMark({ className }) {
   return (
     <svg viewBox="0 0 220 220" fill="none" className={className} aria-hidden="true">
@@ -195,11 +213,8 @@ function LedgerMark({ className }) {
   )
 }
 
-// ── Signature element: a quiet, functional "integrity check" strip ─────
-// Reads like an audit-log line rather than a decorative badge — its state
-// (clear / flagged / locked) is directly driven by the real detection
-// logic above, not just for show.
-function IntegrityStrip({ state, secondsLeft }) { //Show the Current Violation Status
+// ── Signature element: integrity check strip, same as Login.jsx ────────
+function IntegrityStrip({ state, secondsLeft }) {
   const config = {
     clear: { dot: 'bg-emerald-500', text: 'Input integrity check: clear' },
     flagged: { dot: 'bg-amber-500', text: 'Input integrity check: suspicious pattern blocked' },
@@ -220,29 +235,64 @@ const BRAND_FEATURES = [
   { Icon: IconUsers, text: 'Verified vendor and department accounts' },
 ]
 
-export default function Login({ onSubmit, onForgotPassword }) {
-  const [identifier, setIdentifier] = useState('')
+// Departments shown in the signup form. Swap for a fetched list from your
+// backend if the department set changes independently of the frontend.
+const DEPARTMENTS = [
+  'Public Works Department',
+  'Health & Family Welfare',
+  'Municipal Administration',
+  'Highways & Minor Ports',
+  'Agriculture Engineering',
+  'School Education',
+  'Rural Development',
+  'Information Technology',
+]
+
+// Districts shown in the signup form. This MUST stay in sync with the
+// `name` field of documents in your backend's District collection —
+// authController.js resolves whatever string is submitted here against
+// that collection and rejects anything that doesn't match.
+const DISTRICTS = [
+  'Chennai',
+  'Coimbatore',
+  'Madurai',
+  'Tiruchirappalli',
+  'Salem',
+  'Tirunelveli',
+  'Erode',
+  'Vellore',
+  'Thoothukudi',
+  'Thanjavur',
+  'Dindigul',
+  'Kanchipuram',
+  'Cuddalore',
+]
+
+export default function Signup({ onSubmit, onGoToLogin }) {
+  const [name, setName] = useState('')
+  const [department, setDepartment] = useState('')
+  const [district, setDistrict] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [remember, setRemember] = useState(false)
 
-  const [fieldErrors, setFieldErrors] = useState({ identifier: '', password: '' })
+  const [fieldErrors, setFieldErrors] = useState({ name: '', department: '', district: '', email: '', phone: '', password: '' })
   const [formError, setFormError] = useState('')
   const [capsLockOn, setCapsLockOn] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [shake, setShake] = useState(false) // For Small Animation
+  const [shake, setShake] = useState(false)
 
   const [violations, setViolations] = useState(() => readStorage(LS_VIOLATIONS, 0))
   const [lockUntil, setLockUntil] = useState(() => readStorage(LS_LOCK_UNTIL, 0))
   const [now, setNow] = useState(() => Date.now())
 
-  const identifierRef = useRef(null)
+  const nameRef = useRef(null)
   const tickRef = useRef(null)
 
   const isLocked = lockUntil > now
   const secondsLeft = isLocked ? Math.ceil((lockUntil - now) / 1000) : 0
 
-  // Countdown ticker while locked; also clears the lock once time is up.
   useEffect(() => {
     if (!isLocked) {
       clearInterval(tickRef.current)
@@ -253,7 +303,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
   }, [isLocked])
 
   useEffect(() => {
-    identifierRef.current?.focus()
+    nameRef.current?.focus()
   }, [])
 
   const registerViolation = useCallback(() => {
@@ -273,19 +323,54 @@ export default function Login({ onSubmit, onForgotPassword }) {
     window.setTimeout(() => setShake(false), 420)
   }, [])
 
-  function handleIdentifierChange(e) {
-    const raw = e.target.value.slice(0, IDENTIFIER_MAX_LEN)
-    setIdentifier(raw)
+  function handleNameChange(e) {
+    const raw = e.target.value.slice(0, NAME_MAX_LEN)
+    setName(raw)
     const reason = checkSuspicious(raw)
     if (reason) {
-      setFieldErrors((prev) => ({ ...prev, identifier: `That's not allowed here (${reason.toLowerCase()}).` }))
+      setFieldErrors((prev) => ({ ...prev, name: `That's not allowed here (${reason.toLowerCase()}).` }))
       registerViolation()
     } else {
-      // Clear any previous error (suspicious or format) while the user is
-      // actively editing — email-format is only re-checked on submit (see
-      // handleSubmit), not on every keystroke or on blur, so nothing is
-      // flagged until they actually click Sign in.
-      setFieldErrors((prev) => ({ ...prev, identifier: '' }))
+      setFieldErrors((prev) => ({ ...prev, name: '' }))
+    }
+  }
+
+  function handleDepartmentChange(e) {
+    setDepartment(e.target.value)
+    setFieldErrors((prev) => ({ ...prev, department: '' }))
+  }
+
+  function handleDistrictChange(e) {
+    setDistrict(e.target.value)
+    setFieldErrors((prev) => ({ ...prev, district: '' }))
+  }
+
+  function handleEmailChange(e) {
+    const raw = e.target.value.slice(0, EMAIL_MAX_LEN)
+    setEmail(raw)
+    const reason = checkSuspicious(raw)
+    if (reason) {
+      setFieldErrors((prev) => ({ ...prev, email: `That's not allowed here (${reason.toLowerCase()}).` }))
+      registerViolation()
+    } else {
+      // Email-format is only re-checked on submit (see handleSubmit), not
+      // on every keystroke, so nothing is flagged until they click Sign up.
+      setFieldErrors((prev) => ({ ...prev, email: '' }))
+    }
+  }
+
+  // Digits-only, capped at 10 — same "validate on submit, not on
+  // keystroke" timing as the other fields, except we do strip non-digits
+  // live since a phone field with letters in it is never valid anyway.
+  function handlePhoneChange(e) {
+    const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, PHONE_LEN)
+    setPhone(digitsOnly)
+    const reason = checkSuspicious(digitsOnly)
+    if (reason) {
+      setFieldErrors((prev) => ({ ...prev, phone: `That's not allowed here (${reason.toLowerCase()}).` }))
+      registerViolation()
+    } else {
+      setFieldErrors((prev) => ({ ...prev, phone: '' }))
     }
   }
 
@@ -311,35 +396,54 @@ export default function Login({ onSubmit, onForgotPassword }) {
     e.preventDefault()
     if (isLocked || submitting) return
 
-    const trimmedIdentifier = identifier.trim()
+    const trimmedName = name.trim()
+    const trimmedEmail = email.trim()
+    const trimmedPhone = phone.trim()
     const trimmedPassword = password.trim()
 
-    const idSuspicious = checkSuspicious(trimmedIdentifier)
+    const nameSuspicious = checkSuspicious(trimmedName)
+    const emailSuspicious = checkSuspicious(trimmedEmail)
+    const phoneSuspicious = checkSuspicious(trimmedPhone)
     const pwSuspicious = checkSuspicious(trimmedPassword)
+
     // Only worth checking format once we know it's not already flagged as
     // suspicious, so the two error types never fight over the same field.
-    const idFormatReason = !idSuspicious ? checkIdentifierFormat(trimmedIdentifier) : null
+    const nameFormatReason = !nameSuspicious ? checkNameFormat(trimmedName) : null
+    const emailFormatReason = !emailSuspicious ? checkEmailFormat(trimmedEmail) : null
+    const phoneFormatReason = !phoneSuspicious ? checkPhoneFormat(trimmedPhone) : null
     const pwFormatReason = !pwSuspicious ? checkPasswordFormat(trimmedPassword) : null
 
     const nextErrors = {
-      identifier: !trimmedIdentifier
+      name: !trimmedName
+        ? 'Enter your full name.'
+        : nameSuspicious
+          ? `That's not allowed here (${nameSuspicious.toLowerCase()}).`
+          : nameFormatReason || '',
+      department: !department ? 'Select your department.' : '',
+      district: !district ? 'Select your district.' : '',
+      email: !trimmedEmail
         ? 'Enter your email address.'
-        : idSuspicious
-          ? `That's not allowed here (${idSuspicious.toLowerCase()}).`
-          : idFormatReason || '',
+        : emailSuspicious
+          ? `That's not allowed here (${emailSuspicious.toLowerCase()}).`
+          : emailFormatReason || '',
+      phone: !trimmedPhone
+        ? 'Enter your mobile number.'
+        : phoneSuspicious
+          ? `That's not allowed here (${phoneSuspicious.toLowerCase()}).`
+          : phoneFormatReason || '',
       password: !trimmedPassword
-        ? 'Enter your password.'
+        ? 'Enter a password.'
         : pwSuspicious
           ? `That's not allowed here (${pwSuspicious.toLowerCase()}).`
           : pwFormatReason || '',
     }
     setFieldErrors(nextErrors)
 
-    if (idSuspicious || pwSuspicious) {
+    if (nameSuspicious || emailSuspicious || phoneSuspicious || pwSuspicious) {
       registerViolation()
       return
     }
-    if (nextErrors.identifier || nextErrors.password) {
+    if (nextErrors.name || nextErrors.department || nextErrors.district || nextErrors.email || nextErrors.phone || nextErrors.password) {
       setShake(true)
       window.setTimeout(() => setShake(false), 420)
       return
@@ -350,14 +454,23 @@ export default function Login({ onSubmit, onForgotPassword }) {
     try {
       // Values are always sent as explicit strings — never interpolated
       // into a query or rendered as HTML. Wire this up to your real
-      // MongoDB-backed auth endpoint (e.g. POST /api/auth/login); the
-      // backend must still perform its own type-checking and
-      // sanitization regardless of what's already been checked here.
+      // MongoDB-backed auth endpoint (e.g. POST /api/auth/signup); the
+      // backend must still perform its own type-checking, sanitization,
+      // department allow-list validation, district allow-list validation,
+      // and phone format validation regardless of what's already been
+      // checked here.
       if (onSubmit) {
-        await onSubmit({ identifier: String(trimmedIdentifier), password: String(trimmedPassword), remember })
+        await onSubmit({
+          name: String(trimmedName),
+          department: String(department),
+          district: String(district),
+          email: String(trimmedEmail),
+          phone: String(trimmedPhone),
+          password: String(trimmedPassword),
+        })
       } else {
         await new Promise((resolve) => window.setTimeout(resolve, 900))
-        console.log('[Login] onSubmit not provided — simulated request only. Wire this to your auth API.')
+        console.log('[Signup] onSubmit not provided — simulated request only. Wire this to your auth API.')
       }
     } catch (err) {
       setFormError(err?.message || 'Something went wrong. Please try again.')
@@ -366,31 +479,34 @@ export default function Login({ onSubmit, onForgotPassword }) {
     }
   }
 
-  const integrityState = isLocked ? 'locked' : (fieldErrors.identifier || fieldErrors.password) ? 'flagged' : 'clear'
+  const integrityState = isLocked
+    ? 'locked'
+    : (fieldErrors.name || fieldErrors.department || fieldErrors.district || fieldErrors.email || fieldErrors.phone || fieldErrors.password)
+      ? 'flagged'
+      : 'clear'
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden flex flex-col lg:flex-row bg-tn-cream">
       <style>{`
-        @keyframes loginShake {
+        @keyframes signupShake {
           10%, 90% { transform: translateX(-1px); }
           20%, 80% { transform: translateX(2px); }
           30%, 50%, 70% { transform: translateX(-4px); }
           40%, 60% { transform: translateX(4px); }
         }
         @media (prefers-reduced-motion: no-preference) {
-          .login-shake { animation: loginShake 0.42s ease-in-out; }
+          .signup-shake { animation: signupShake 0.42s ease-in-out; }
         }
-        @keyframes loginFadeIn {
+        @keyframes signupFadeIn {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
         }
         @media (prefers-reduced-motion: no-preference) {
-          .login-fade-in { animation: loginFadeIn 0.5s ease-out; }
+          .signup-fade-in { animation: signupFadeIn 0.5s ease-out; }
         }
       `}</style>
 
-      {/* Identity header — mobile & tablet only. On lg the branding panel
-          to the right takes over this job, so this is hidden there. */}
+      {/* Identity header — mobile & tablet only */}
       <header className="lg:hidden relative overflow-hidden bg-tn-navy text-white">
         <div
           className="absolute inset-0 opacity-[0.06] pointer-events-none"
@@ -410,14 +526,13 @@ export default function Login({ onSubmit, onForgotPassword }) {
             </div>
           </div>
           <p className="mt-4 text-sm text-white/70 max-w-xs">
-            Sign in to manage tenders, bids, and awards in one place.
+            Create your account to manage tenders, bids, and awards.
           </p>
         </div>
       </header>
 
       {/* Branding panel — hidden on small screens */}
       <div className="hidden lg:flex lg:w-[42%] relative overflow-hidden bg-tn-navy text-white flex-col justify-between p-10">
-        {/* Faint procurement-ledger texture */}
         <div
           className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{
@@ -426,7 +541,6 @@ export default function Login({ onSubmit, onForgotPassword }) {
           aria-hidden="true"
         />
 
-        {/* Signature mark — the one deliberate flourish on this panel */}
         <LedgerMark className="absolute -bottom-8 -right-16 w-40 h-40 text-white opacity-10 pointer-events-none" />
 
         <div className="relative flex items-center gap-3">
@@ -441,7 +555,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
 
         <div className="relative space-y-5 max-w-sm">
           <p className="text-2xl font-display font-bold leading-snug">
-            Sign in to manage tenders, bids, and awards in one place.
+            Create your account to manage tenders, bids, and awards.
           </p>
           <p className="text-sm text-white/60">தமிழ்நாடு அரசு</p>
 
@@ -480,73 +594,171 @@ export default function Login({ onSubmit, onForgotPassword }) {
 
       {/* Form panel */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10">
-        <div className={`w-full max-w-sm login-fade-in ${shake ? 'login-shake' : ''}`}>
-          <h1 className="text-2xl font-display font-bold text-tn-navy">Sign in</h1>
-          <p className="text-sm text-tn-muted mt-1 mb-7">Access your e-Procurement dashboard.</p>
+        <div className={`w-full max-w-sm signup-fade-in ${shake ? 'signup-shake' : ''}`}>
+          <h1 className="text-2xl font-display font-bold text-tn-navy">Create account</h1>
+          <p className="text-sm text-tn-muted mt-1 mb-7">Register for e-Procurement dashboard access.</p>
 
           {isLocked ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-5 flex flex-col items-center text-center gap-2" role="alert">
               <IconLock className="w-7 h-7 text-red-500" />
-              <p className="font-semibold text-red-700 text-sm">Sign-in temporarily locked</p>
+              <p className="font-semibold text-red-700 text-sm">Sign-up temporarily locked</p>
               <p className="text-xs text-red-600/80 max-w-[22rem]">
-                Repeated invalid input was detected. Try again in {secondsLeft}s, using only your normal email and password.
+                Repeated invalid input was detected. Try again in {secondsLeft}s, using only normal name, department, district, email, phone, and password values.
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} noValidate>
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="login-identifier" className="block text-xs font-semibold text-tn-navy mb-1.5">
+                  <label htmlFor="signup-name" className="block text-xs font-semibold text-tn-navy mb-1.5">
+                    Full name
+                  </label>
+                  <input
+                    id="signup-name"
+                    ref={nameRef}
+                    type="text"
+                    autoComplete="name"
+                    value={name}
+                    onChange={handleNameChange}
+                    disabled={submitting}
+                    aria-invalid={!!fieldErrors.name}
+                    aria-describedby={fieldErrors.name ? 'signup-name-error' : undefined}
+                    className={`w-full px-3.5 py-3 text-sm rounded-xl border bg-white text-tn-navy placeholder-tn-muted transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
+                      fieldErrors.name ? 'border-red-300' : 'border-tn-border'
+                    }`}
+                    placeholder="e.g. Nirmal S R"
+                  />
+                  {fieldErrors.name && (
+                    <p id="signup-name-error" className="mt-1.5 text-xs text-red-600">{fieldErrors.name}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="signup-department" className="block text-xs font-semibold text-tn-navy mb-1.5">
+                    Department
+                  </label>
+                  <select
+                    id="signup-department"
+                    value={department}
+                    onChange={handleDepartmentChange}
+                    disabled={submitting}
+                    aria-invalid={!!fieldErrors.department}
+                    aria-describedby={fieldErrors.department ? 'signup-department-error' : undefined}
+                    className={`w-full px-3.5 py-3 text-sm rounded-xl border bg-white text-tn-navy transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
+                      fieldErrors.department ? 'border-red-300' : 'border-tn-border'
+                    } ${department === '' ? 'text-tn-muted' : ''}`}
+                  >
+                    <option value="" disabled>Select your department</option>
+                    {DEPARTMENTS.map((dept) => (
+                      <option key={dept} value={dept} className="text-tn-navy">{dept}</option>
+                    ))}
+                  </select>
+                  {fieldErrors.department && (
+                    <p id="signup-department-error" className="mt-1.5 text-xs text-red-600">{fieldErrors.department}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="signup-district" className="block text-xs font-semibold text-tn-navy mb-1.5">
+                    District
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-tn-muted pointer-events-none">
+                      <IconMapPin className="w-4 h-4" />
+                    </span>
+                    <select
+                      id="signup-district"
+                      value={district}
+                      onChange={handleDistrictChange}
+                      disabled={submitting}
+                      aria-invalid={!!fieldErrors.district}
+                      aria-describedby={fieldErrors.district ? 'signup-district-error' : undefined}
+                      className={`w-full pl-9 pr-3.5 py-3 text-sm rounded-xl border bg-white text-tn-navy transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
+                        fieldErrors.district ? 'border-red-300' : 'border-tn-border'
+                      } ${district === '' ? 'text-tn-muted' : ''}`}
+                    >
+                      <option value="" disabled>Select your district</option>
+                      {DISTRICTS.map((d) => (
+                        <option key={d} value={d} className="text-tn-navy">{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {fieldErrors.district && (
+                    <p id="signup-district-error" className="mt-1.5 text-xs text-red-600">{fieldErrors.district}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="signup-email" className="block text-xs font-semibold text-tn-navy mb-1.5">
                     Email address
                   </label>
                   <input
-                    id="login-identifier"
-                    ref={identifierRef}
+                    id="signup-email"
                     type="text"
                     inputMode="email"
                     autoComplete="email"
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck="false"
-                    value={identifier}
-                    onChange={handleIdentifierChange}
+                    value={email}
+                    onChange={handleEmailChange}
                     disabled={submitting}
-                    aria-invalid={!!fieldErrors.identifier}
-                    aria-describedby={fieldErrors.identifier ? 'login-identifier-error' : undefined}
+                    aria-invalid={!!fieldErrors.email}
+                    aria-describedby={fieldErrors.email ? 'signup-email-error' : undefined}
                     className={`w-full px-3.5 py-3 text-sm rounded-xl border bg-white text-tn-navy placeholder-tn-muted transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
-                      fieldErrors.identifier ? 'border-red-300' : 'border-tn-border'
+                      fieldErrors.email ? 'border-red-300' : 'border-tn-border'
                     }`}
                     placeholder="you@department.tn.gov.in"
                   />
-                  {fieldErrors.identifier && (
-                    <p id="login-identifier-error" className="mt-1.5 text-xs text-red-600">{fieldErrors.identifier}</p>
+                  {fieldErrors.email && (
+                    <p id="signup-email-error" className="mt-1.5 text-xs text-red-600">{fieldErrors.email}</p>
                   )}
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label htmlFor="login-password" className="block text-xs font-semibold text-tn-navy">
-                      Password
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => onForgotPassword?.()}
-                      className="text-xs font-semibold text-tn-blue hover:underline"
-                    >
-                      Forgot password?
-                    </button>
+                  <label htmlFor="signup-phone" className="block text-xs font-semibold text-tn-navy mb-1.5">
+                    Mobile number
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-tn-muted pointer-events-none">
+                      <IconPhone className="w-4 h-4" />
+                    </span>
+                    <input
+                      id="signup-phone"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      value={phone}
+                      onChange={handlePhoneChange}
+                      disabled={submitting}
+                      aria-invalid={!!fieldErrors.phone}
+                      aria-describedby={fieldErrors.phone ? 'signup-phone-error' : undefined}
+                      className={`w-full pl-9 pr-3.5 py-3 text-sm rounded-xl border bg-white text-tn-navy placeholder-tn-muted transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
+                        fieldErrors.phone ? 'border-red-300' : 'border-tn-border'
+                      }`}
+                      placeholder="10-digit mobile number"
+                    />
                   </div>
+                  {fieldErrors.phone && (
+                    <p id="signup-phone-error" className="mt-1.5 text-xs text-red-600">{fieldErrors.phone}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="signup-password" className="block text-xs font-semibold text-tn-navy mb-1.5">
+                    Password
+                  </label>
                   <div className="relative">
                     <input
-                      id="login-password"
+                      id="signup-password"
                       type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
+                      autoComplete="new-password"
                       value={password}
                       onChange={handlePasswordChange}
                       onKeyUp={handlePasswordKeyUp}
                       disabled={submitting}
                       aria-invalid={!!fieldErrors.password}
-                      aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+                      aria-describedby={fieldErrors.password ? 'signup-password-error' : undefined}
                       className={`w-full px-3.5 py-3 pr-11 text-sm rounded-xl border bg-white text-tn-navy placeholder-tn-muted transition-colors focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue disabled:opacity-60 ${
                         fieldErrors.password ? 'border-red-300' : 'border-tn-border'
                       }`}
@@ -563,7 +775,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
                     </button>
                   </div>
                   {fieldErrors.password && (
-                    <p id="login-password-error" className="mt-1.5 text-xs text-red-600">{fieldErrors.password}</p>
+                    <p id="signup-password-error" className="mt-1.5 text-xs text-red-600">{fieldErrors.password}</p>
                   )}
                   {capsLockOn && !fieldErrors.password && (
                     <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
@@ -571,20 +783,6 @@ export default function Login({ onSubmit, onForgotPassword }) {
                       Caps Lock is on.
                     </p>
                   )}
-                </div>
-
-                <div className="flex items-center">
-                  <input
-                    id="login-remember"
-                    type="checkbox"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
-                    disabled={submitting}
-                    className="w-4 h-4 rounded border-tn-border text-tn-blue focus:ring-tn-blue/30"
-                  />
-                  <label htmlFor="login-remember" className="ml-2 text-xs text-tn-muted select-none">
-                    Remember me on this device
-                  </label>
                 </div>
 
                 {formError && (
@@ -600,7 +798,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-60"
                 >
                   {submitting && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-                  {submitting ? 'Signing in…' : 'Sign in'}
+                  {submitting ? 'Creating account…' : 'Sign up'}
                 </button>
               </div>
             </form>
@@ -612,9 +810,7 @@ export default function Login({ onSubmit, onForgotPassword }) {
         </div>
       </div>
 
-      {/* Trust footer — mobile & tablet only, mirrors the stats shown in
-          the desktop branding panel so the page doesn't end on empty
-          cream space. */}
+      {/* Trust footer — mobile & tablet only */}
       <footer className="lg:hidden border-t border-tn-border bg-white/60 px-5 sm:px-10 py-6 overflow-hidden">
         <div className="grid grid-cols-2 gap-3 w-full max-w-sm mx-auto">
           <div className="flex items-start gap-2 min-w-0">
