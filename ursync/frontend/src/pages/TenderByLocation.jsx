@@ -2,10 +2,9 @@ import React, { useState, useRef } from 'react'
 import MapComponent from '../components/MapComponent'
 import LocationSelector from '../components/LocationSelector'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
-import { getMockNearbyLocations } from '../services/locationService'
-import { getMockTendersByLocation } from '../services/tenderService'
+import { getAutocomplete, getTendersByPlaceId } from '../services/locationService'
 import Pagination from '../components/Pagination'
-import { useNavigate , useLocation} from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 export default function TendersByLocation() {
   const [query,         setQuery]         = useState('')
@@ -18,6 +17,13 @@ export default function TendersByLocation() {
   const [searched,      setSearched]      = useState(false)
   const [currentPage,   setCurrentPage]   = useState(1)
   const [activeTab, setActiveTab] = useState('all')
+
+  const [suggestions,        setSuggestions]        = useState([])
+  const [showSuggestions,    setShowSuggestions]    = useState(false)
+  const [loadingSuggestions, setLoadingSuggestions]  = useState(false)
+  const [selectedPlaceId,    setSelectedPlaceId]    = useState(null)
+  const debounceRef = useRef(null)
+
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -29,15 +35,76 @@ export default function TendersByLocation() {
 
   const ITEMS_PER_PAGE = 6
   const totalPages = Math.ceil(tabTenders.length / ITEMS_PER_PAGE)
-  const paginated  = tenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   const cardRefs = useRef({})
 
   const rootPath = location.state?.rootPath || location.pathname
 
+  // ── Autocomplete on typing ──────────────────────────────────────────────
+  const handleQueryChange = (e) => {
+    const value = e.target.value
+    setQuery(value)
+    setShowSuggestions(true)
+    setSelectedPlaceId(null) // typing invalidates whatever was previously selected
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    if (!value.trim()) {
+      setSuggestions([])
+      return
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setLoadingSuggestions(true)
+      const { data } = await getAutocomplete(value)
+      setSuggestions(data)
+      setLoadingSuggestions(false)
+    }, 350)
+  }
+
+  // Picking a suggestion only fills the box + remembers the placeId —
+  // it does NOT search yet. Search only runs on Search-button click.
+  const handleSelectSuggestion = (suggestion) => {
+    setQuery(suggestion.description)
+    setSelectedPlaceId(suggestion.placeId)
+    setShowSuggestions(false)
+    setSuggestions([])
+  }
+
+  // Quick city chips: run autocomplete, pre-select the first match (still requires Search click)
+  const handleChipClick = async (city) => {
+    setQuery(city)
+    setSelectedPlaceId(null)
+    const { data, error: chipError } = await getAutocomplete(city)
+    if (chipError) {
+      setError(chipError)
+      return
+    }
+    if (data && data.length > 0) {
+      setSelectedPlaceId(data[0].placeId)
+      setQuery(data[0].description)
+    }
+  }
+
+  // The actual search — runs only when the Search button is clicked
   const handleSearch = async (e) => {
     e?.preventDefault()
-    if (!query.trim()) return
+
+    let placeId = selectedPlaceId
+
+    // Fallback: user typed a name and hit Search without picking a suggestion.
+    // Resolve it to a placeId first instead of silently doing nothing.
+    if (!placeId) {
+      if (!query.trim()) return
+      setError(null)
+      const { data, error: acError } = await getAutocomplete(query)
+      if (acError || !data || data.length === 0) {
+        setError(acError || `No location found matching "${query}"`)
+        return
+      }
+      placeId = data[0].placeId
+      setSelectedPlaceId(placeId)
+    }
 
     setError(null)
     setLoadingMap(true)
@@ -45,25 +112,23 @@ export default function TendersByLocation() {
     setSearched(true)
     setActiveMarker(null)
     setActiveTab('all')
+    setShowSuggestions(false)
 
-    // Fetch location data and tenders in parallel
-    const [locResult, tenderResult] = await Promise.all([
-      getMockNearbyLocations(query),     // swap with getNearbyLocations(query) for real API
-      getMockTendersByLocation(query),   // swap with getTendersByLocation(query)  for real API
-    ])
+    const result = await getTendersByPlaceId(placeId)
 
     setLoadingMap(false)
+    setLoadingCards(false)
 
-    if (locResult.error) {
-      setError(locResult.error)
+    if (result.error) {
+      setError(result.error)
       setLocationData(null)
-    } else {
-      setLocationData(locResult.data)
+      setTenders([])
+      return
     }
 
-    setTenders(tenderResult.data || [])
-    setCurrentPage(1)  // Reset to first page on new search
-    setLoadingCards(false)
+    setLocationData({ center: result.data.center, places: result.data.nearbyPlaces })
+    setTenders(result.data.tenders || [])
+    setCurrentPage(1)
   }
 
   const handleClear = () => {
@@ -75,6 +140,9 @@ export default function TendersByLocation() {
     setSearched(false)
     setCurrentPage(1)
     setActiveTab('all')
+    setSuggestions([])
+    setShowSuggestions(false)
+    setSelectedPlaceId(null)
   }
 
   const handleMarkerClick = (idx) => {
@@ -127,16 +195,35 @@ export default function TendersByLocation() {
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Enter location to search tenders (e.g., Tiruchirappalli)"
+              onChange={handleQueryChange}
+              onFocus={() => query.trim() && setShowSuggestions(true)}
+              placeholder="Enter location to search tenders (e.g., Coimbatore)"
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
               aria-label="Location search"
             />
+
+            {showSuggestions && (loadingSuggestions || suggestions.length > 0) && (
+              <ul className="absolute z-10 w-full mt-1 bg-white border border-tn-border rounded-xl shadow-md max-h-60 overflow-y-auto">
+                {loadingSuggestions && (
+                  <li className="px-4 py-2 text-xs text-tn-muted">Searching…</li>
+                )}
+                {!loadingSuggestions && suggestions.map((s) => (
+                  <li
+                    key={s.placeId}
+                    onClick={() => handleSelectSuggestion(s)}
+                    className="px-4 py-2 text-sm text-tn-navy hover:bg-tn-light cursor-pointer"
+                  >
+                    {s.description}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
+
           <button
             type="submit"
             disabled={loadingMap || !query.trim()}
-            className="btn-primary flex items-center justify-center gap-2 min-w-[120px]"
+            className="btn-primary flex items-center justify-center gap-2 min-w-[120px] focus:outline-none focus:ring-0"
           >
             {loadingMap ? (
               <>
@@ -153,6 +240,7 @@ export default function TendersByLocation() {
               </>
             )}
           </button>
+
           {query.trim() && (
             <button
               type="button"
@@ -171,7 +259,7 @@ export default function TendersByLocation() {
             <button
               key={city}
               type="button"
-              onClick={() => { setQuery(city); }}
+              onClick={() => handleChipClick(city)}
               className="text-xs px-3 py-1 rounded-full border border-tn-border
                          bg-tn-light text-tn-blue hover:bg-tn-blue hover:text-white
                          transition-colors font-medium"
@@ -220,7 +308,7 @@ export default function TendersByLocation() {
         />
       </section>
 
-      {/* ── Section 4: Directions (above cards is fine per spec) ───────── */}
+      {/* ── Section 4: Directions ───────────────────────────────────────── */}
       {searched && (
         <LocationSelector
           places={locationData?.places || []}

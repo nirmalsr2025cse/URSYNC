@@ -9,49 +9,50 @@ const api = axios.create({
 })
 
 /**
- * Search nearby locations for a given place name.
- * GET /api/location/search?location=<value>
+ * Get autocomplete suggestions for a partial location string.
+ * GET /api/location/autocomplete?query=<value>
+ *
+ * Expected response:
+ * { predictions: [{ placeId: string, description: string }] }
+ */
+export async function getAutocomplete(query) {
+  try {
+    const { data } = await api.get('/location/autocomplete', {
+      params: { query },
+    })
+    return { data: data.predictions, error: null }
+  } catch (err) {
+    const message =
+      err.response?.data?.message ||
+      err.message ||
+      'Failed to fetch suggestions. Please try again.'
+    return { data: [], error: message }
+  }
+}
+
+/**
+ * Resolve a selected placeId to matched tenders + map data.
+ * GET /api/location/tenders?placeId=<value>
  *
  * Expected response:
  * {
- *   center: { lat: number, lng: number },
- *   places: [{ name: string, lat: number, lng: number }]
+ *   center: { lat, lng },
+ *   nearbyPlaces: [{ name, placeId, address, lat, lng }],
+ *   markers: [{ lat, lng, title }],
+ *   tenders: [...]
  * }
  */
-export async function getNearbyLocations(location) {
+export async function getTendersByPlaceId(placeId) {
   try {
-    const { data } = await api.get('/location/search', {
-      params: { location },
+    const { data } = await api.get('/location/tenders', {
+      params: { placeId },
     })
     return { data, error: null }
   } catch (err) {
     const message =
       err.response?.data?.message ||
       err.message ||
-      'Failed to fetch locations. Please try again.'
+      'Failed to fetch tenders for this location. Please try again.'
     return { data: null, error: message }
-  }
-}
-
-// ── Mock used when backend is not available ─────────────────────────────────
-export async function getMockNearbyLocations(location) {
-  await new Promise((r) => setTimeout(r, 1200))
-
-  if (!location.trim()) {
-    return { data: null, error: 'Please enter a location to search.' }
-  }
-
-  return {
-    data: {
-      center: { lat: 10.7905, lng: 78.7047 },
-      places: [
-        { name: 'Tiruchirappalli Collectorate', lat: 10.7905, lng: 78.7047 },
-        { name: 'TANGEDCO Sub-station, Srirangam', lat: 10.8633, lng: 78.6884 },
-        { name: 'PWD Office, Ariyamangalam',       lat: 10.7653, lng: 78.7537 },
-        { name: 'Corporation Office, Woraiyur',    lat: 10.8215, lng: 78.6893 },
-        { name: 'TWAD Board, Thillai Nagar',       lat: 10.8012, lng: 78.6923 },
-      ],
-    },
-    error: null,
   }
 }

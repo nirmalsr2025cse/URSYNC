@@ -3,6 +3,7 @@ const express = require('express')
 const cors = require('cors')
 const tenderRoutes = require('./routes/tenderRoutes')
 const authRoutes = require('./routes/authRoutes')
+const locationRoutes = require('./routes/locationRoutes')
 
 const app = express()
 app.use(
@@ -16,6 +17,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' })) //Checks the se
 
 app.use('/api/tenders', tenderRoutes) // Main Part
 app.use('/api/auth', authRoutes) //Authentication
+app.use('/api/location', locationRoutes)//Tender By Location
 
 
 // 404 handler

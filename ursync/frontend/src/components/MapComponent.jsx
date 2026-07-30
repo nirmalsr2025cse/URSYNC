@@ -18,7 +18,8 @@ export default function MapComponent({ center, places = [], activeIndex, onMarke
   const [mapsError, setMapsError] = useState(null)
   const [mapReady,  setMapReady]  = useState(false)
 
-  /* Initialise map once */
+  /* Initialise map once — loads the SDK via mapService, key comes from
+     VITE_GOOGLE_MAPS_JS_KEY in the frontend .env, not index.html */
   useEffect(() => {
     waitForGoogleMaps()
       .then(() => setMapReady(true))
@@ -71,7 +72,7 @@ export default function MapComponent({ center, places = [], activeIndex, onMarke
         </svg>
         <p className="font-medium text-tn-navy">Map unavailable</p>
         <p className="text-xs text-center max-w-xs">{mapsError}</p>
-        <p className="text-xs text-tn-muted">Add your Google Maps API key in index.html</p>
+        <p className="text-xs text-tn-muted">Check VITE_GOOGLE_MAPS_JS_KEY in your frontend .env</p>
       </div>
     )
   }

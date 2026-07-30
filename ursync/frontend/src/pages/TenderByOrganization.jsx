@@ -1,29 +1,10 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
-import { tenders } from '../data/tenders'
 import Pagination from '../components/Pagination'
-import { useNavigate , useLocation } from 'react-router-dom'
-
-// ─── Flatten tenders.js { ongoing, upcoming, completed } → flat array ─────────
+import { useNavigate, useLocation } from 'react-router-dom'
+import { useApi } from '../api/client'
 
 const TextBoxStyle = "w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
-
-const STATUS_MAP = {
-  ongoing:   'Ongoing',
-  upcoming:  'Upcoming',
-  completed: 'Completed',
-}
-
-const allTenders = Object.entries(tenders).flatMap(([key, list]) =>
-  (list || []).map((t) => ({
-    ...t,
-    status:           t.status || STATUS_MAP[key] || 'Open',
-    organizationName: t.organizationName || t.organization || '',
-    district:         t.district || t.location || '',
-  }))
-)
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const EMPTY_FILTERS = {
   organization:     '',
@@ -33,55 +14,8 @@ const EMPTY_FILTERS = {
   expiry:           '',
 }
 
-const ORG_TYPES      = ['Government Department', 'Corporation', 'Board', 'Municipality', 'Panchayat Union']
-const TENDER_CATS    = ['Construction', 'Infrastructure', 'Water Supply', 'Electricity', 'IT Services',
-                        'Agriculture', 'Energy', 'Healthcare', 'Urban Development', 'Education', 'Housing']
-const EXPIRY_OPTIONS = ['Ongoing', 'Upcoming', 'Completed']
-const DISTRICTS      = [...new Set(allTenders.map((t) => t.district).filter(Boolean))].sort()
-
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function matchOrgType(name, type) {
-  const n = name.toLowerCase()
-  const map = {
-    'Government Department': ['department', 'highways', 'rural'],
-    'Corporation':           ['corporation'],
-    'Board':                 ['board', 'twad', 'tangedco'],
-    'Municipality':          ['municipality', 'municipal'],
-    'Panchayat Union':       ['panchayat'],
-  }
-  return (map[type] || []).some((kw) => n.includes(kw))
-}
-
-function matchCategory(dept, cat) {
-  const d = (dept || '').toLowerCase()
-  const map = {
-    'Construction':      ['construction', 'roads', 'buildings', 'bridge'],
-    'Infrastructure':    ['infrastructure', 'highway', 'flyover'],
-    'Water Supply':      ['water', 'drainage', 'sanitation'],
-    'Electricity':       ['electrical', 'energy', 'solar', 'power', 'tangedco'],
-    'IT Services':       ['it', 'smart', 'digital'],
-    'Agriculture':       ['agriculture', 'farm'],
-    'Energy':            ['energy', 'solar', 'power', 'tangedco', 'electrical'],
-    'Healthcare':        ['health', 'hospital', 'medical', 'ambulance', 'phc'],
-    'Urban Development': ['urban', 'municipal', 'corporation', 'park', 'street'],
-    'Education':         ['education', 'school', 'classroom'],
-    'Housing':           ['housing', 'tnhb', 'ews'],
-  }
-  return (map[cat] || []).some((kw) => d.includes(kw))
-}
-
-function applyFilters(data, f) {
-  return data.filter((t) => {
-    if (f.organization     && !t.organizationName.toLowerCase().includes(f.organization.toLowerCase())) return false
-    if (f.organizationType && !matchOrgType(t.organizationName, f.organizationType))                    return false
-    if (f.tenderCategory   && !matchCategory(t.department || t.category || '', f.tenderCategory))       return false
-    if (f.district         && t.district !== f.district)                                                 return false
-    if (f.expiry           && t.status   !== f.expiry)                                                   return false
-    return true
-  })
-}
+const ITEMS_PER_PAGE = 6
+const SEARCH_DEBOUNCE_MS = 350
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -106,60 +40,159 @@ function SelectField({ label, value, onChange, options, placeholder }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TenderByOrganization() {
-  const [filters,     setFilters]     = useState(EMPTY_FILTERS)
-  const [results,     setResults]     = useState([])
-  const [loading,     setLoading]     = useState(false)
-  const [searched,    setSearched]    = useState(false)
-  const [activeMarker,setActiveMarker]= useState(null)
-  const [error,       setError]       = useState(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [activeTab, setActiveTab] = useState('all')
+  const { apiFetch } = useApi()
   const navigate = useNavigate()
   const location = useLocation()
 
-  const tabTenders = activeTab === 'all'       ? results
-                 : activeTab === 'ongoing'   ? results.filter((t) => t.status === 'Ongoing')
-                 : activeTab === 'upcoming'  ? results.filter((t) => t.status === 'Upcoming')
-                 : activeTab === 'completed' ? results.filter((t) => t.status === 'Completed')
-                 : results
+  const [filters,     setFilters]     = useState(EMPTY_FILTERS)
+  const [results,     setResults]     = useState([])
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [totalPages,  setTotalPages]  = useState(1)
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [activeTab,   setActiveTab]   = useState('all')
+  const [activeMarker,setActiveMarker]= useState(null)
+
+  const [statusCounts, setStatusCounts] = useState({ all: 0, ongoing: 0, upcoming: 0, completed: 0 })
+
+  // Dropdown option lists, populated from real data via the meta endpoint.
+  const [meta, setMeta] = useState({
+    organizationTypes: [],
+    categories: [],
+    districts: [],
+    statuses: [],
+  })
 
   const cardRefs = useRef({})
+  const debounceRef = useRef(null)
+  const requestIdRef = useRef(0) // guards against out-of-order responses
 
-  const rootPath = location.state?.fromPath||location.pathname
+  const rootPath = location.state?.fromPath || location.pathname
 
-  const handleSearch = (e) => {
-    e?.preventDefault()
+  // ── Load dropdown options once on mount ──────────────────────────────────
+  useEffect(() => {
+    apiFetch('/tenders/by-organization/meta')
+      .then((data) => setMeta(data))
+      .catch((err) => console.error('Failed to load filter options:', err))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Build query string from current filters + tab + page ────────────────
+  const buildQuery = useCallback((f, page, tabStatus) => {
+    const params = new URLSearchParams()
+    if (f.organization)     params.set('organization', f.organization)
+    if (f.organizationType) params.set('organizationType', f.organizationType)
+    if (f.tenderCategory)   params.set('tenderCategory', f.tenderCategory)
+    if (f.district)         params.set('district', f.district)
+
+    // The tab bar takes priority over the "Status" dropdown when active;
+    // if the user picked a status dropdown value directly, respect that too.
+    const expiry = tabStatus || f.expiry
+    if (expiry) params.set('expiry', expiry)
+
+    params.set('page', String(page))
+    params.set('limit', String(ITEMS_PER_PAGE))
+    return params.toString()
+  }, [])
+
+  const TAB_TO_STATUS = { ongoing: 'Ongoing', upcoming: 'Upcoming', completed: 'Completed', all: '' }
+
+  // ── Core fetch: results + status counts, in parallel ─────────────────────
+  const fetchTenders = useCallback(async (f, page, tab) => {
+    const myRequestId = ++requestIdRef.current
     setError(null)
     setLoading(true)
-    setSearched(true)
-    setActiveTab('all')
-    setActiveMarker(null)
 
-    setTimeout(() => {
-      setResults(applyFilters(allTenders, filters))
+    try {
+      const tabStatus = TAB_TO_STATUS[tab] || ''
+      const query = buildQuery(f, page, tabStatus)
+
+      const countsParams = new URLSearchParams()
+      if (f.organization)     countsParams.set('organization', f.organization)
+      if (f.organizationType) countsParams.set('organizationType', f.organizationType)
+      if (f.tenderCategory)   countsParams.set('tenderCategory', f.tenderCategory)
+      if (f.district)         countsParams.set('district', f.district)
+
+      const [searchRes, countsRes] = await Promise.all([
+        apiFetch(`/tenders/by-organization?${query}`),
+        apiFetch(`/tenders/by-organization/status-counts?${countsParams.toString()}`),
+      ])
+
+      // Ignore stale responses if a newer request has since been fired.
+      if (myRequestId !== requestIdRef.current) return
+
+      setResults(searchRes.tenders || [])
+      setTotalCount(searchRes.totalCount || 0)
+      setTotalPages(searchRes.totalPages || 1)
+      setStatusCounts(countsRes)
+      setActiveMarker(null)
+    } catch (err) {
+      if (myRequestId !== requestIdRef.current) return
+      console.error('Tender search failed:', err)
+      setError(err.message || 'Failed to load tenders. Please try again.')
+      setResults([])
+      setTotalCount(0)
+      setTotalPages(1)
+    } finally {
+      if (myRequestId === requestIdRef.current) setLoading(false)
+    }
+  }, [apiFetch, buildQuery])
+
+  // ── Load all tenders on mount ─────────────────────────────────────────────
+  useEffect(() => {
+    fetchTenders(EMPTY_FILTERS, 1, 'all')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Auto-search: any filter change re-runs the query (debounced) ────────
+  const isFirstRun = useRef(true)
+  useEffect(() => {
+    if (isFirstRun.current) {
+      isFirstRun.current = false
+      return
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
       setCurrentPage(1)
-      setLoading(false)
-    }, 600)
+      setActiveTab('all')
+      fetchTenders(filters, 1, 'all')
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(debounceRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters])
+
+  // ── Tab click: refetch immediately, no debounce ──────────────────────────
+  const handleTabClick = (tabId) => {
+    setActiveTab(tabId)
+    setCurrentPage(1)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    fetchTenders(filters, 1, tabId)
+  }
+
+  // ── Page change: refetch that page for the current filters/tab ──────────
+  const handlePageChange = (page) => {
+    setCurrentPage(page)
+    fetchTenders(filters, page, activeTab)
   }
 
   const handleReset = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
     setFilters(EMPTY_FILTERS)
-    setResults([])
-    setSearched(false)
-    setActiveMarker(null)
-    setError(null)
+    setActiveTab('all')
+    setCurrentPage(1)
+    fetchTenders(EMPTY_FILTERS, 1, 'all')
   }
 
   const handleCardClick = (idx, tender) => {
     setActiveMarker(idx)
-    navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender , fromPath:rootPath } })
+    navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender, fromPath: rootPath } })
   }
 
-  const ITEMS_PER_PAGE = 6
-  const totalPages = Math.ceil(tabTenders.length / ITEMS_PER_PAGE)
-
   const activeFilters = Object.entries(filters).filter(([, v]) => v)
-  const hasFilters = activeFilters.length > 0 
+  const hasFilters = activeFilters.length > 0
+
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-fade-in">
 
@@ -185,7 +218,7 @@ export default function TenderByOrganization() {
 
       {/* ── Search & Filters ────────────────────────────────────────────── */}
       <section className="bg-white rounded-xl border border-tn-border p-5 shadow-sm">
-        <form onSubmit={handleSearch} className="space-y-4">
+        <div className="space-y-4">
 
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
@@ -199,39 +232,25 @@ export default function TenderByOrganization() {
                 type="text"
                 value={filters.organization}
                 onChange={(e) => setFilters((f) => ({ ...f, organization: e.target.value }))}
-                placeholder="Search by organisation name (e.g., TWAD Board)"
+                placeholder="Search by organisation, title, department, district, category, or ID"
                 className={TextBoxStyle}
-                aria-label="Organisation name"
+                aria-label="Search tenders"
               />
-            </div>
-            
-            <button
-              type="submit"
-              className="btn-primary flex items-center justify-center gap-2 min-w-[120px] focus:outline-none focus:ring-0"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Searching…
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  Search
-                </>
+              {loading && (
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                  <div className="w-4 h-4 border-2 border-tn-blue border-t-transparent rounded-full animate-spin" />
+                </div>
               )}
-            </button>
+            </div>
+
             {hasFilters && (
-            <button
+              <button
                 type="button"
                 onClick={handleReset}
-                className="text-xs text-tn-muted  underline ml-1"
+                className="text-xs text-tn-muted underline ml-1 whitespace-nowrap self-center sm:self-auto"
               >
                 Clear all
-            </button>
+              </button>
             )}
           </div>
 
@@ -240,36 +259,32 @@ export default function TenderByOrganization() {
               label="Org type"
               value={filters.organizationType}
               onChange={(v) => setFilters((f) => ({ ...f, organizationType: v }))}
-              options={ORG_TYPES}
+              options={meta.organizationTypes}
               placeholder="All types"
-              className={TextBoxStyle}
             />
             <SelectField
               label="Category"
               value={filters.tenderCategory}
               onChange={(v) => setFilters((f) => ({ ...f, tenderCategory: v }))}
-              options={TENDER_CATS}
+              options={meta.categories}
               placeholder="All categories"
-              className={TextBoxStyle}
             />
             <SelectField
               label="District"
               value={filters.district}
               onChange={(v) => setFilters((f) => ({ ...f, district: v }))}
-              options={DISTRICTS}
+              options={meta.districts}
               placeholder="All districts"
-              className={TextBoxStyle}
             />
             <SelectField
               label="Status"
               value={filters.expiry}
               onChange={(v) => setFilters((f) => ({ ...f, expiry: v }))}
-              options={EXPIRY_OPTIONS}
+              options={meta.statuses}
               placeholder="All statuses"
-              className={TextBoxStyle}
             />
           </div>
-        </form>
+        </div>
 
         {error && (
           <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200
@@ -292,12 +307,43 @@ export default function TenderByOrganization() {
           </svg>
           Tender Results
         </h2>
-        {results.length > 0 && !loading && (
+        {!loading && (
           <span className="text-xs font-medium text-tn-muted bg-tn-light
                            px-2.5 py-1 rounded-full border border-tn-border">
-            {results.length} tender{results.length !== 1 ? 's' : ''} found
+            {totalCount} tender{totalCount !== 1 ? 's' : ''} found
           </span>
         )}
+      </div>
+
+      {/* ── Tab bar (status) — counts reflect current search/filters ───────── */}
+      <div className="overflow-x-auto mb-4 pb-1">
+        <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 shadow-sm gap-1 min-w-max">
+          {[
+            { id: 'all',       label: 'All',       count: statusCounts.all },
+            { id: 'ongoing',   label: 'Ongoing',   count: statusCounts.ongoing },
+            { id: 'upcoming',  label: 'Upcoming',  count: statusCounts.upcoming },
+            { id: 'completed', label: 'Completed', count: statusCounts.completed },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabClick(tab.id)}
+              className={[
+                'flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200',
+                activeTab === tab.id
+                  ? 'bg-tn-navy text-white shadow-sm'
+                  : 'text-tn-blue border border-tn-border bg-transparent hover:bg-tn-light',
+              ].join(' ')}
+            >
+              {tab.label}
+              <span className={[
+                'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-tn-light text-tn-navy',
+              ].join(' ')}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Loading skeletons ────────────────────────────────────────────── */}
@@ -307,42 +353,10 @@ export default function TenderByOrganization() {
         </div>
       )}
 
-      {!loading && results.length > 0 && (
-        <div className="overflow-x-auto mb-4 pb-1">
-          <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 shadow-sm gap-1 min-w-max">
-            {[
-              { id: 'all',       label: 'All',       count: results.length },
-              { id: 'ongoing',   label: 'Ongoing',   count: results.filter((t) => t.status === 'Ongoing').length },
-              { id: 'upcoming',  label: 'Upcoming',  count: results.filter((t) => t.status === 'Upcoming').length },
-              { id: 'completed', label: 'Completed', count: results.filter((t) => t.status === 'Completed').length },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setCurrentPage(1) }}
-                className={[
-                  'flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200',
-                  activeTab === tab.id
-                    ? 'bg-tn-navy text-white shadow-sm'
-                    : 'text-tn-blue border border-tn-border bg-transparent hover:bg-tn-light',
-                ].join(' ')}
-              >
-                {tab.label}
-                <span className={[
-                  'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                  activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-tn-light text-tn-navy',
-                ].join(' ')}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* ── Results grid ─────────────────────────────────────────────────── */}
       {!loading && results.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {tabTenders.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((tender, idx) => (
+          {results.map((tender, idx) => (
             <div
               key={tender.id}
               ref={(el) => { cardRefs.current[idx] = el }}
@@ -359,14 +373,16 @@ export default function TenderByOrganization() {
         </div>
       )}
 
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-      />
+      {!loading && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
 
       {/* ── No results ───────────────────────────────────────────────────── */}
-      {!loading && searched && results.length === 0 && !error && (
+      {!loading && results.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-16 text-center
                         bg-white rounded-xl border border-tn-border">
           <div className="w-14 h-14 rounded-full bg-tn-light flex items-center
@@ -383,24 +399,6 @@ export default function TenderByOrganization() {
           <button onClick={handleReset} className="mt-4 btn-secondary text-sm">
             Reset Filters
           </button>
-        </div>
-      )}
-
-      {/* ── Pre-search empty state ────────────────────────────────────────── */}
-      {!searched && !loading && (
-        <div className="flex flex-col items-center justify-center py-16 text-center
-                        bg-white rounded-xl border border-dashed border-tn-border">
-          <div className="w-14 h-14 rounded-full bg-tn-light flex items-center
-                          justify-center mb-4 border border-tn-border">
-            <svg className="w-7 h-7 text-tn-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <h3 className="font-semibold text-tn-navy mb-1">Search for an organisation</h3>
-          <p className="text-sm text-tn-muted max-w-xs">
-            Enter an organisation name or use the filters above to browse tenders across Tamil Nadu.
-          </p>
         </div>
       )}
 

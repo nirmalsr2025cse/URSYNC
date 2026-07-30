@@ -12,6 +12,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@googlemaps/js-api-loader": "^2.1.1",
+    "axios": "^1.19.0",
+    "axois": "^0.0.1-security",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",

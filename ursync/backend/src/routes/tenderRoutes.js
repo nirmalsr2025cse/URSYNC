@@ -8,12 +8,19 @@ const {
   getCategories,
   getTenderByCode,
 } = require('../controllers/tenderController')
+const organizationRoutes = require('./organizationRoutes')
 
 router.use(authMiddleware)
 
 router.get('/', listTenders) // api/tenders/
-router.get('/stats', getStats)// api/tenders/stats
-router.get('/categories', getCategories)// api/tenders/categories
-router.get('/:tenderCode', getTenderByCode)// api/tenders/:tenderCode
+router.get('/stats', getStats) // api/tenders/stats
+router.get('/categories', getCategories) // api/tenders/categories
+
+// Tenders-by-Organisation page (TenderByOrganization.jsx)
+// Mounted BEFORE the /:tenderCode catch-all so "/by-organization" and
+// "/by-organization/meta" aren't misread as a tenderCode lookup.
+router.use('/', organizationRoutes)
+
+router.get('/:tenderCode', getTenderByCode) // api/tenders/:tenderCode
 
 module.exports = router

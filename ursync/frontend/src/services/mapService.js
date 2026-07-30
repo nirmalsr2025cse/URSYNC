@@ -1,24 +1,41 @@
 /**
  * Utility helpers for Google Maps integration.
  */
+import { Loader } from '@googlemaps/js-api-loader'
+
+const GOOGLE_MAPS_JS_KEY = import.meta.env.VITE_GOOGLE_MAPS_JS_KEY
+
+let loaderPromise = null
 
 /**
  * Returns a promise that resolves once the Google Maps SDK is ready.
+ * Loads the SDK on demand via @googlemaps/js-api-loader, pulling the key
+ * from VITE_GOOGLE_MAPS_JS_KEY (frontend .env) — nothing hardcoded in
+ * index.html, no global 'google-maps-ready' event needed anymore.
  */
-export function waitForGoogleMaps(timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    if (window.googleMapsReady && window.google?.maps) {//Checks whether the map is already loaded
-      return resolve(window.google.maps)
-    }
-    const timer = setTimeout(() => { // Wait for 10 seconds to Load map
-      reject(new Error('Google Maps failed to load within the timeout period.'))
-    }, timeoutMs)
+export function waitForGoogleMaps() {
+  if (window.google?.maps) { // Already loaded (e.g. hot-reload) — skip re-loading
+    return Promise.resolve(window.google.maps)
+  }
 
-    window.addEventListener('google-maps-ready', () => { //When map loaded it clears the timeout and Solve it .
-      clearTimeout(timer)
-      resolve(window.google.maps)
+  if (!GOOGLE_MAPS_JS_KEY) {
+    return Promise.reject(new Error('Missing VITE_GOOGLE_MAPS_JS_KEY in frontend .env'))
+  }
+
+  if (!loaderPromise) {
+    loaderPromise = new Loader({
+      apiKey: GOOGLE_MAPS_JS_KEY,
+      version: 'weekly',
     })
-  })
+      .importLibrary('maps')
+      .then(() => window.google.maps)
+      .catch((err) => {
+        loaderPromise = null // allow retry on next call if it failed
+        throw new Error('Google Maps failed to load: ' + err.message)
+      })
+  }
+
+  return loaderPromise
 }
 
 /**
