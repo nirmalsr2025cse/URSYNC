@@ -1,41 +1,21 @@
-//src/pages/TenderByClassification.jsx
-import React, { useState, useMemo } from 'react'
-import { useNavigate , useLocation } from 'react-router-dom'
+// src/pages/TenderByClassification.jsx
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import Pagination from '../components/Pagination'
-import { tenders } from '../data/tenders'
+import { useApi } from '../api/client'
 
-// ─── Flatten tenders ──────────────────────────────────────────────────────────
-const STATUS_MAP = {
-  ongoing:   'Ongoing',
-  upcoming:  'Upcoming',
-  completed: 'Completed',
-}
+const ITEMS_PER_PAGE = 6
+const SEARCH_DEBOUNCE_MS = 350
 
-const allTenders = Object.entries(tenders).flatMap(([key, list]) =>
-  (list || []).map((t) => ({
-    ...t,
-    status:           t.status || STATUS_MAP[key] || 'Open',
-    organizationName: t.organizationName || t.organization || '',
-    district:         t.district || t.location || '',
-  }))
-)
-
-// ─── Unique filter options ────────────────────────────────────────────────────
-const CLASSIFICATIONS  = [...new Set(allTenders.map(t => t.classification).filter(Boolean))].sort()
-const TENDER_CATS      = [...new Set(allTenders.map(t => t.category).filter(Boolean))].sort()
-const PRODUCT_CATS     = [...new Set(allTenders.map(t => t.productCategory).filter(Boolean))].sort()
-const ORG_TYPES        = [...new Set(allTenders.map(t => t.organizationType).filter(Boolean))].sort()
-const DISTRICTS        = [...new Set(allTenders.map(t => t.district).filter(Boolean))].sort()
-const STATUS_OPTIONS   = ['Ongoing', 'Upcoming', 'Completed']
-const SORT_OPTIONS     = ['Latest', 'Closing Soon', 'Value: High to Low', 'Value: Low to High', 'Alphabetical']
+const SORT_OPTIONS = ['Ongoing', 'Upcoming', 'Completed']
 
 const VALUE_RANGES = [
-  { label: 'Below ₹10 Lakh',       min: 0,         max: 1000000    },
-  { label: '₹10–50 Lakh',          min: 1000000,   max: 5000000    },
-  { label: '₹50 Lakh–₹1 Crore',    min: 5000000,   max: 10000000   },
-  { label: '₹1–5 Crore',           min: 10000000,  max: 50000000   },
-  { label: 'Above ₹5 Crore',       min: 50000000,  max: Infinity   },
+  { label: 'Below ₹10 Lakh',    min: 0,        max: 1000000 },
+  { label: '₹10–50 Lakh',       min: 1000000,  max: 5000000 },
+  { label: '₹50 Lakh–₹1 Crore', min: 5000000,  max: 10000000 },
+  { label: '₹1–5 Crore',        min: 10000000, max: 50000000 },
+  { label: 'Above ₹5 Crore',    min: 50000000, max: Infinity },
 ]
 
 const POPULAR_CHIPS = [
@@ -45,10 +25,8 @@ const POPULAR_CHIPS = [
 
 const EMPTY_FILTERS = {
   classification: '', category: '', productCategory: '',
-  organizationType: '', district: '', status: '', valueRange: '',
+  organizationType: '', district: '', valueRange: '',
 }
-
-const ITEMS_PER_PAGE = 6
 
 function SelectField({ label, value, onChange, options, placeholder }) {
   return (
@@ -67,106 +45,136 @@ function SelectField({ label, value, onChange, options, placeholder }) {
 }
 
 export default function TendersByClassification() {
+  const { apiFetch } = useApi()
   const navigate = useNavigate()
   const location = useLocation()
 
-  const [keyword,        setKeyword]        = useState('')
-  const [appliedKeyword, setAppliedKeyword] = useState('')
-  const [activeChip,     setActiveChip]     = useState('')
-  const [filters,        setFilters]        = useState(EMPTY_FILTERS)
-  const [sortBy,         setSortBy]         = useState('Latest')
-  const [currentPage,    setCurrentPage]    = useState(1)
-  const [searching,      setSearching]      = useState(false)
+  const [keyword,     setKeyword]     = useState('')
+  const [activeChip,  setActiveChip]  = useState('')
+  const [filters,     setFilters]     = useState(EMPTY_FILTERS)
+  const [sortBy,      setSortBy]      = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+
+  const [results,    setResults]    = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState(null)
   const [activeMarker, setActiveMarker] = useState(null)
 
-  // Only true once the user has actually triggered a search
-  // (Search button / Enter, or a popular-category chip).
-  // Drives whether we show the blank "search to see results" state
-  // or the actual results grid.
-  const [hasSearched, setHasSearched] = useState(false)
+  // Dropdown option lists populated from real data.
+  const [meta, setMeta] = useState({
+    classifications: [], categories: [], productCategories: [],
+    organizationTypes: [], districts: [], statuses: [],
+  })
 
-  const rootPath = location.state?.fromPath||location.pathname
+  const rootPath = location.state?.fromPath || location.pathname
+  const debounceRef = useRef(null)
+  const requestIdRef = useRef(0)
+  const isFirstRun = useRef(true)
 
-  function handleSearch() {
-    setSearching(true)
-    setTimeout(() => {
-      setAppliedKeyword(keyword)
+  // ── Load dropdown options once ────────────────────────────────────────
+  useEffect(() => {
+    apiFetch('/tenders/by-classification/meta')
+      .then((data) => setMeta(data))
+      .catch((err) => console.error('Failed to load filter options:', err))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const buildQuery = useCallback((kw, f, sort, page) => {
+    const params = new URLSearchParams()
+    if (kw)                   params.set('keyword', kw)
+    if (f.classification)     params.set('classification', f.classification)
+    if (f.category)           params.set('category', f.category)
+    if (f.productCategory)    params.set('productCategory', f.productCategory)
+    if (f.organizationType)   params.set('organizationType', f.organizationType)
+    if (f.district)           params.set('district', f.district)
+    if (sort)                 params.set('status', sort) // "Sort By" dropdown now filters by status
+    if (f.valueRange) {
+      const range = VALUE_RANGES.find((r) => r.label === f.valueRange)
+      if (range) {
+        params.set('minValue', String(range.min))
+        if (range.max !== Infinity) params.set('maxValue', String(range.max))
+      }
+    }
+    params.set('page', String(page))
+    params.set('limit', String(ITEMS_PER_PAGE))
+    return params.toString()
+  }, [])
+
+  const fetchTenders = useCallback(async (kw, f, sort, page) => {
+    const myRequestId = ++requestIdRef.current
+    setError(null)
+    setLoading(true)
+    try {
+      const query = buildQuery(kw, f, sort, page)
+      const data = await apiFetch(`/tenders/by-classification?${query}`)
+      if (myRequestId !== requestIdRef.current) return
+
+      setResults(data.tenders || [])
+      setTotalCount(data.totalCount || 0)
+      setTotalPages(data.totalPages || 1)
+      setActiveMarker(null)
+    } catch (err) {
+      if (myRequestId !== requestIdRef.current) return
+      console.error('Tender search failed:', err)
+      setError(err.message || 'Failed to load tenders. Please try again.')
+      setResults([])
+      setTotalCount(0)
+      setTotalPages(1)
+    } finally {
+      if (myRequestId === requestIdRef.current) setLoading(false)
+    }
+  }, [apiFetch, buildQuery])
+
+  // ── Load all tenders on mount ─────────────────────────────────────────
+  useEffect(() => {
+    fetchTenders('', EMPTY_FILTERS, '', 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Auto-search: any change to keyword/filters/sort re-runs (debounced) ─
+  useEffect(() => {
+    if (isFirstRun.current) {
+      isFirstRun.current = false
+      return
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
       setCurrentPage(1)
-      setSearching(false)
-      setHasSearched(true)
-    }, 500)
-  }
+      fetchTenders(keyword, filters, sortBy, 1)
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(debounceRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyword, filters, sortBy])
 
   function handleChip(chip) {
     const next = activeChip === chip ? '' : chip
     setActiveChip(next)
-    setKeyword(next)
-    setAppliedKeyword(next)
-    setCurrentPage(1)
-    setHasSearched(true)
+    setKeyword(next) // flows through the same debounced auto-search effect
   }
 
   function handleReset() {
-    setKeyword(''); 
-    setAppliedKeyword(''); 
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setKeyword('')
     setActiveChip('')
-    setFilters(EMPTY_FILTERS); 
-    setSortBy('Latest'); 
+    setFilters(EMPTY_FILTERS)
+    setSortBy('')
     setCurrentPage(1)
-    setHasSearched(false)
+    fetchTenders('', EMPTY_FILTERS, '', 1)
   }
 
   function setF(key) {
-    return (val) => { setFilters((f) => ({ ...f, [key]: val })); setCurrentPage(1) }
+    return (val) => setFilters((f) => ({ ...f, [key]: val }))
   }
 
-  const filtered = useMemo(() => {
-    let list = [...allTenders]
+  function handlePageChange(page) {
+    setCurrentPage(page)
+    fetchTenders(keyword, filters, sortBy, page)
+  }
 
-    if (appliedKeyword.trim()) {
-      const q = appliedKeyword.toLowerCase()
-      list = list.filter((t) =>
-        t.id?.toLowerCase().includes(q) ||
-        t.title?.toLowerCase().includes(q) ||
-        t.organizationName?.toLowerCase().includes(q) ||
-        t.department?.toLowerCase().includes(q) ||
-        t.district?.toLowerCase().includes(q) ||
-        t.category?.toLowerCase().includes(q)
-      )
-    }
-
-    if (filters.classification)  list = list.filter(t => t.classification  === filters.classification)
-    if (filters.category)        list = list.filter(t => t.category         === filters.category)
-    if (filters.productCategory) list = list.filter(t => t.productCategory  === filters.productCategory)
-    if (filters.organizationType)list = list.filter(t => t.organizationType === filters.organizationType)
-    if (filters.district)        list = list.filter(t => t.district         === filters.district)
-    if (filters.status)          list = list.filter(t => t.status           === filters.status)
-
-    if (filters.valueRange) {
-      const range = VALUE_RANGES.find(r => r.label === filters.valueRange)
-      if (range) {
-        list = list.filter(t => {
-          const val = parseFloat(String(t.estimatedValue || t.value || '0').replace(/[^0-9.]/g, ''))
-          return val >= range.min && val < range.max
-        })
-      }
-    }
-
-    switch (sortBy) {
-      case 'Closing Soon':        list.sort((a, b) => new Date(a.closingDate) - new Date(b.closingDate)); break
-      case 'Value: High to Low':  list.sort((a, b) => parseFloat(b.estimatedValue || 0) - parseFloat(a.estimatedValue || 0)); break
-      case 'Value: Low to High':  list.sort((a, b) => parseFloat(a.estimatedValue || 0) - parseFloat(b.estimatedValue || 0)); break
-      case 'Alphabetical':        list.sort((a, b) => (a.title || '').localeCompare(b.title || '')); break
-      default:                    list.sort((a, b) => new Date(b.publishedDate || b.date || 0) - new Date(a.publishedDate || a.date || 0))
-    }
-
-    return list
-  }, [appliedKeyword, filters, sortBy])
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
-  const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
-
-  const hasFilters = appliedKeyword || Object.values(filters).some(Boolean)
+  const hasFilters = keyword || Object.values(filters).some(Boolean) || sortBy !== ''
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-fade-in">
@@ -202,31 +210,16 @@ export default function TendersByClassification() {
             <input
               type="text"
               value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              onChange={(e) => { setActiveChip(''); setKeyword(e.target.value) }}
               placeholder="Search Tender ID, Title, Organisation, Category..."
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
             />
-          </div>
-          <button
-            onClick={handleSearch}
-            disabled={searching}
-            className="btn-primary flex items-center justify-center gap-2 min-w-[120px] focus:outline-none focus:ring-0"
-          >
-            {searching ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Searching…
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                Search
-              </>
+            {loading && (
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                <div className="w-4 h-4 border-2 border-tn-blue border-t-transparent rounded-full animate-spin" />
+              </div>
             )}
-          </button>
+          </div>
           {hasFilters && (
             <button
               onClick={handleReset}
@@ -261,14 +254,13 @@ export default function TendersByClassification() {
 
       {/* ── Filters Grid ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 bg-white rounded-xl border border-tn-border p-4">
-        <SelectField label="Classification"    value={filters.classification}   onChange={setF('classification')}   options={CLASSIFICATIONS.length ? CLASSIFICATIONS : ['Works', 'Goods', 'Services']} />
-        <SelectField label="Tender Category"   value={filters.category}         onChange={setF('category')}         options={TENDER_CATS} />
-        <SelectField label="Product Category"  value={filters.productCategory}  onChange={setF('productCategory')}  options={PRODUCT_CATS} />
-        <SelectField label="Organisation Type" value={filters.organizationType} onChange={setF('organizationType')} options={ORG_TYPES} />
-        <SelectField label="District"          value={filters.district}         onChange={setF('district')}         options={DISTRICTS} />
-        <SelectField label="Status"            value={filters.status}           onChange={setF('status')}           options={STATUS_OPTIONS} />
+        <SelectField label="Classification"    value={filters.classification}   onChange={setF('classification')}   options={meta.classifications} />
+        <SelectField label="Tender Category"   value={filters.category}         onChange={setF('category')}         options={meta.categories} />
+        <SelectField label="Product Category"  value={filters.productCategory}  onChange={setF('productCategory')}  options={meta.productCategories} />
+        <SelectField label="Organisation Type" value={filters.organizationType} onChange={setF('organizationType')} options={meta.organizationTypes} />
+        <SelectField label="District"          value={filters.district}         onChange={setF('district')}         options={meta.districts} />
         <SelectField label="Estimated Value"   value={filters.valueRange}       onChange={setF('valueRange')}       options={VALUE_RANGES.map(r => r.label)} />
-        <SelectField label="Sort By"           value={sortBy}                   onChange={(v) => { setSortBy(v); setCurrentPage(1) }} options={SORT_OPTIONS} />
+        <SelectField label="Sort By"           value={sortBy}                   onChange={setSortBy}                options={SORT_OPTIONS} />
       </div>
 
       {/* ── Results Header ────────────────────────────────────────────── */}
@@ -280,37 +272,31 @@ export default function TendersByClassification() {
           </svg>
           Tender Results
         </h2>
-        {hasSearched && (
+        {!loading && (
           <span className="text-xs font-medium text-tn-muted bg-tn-light px-2.5 py-1 rounded-full border border-tn-border">
-            {filtered.length} tender{filtered.length !== 1 ? 's' : ''} found
+            {totalCount} tender{totalCount !== 1 ? 's' : ''} found
           </span>
         )}
       </div>
 
-      {/* ── Results Grid / Empty States ───────────────────────────────── */}
-      {searching && (
+      {error && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-tn-danger" role="alert">
+          <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          {error}
+        </div>
+      )}
+
+      {/* ── Results Grid / Empty State ────────────────────────────────── */}
+      {loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => <TenderCardSkeleton key={i} />)}
         </div>
       )}
 
-      {!searching && !hasSearched && (
-        // ── Prompt-to-search state (matches Cancelled/Retendered pattern) ──
-        <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-xl border border-dashed border-tn-border">
-          <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
-            <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <h3 className="font-bold text-tn-navy mb-1">Search for tenders</h3>
-          <p className="text-sm text-tn-muted max-w-xs">
-            Enter a keyword above, pick a popular category, or click Search to find matching tenders.
-          </p>
-        </div>
-      )}
-
-      {!searching && hasSearched && filtered.length === 0 && (
+      {!loading && results.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-xl border border-dashed border-tn-border">
           <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
             <svg className="w-7 h-7 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -328,9 +314,9 @@ export default function TendersByClassification() {
         </div>
       )}
 
-      {!searching && hasSearched && filtered.length > 0 && (
+      {!loading && results.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          {paginated.map((tender, idx) => (
+          {results.map((tender, idx) => (
             <div key={tender.id} className="flex">
               <TenderCard
                 tender={tender}
@@ -339,7 +325,7 @@ export default function TendersByClassification() {
                 highlighted={activeMarker === idx}
                 onClick={() => {
                   setActiveMarker(idx)
-                  navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender , fromPath:rootPath } })
+                  navigate('/tender-details-view/' + encodeURIComponent(tender.id), { state: { tender, fromPath: rootPath } })
                 }}
               />
             </div>
@@ -347,11 +333,11 @@ export default function TendersByClassification() {
         </div>
       )}
 
-      {hasSearched && (
+      {!loading && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
-          onPageChange={setCurrentPage}
+          onPageChange={handlePageChange}
         />
       )}
     </div>

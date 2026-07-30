@@ -9,6 +9,8 @@ const {
   getTenderByCode,
 } = require('../controllers/tenderController')
 const organizationRoutes = require('./organizationRoutes')
+const classificationRoutes = require('./classificationRoutes')
+const archiveRoutes = require('./archiveRoutes')
 
 router.use(authMiddleware)
 
@@ -20,6 +22,8 @@ router.get('/categories', getCategories) // api/tenders/categories
 // Mounted BEFORE the /:tenderCode catch-all so "/by-organization" and
 // "/by-organization/meta" aren't misread as a tenderCode lookup.
 router.use('/', organizationRoutes)
+router.use('/', classificationRoutes)
+router.use('/', archiveRoutes)
 
 router.get('/:tenderCode', getTenderByCode) // api/tenders/:tenderCode
 
