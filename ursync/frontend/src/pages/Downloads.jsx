@@ -5,16 +5,13 @@ import ResourceCard from "../components/ResourceCard";
 import { downloadsData, resourcesData, categories } from "../data/downloads";
 
 // ─── Inline SearchBox ────────────────────────────────────────────────────────
-const SearchBox = ({ searchTerm, setSearchTerm, onSearch, onReset }) => {
+// Now a live/auto search — every keystroke filters immediately.
+// The Search button is gone; "Clear all" appears only when there's text.
+const SearchBox = ({ searchTerm, setSearchTerm, onReset }) => {
   const isEmpty = searchTerm.trim() === "";
 
   const handleChange = (e) => {
-    const value = e.target.value;
-    setSearchTerm(value);
-    // Live reset: if field is cleared, show all cards immediately
-    if (value === "") {
-      onReset();
-    }
+    setSearchTerm(e.target.value);
   };
 
   return (
@@ -34,26 +31,14 @@ const SearchBox = ({ searchTerm, setSearchTerm, onSearch, onReset }) => {
             type="text"
             value={searchTerm}
             onChange={handleChange}
-            onKeyDown={(e) => e.key === "Enter" && !isEmpty && onSearch()}
             placeholder="Search software, forms, manuals..."
             className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all mt-0.5"
           />
         </div>
 
-        <div className="flex gap-3 shrink-0">
-          {/* Search — always navy, disabled (not blurred) when empty; fixed size regardless of Clear all's presence */}
-          <button
-            onClick={!isEmpty ? onSearch : undefined}
-            style={{ backgroundColor: "#1B3D6E", color: "#fff" }}
-            className={`flex items-center justify-center gap-2 font-body font-medium text-sm px-5 py-3 rounded-xl transition-smooth shrink-0
-              ${isEmpty ? "opacity-40 cursor-not-allowed" : "hover:brightness-90 cursor-pointer"}`}
-          >
-            <MdSearch className="text-lg" />
-            Search
-          </button>
-
-          {/* Reset — only rendered once the user has typed something */}
-          {!isEmpty && (
+        {/* Clear all — only rendered once the user has typed something */}
+        {!isEmpty && (
+          <div className="flex gap-3 shrink-0 self-center sm:self-auto">
             <button
               type="button"
               onClick={onReset}
@@ -61,8 +46,8 @@ const SearchBox = ({ searchTerm, setSearchTerm, onSearch, onReset }) => {
             >
               Clear all
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -71,32 +56,26 @@ const SearchBox = ({ searchTerm, setSearchTerm, onSearch, onReset }) => {
 // ─── Downloads Page ──────────────────────────────────────────────────────────
 const Downloads = ({ onMenuClick }) => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [view, setView] = useState("grid");
 
-  const handleSearch = () => {
-    const trimmed = searchTerm.trim().toLowerCase();
-    if (trimmed !== "") setAppliedSearch(trimmed);
-  };
-
   const handleReset = () => {
     setSearchTerm("");
-    setAppliedSearch("");
     setActiveCategory("All");
   };
 
   const filteredDownloads = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
     return downloadsData.filter((item) => {
       const matchesCategory =
         activeCategory === "All" || item.category === activeCategory;
       const matchesSearch =
-        appliedSearch === "" ||
-        item.title.toLowerCase().includes(appliedSearch) ||
-        item.description.toLowerCase().includes(appliedSearch);
+        term === "" ||
+        item.title.toLowerCase().includes(term) ||
+        item.description.toLowerCase().includes(term);
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, appliedSearch]);
+  }, [activeCategory, searchTerm]);
 
   return (
     <div className="flex-1 px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-[1400px] mx-auto w-full">
@@ -117,21 +96,26 @@ const Downloads = ({ onMenuClick }) => {
         <SearchBox
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
-          onSearch={handleSearch}
           onReset={handleReset}
         />
-        <div className="flex overflow-x-auto  gap-2.5 mt-4">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className="text-xs px-3 py-1 rounded-full border border-tn-border
-                         bg-tn-light text-[#1B3D6E] hover:bg-[#1B3D6E] hover:text-white
-                         transition-colors font-medium mb-2"
-            >
-              {cat}
-            </button>
-          ))}
+        <div className="flex overflow-x-auto gap-2.5 mt-4">
+          {categories.map((cat) => {
+            const isActive = cat === activeCategory;
+            return (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`text-xs px-3 py-1 rounded-full border transition-colors font-medium mb-2 shrink-0
+                  ${
+                    isActive
+                      ? "bg-[#1B3D6E] text-white border-[#1B3D6E]"
+                      : "bg-tn-light text-[#1B3D6E] border-tn-border hover:bg-[#1B3D6E] hover:text-white"
+                  }`}
+              >
+                {cat}
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -298,7 +298,7 @@ function SearchTab({ searchBy }) {
         </button>
         <button
           onClick={() => setSearched(true)}
-          className="flex items-center gap-1.5 px-5 py-2 text-sm text-tn-gold bg-tn-navy
+          className="flex items-center gap-1.5 px-5 py-2 text-sm text-white bg-tn-navy
                      rounded-md font-medium hover:opacity-90 transition-opacity"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

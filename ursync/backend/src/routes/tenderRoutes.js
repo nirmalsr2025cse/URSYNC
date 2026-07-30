@@ -12,6 +12,7 @@ const organizationRoutes = require('./organizationRoutes')
 const classificationRoutes = require('./classificationRoutes')
 const archiveRoutes = require('./archiveRoutes')
 const cancelledRetenderedRoutes = require('./cancelledRetenderedRoutes')
+const tenderStatusRoutes = require('./tenderStatusRoutes')
 
 router.use(authMiddleware)
 
@@ -26,6 +27,8 @@ router.use('/', organizationRoutes)
 router.use('/', classificationRoutes)
 router.use('/', archiveRoutes)
 router.use('/', cancelledRetenderedRoutes)
+router.use('/', tenderStatusRoutes)
+
 router.get('/:tenderCode', getTenderByCode) // api/tenders/:tenderCode
 
 module.exports = router
