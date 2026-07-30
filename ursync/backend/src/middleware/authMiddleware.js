@@ -9,8 +9,6 @@ const User = require('../models/User')
 const DEPARTMENT_RESTRICTED_ROLES = [
   'department_employee',
   'department_head',
-  'financial',
-  'tender_authority',
 ]
 
 async function authMiddleware(req, res, next) {

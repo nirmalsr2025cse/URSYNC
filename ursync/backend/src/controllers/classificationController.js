@@ -23,7 +23,7 @@ const ORGANIZATION_TYPES = Object.keys(ORG_TYPE_KEYWORDS)
 
 function buildBaseStages(req) {
   const stages = [
-    { $match: { isDeleted: false } },
+    { $match: { isDeleted: false, isCancelled: false } },
     {
       $lookup: {
         from: 'departments',

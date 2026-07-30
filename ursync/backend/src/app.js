@@ -3,7 +3,7 @@ const express = require('express')
 const cors = require('cors')
 const tenderRoutes = require('./routes/tenderRoutes')
 const authRoutes = require('./routes/authRoutes')
-const locationRoutes = require('./routes/locationRoutes')
+const locationRoutes = require('./routes/locationRoutes') 
 
 const app = express()
 app.use(

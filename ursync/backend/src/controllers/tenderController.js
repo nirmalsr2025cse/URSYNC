@@ -4,18 +4,36 @@ const formatCurrency = require('../utils/formatCurrency')
 
 const VALID_STATUSES = ['Ongoing', 'Upcoming', 'Completed']
 
-function buildJoinStages(req) {
+// Shared aggregation stages: join department/category/district, and apply
+// department-restriction for department-scoped roles. Cancelled tenders
+// are excluded by default — pass includeCancelled=true explicitly (e.g.
+// from the dedicated Cancelled/Retendered page) to see them; normal
+// Home-page browsing never surfaces them by accident.
+//
+// IMPORTANT: department/category/district $unwind stages all use
+// preserveNullAndEmptyArrays: true. Without this, ANY tender whose
+// departmentId or categoryId doesn't resolve to an actual document in
+// those collections (bad ObjectId, deleted department/category, seed
+// data mismatch, etc.) gets SILENTLY DROPPED from the aggregation with
+// no error — this was previously causing most tenders to vanish and only
+// one (the one tender with fully valid refs) to render on the frontend.
+function buildJoinStages(req, { includeCancelled = false } = {}) {
+  const baseMatch = { isDeleted: false }
+  if (!includeCancelled) {
+    baseMatch.isCancelled = false
+  }
+
   const stages = [
-    { $match: { isDeleted: false } },
+    { $match: baseMatch },
     {
-      $lookup: { //Integrate the other collection
+      $lookup: {
         from: 'departments',
         localField: 'departmentId',
         foreignField: '_id',
         as: 'departmentDoc',
       },
     },
-    { $unwind: '$departmentDoc' }, //Make the reterived data as Object 
+    { $unwind: { path: '$departmentDoc', preserveNullAndEmptyArrays: true } },
     {
       $lookup: {
         from: 'categories',
@@ -24,7 +42,7 @@ function buildJoinStages(req) {
         as: 'categoryDoc',
       },
     },
-    { $unwind: '$categoryDoc' },
+    { $unwind: { path: '$categoryDoc', preserveNullAndEmptyArrays: true } },
     {
       $lookup: {
         from: 'districts',
@@ -43,6 +61,11 @@ function buildJoinStages(req) {
   return stages
 }
 
+// Reshapes one aggregated tender doc into the flat fields TenderCard.jsx /
+// Home.jsx already expect from the old mock data.
+// departmentDoc/categoryDoc may now be undefined (see note above) if a
+// tender has a broken/missing ref — fall back gracefully instead of
+// throwing, so one bad tender can't 500 the whole list.
 function toCardShape(t) {
   return {
     id: t.tenderCode,
@@ -50,20 +73,24 @@ function toCardShape(t) {
     title: t.title,
     description: t.description,
     image: t.image,
-    documentUrl: t.documentUrl || null,
-    department: t.departmentDoc.name,
-    departmentCode: t.departmentDoc.code,
-    organization: t.departmentDoc.organization || t.departmentDoc.name,
-    category: t.categoryDoc.name,
+    documentUrl: t.documentUrl || null, // not in current schema — falls back to the "not available" state in TenderCard
+    department: t.departmentDoc?.name || 'Unknown Department',
+    departmentCode: t.departmentDoc?.code || null,
+    organization: t.departmentDoc?.organization || t.departmentDoc?.name || 'Unknown Organisation',
+    category: t.categoryDoc?.name || 'Uncategorised',
     location: t.location || (t.districtDoc ? t.districtDoc.name : ''),
     value: formatCurrency(t.estimatedValue),
     estimatedValue: t.estimatedValue,
     startDate: t.startDate,
     closingDate: t.closingDate,
     status: t.status,
+    isCancelled: t.isCancelled || false,
+    isRetendered: t.isRetendered || false,
+    cancelledReason: t.cancelledReason || null,
   }
 }
 
+// GET /api/tenders?status=ongoing&search=&category=All&page=1&limit=6
 async function listTenders(req, res) {
   try {
     const status = String(req.query.status || 'ongoing')
@@ -77,7 +104,7 @@ async function listTenders(req, res) {
       return res.status(400).json({ message: `status must be one of ${VALID_STATUSES.join(', ')}` })
     }
 
-    const stages = buildJoinStages(req) //Stores aggreation pipeline commands
+    const stages = buildJoinStages(req, { includeCancelled: req.query.includeCancelled === 'true' })
     stages.push({ $match: { status: statusEnum } })
 
     if (category && category !== 'All') {
@@ -102,12 +129,12 @@ async function listTenders(req, res) {
 
     stages.push({
       $facet: {
-        data: [{ $skip: (page - 1) * limit }, { $limit: limit }], //Both depend only on stages seperately
+        data: [{ $skip: (page - 1) * limit }, { $limit: limit }],
         totalCount: [{ $count: 'count' }],
       },
     })
 
-    const [result] = await Tender.aggregate(stages) //Runs all the aggreation pipeline
+    const [result] = await Tender.aggregate(stages)
     const items = result.data.map(toCardShape)
     const totalCount = result.totalCount[0] ? result.totalCount[0].count : 0
 
@@ -123,10 +150,11 @@ async function listTenders(req, res) {
   }
 }
 
+// GET /api/tenders/stats
 async function getStats(req, res) {
   try {
     const stages = buildJoinStages(req)
-    stages.push({ $group: { _id: '$status', count: { $sum: 1 } } }) ///Group JSON Files Based on Status
+    stages.push({ $group: { _id: '$status', count: { $sum: 1 } } })
 
     const results = await Tender.aggregate(stages)
 
@@ -143,6 +171,7 @@ async function getStats(req, res) {
   }
 }
 
+// GET /api/tenders/categories
 async function getCategories(req, res) {
   try {
     const stages = buildJoinStages(req)
@@ -159,6 +188,7 @@ async function getCategories(req, res) {
   }
 }
 
+// GET /api/tenders/:tenderCode
 async function getTenderByCode(req, res) {
   try {
     const stages = buildJoinStages(req)

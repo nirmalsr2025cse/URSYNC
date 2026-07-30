@@ -22,7 +22,7 @@ const ORGANIZATION_TYPES = Object.keys(ORG_TYPE_KEYWORDS)
 
 function buildBaseStages(req) {
   const stages = [
-    { $match: { isDeleted: false } },
+    { $match: { isDeleted: false, isCancelled: false } },
     {
       $lookup: {
         from: 'departments',
@@ -49,6 +49,8 @@ function buildBaseStages(req) {
         as: 'districtDoc',
       },
     },
+    // districtId is NOT required on the real schema, so preserve docs
+    // that have no matching district.
     { $unwind: { path: '$districtDoc', preserveNullAndEmptyArrays: true } },
   ]
 

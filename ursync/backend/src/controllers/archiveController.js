@@ -8,7 +8,7 @@ const formatCurrency = require('../utils/formatCurrency')
 
 function buildBaseStages(req) {
   const stages = [
-    { $match: { isDeleted: false, status: 'Completed' } },
+    { $match: { isDeleted: false, isCancelled: false, status: 'Completed' } },
     {
       $lookup: {
         from: 'departments',
