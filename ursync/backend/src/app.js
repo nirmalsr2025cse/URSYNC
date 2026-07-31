@@ -1,9 +1,9 @@
-// src/app.js
 const express = require('express')
 const cors = require('cors')
 const tenderRoutes = require('./routes/tenderRoutes')
 const authRoutes = require('./routes/authRoutes')
-const locationRoutes = require('./routes/locationRoutes') 
+const locationRoutes = require('./routes/locationRoutes')
+const debarmentRoutes = require('./routes/debarmentRoutes') // NEW
 
 const app = express()
 app.use(
@@ -18,6 +18,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' })) //Checks the se
 app.use('/api/tenders', tenderRoutes) // Main Part
 app.use('/api/auth', authRoutes) //Authentication
 app.use('/api/location', locationRoutes)//Tender By Location
+app.use('/api/debarments', debarmentRoutes) // NEW — Debarment List page
 
 
 // 404 handler

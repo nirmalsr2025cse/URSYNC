@@ -62,11 +62,12 @@ function MetaRow({ icon, label }) {
 }
 
 // ── Tender Card ───────────────────────────────────────────────────────────────
+// Card itself no longer navigates on click — only the explicit View button does.
+// Delete icon is restricted to department_employee.
 function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove, onConfirmReject, onDelete }) {
   return (
     <div
-      onClick={() => onView(tender)}
-      className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col cursor-pointer h-full"
+      className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col h-full"
     >
       <div className="h-48 overflow-hidden bg-[#FFF2DB]">
         <img src={tender.image} alt={tender.projectName} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
@@ -103,9 +104,18 @@ function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove,
               e.stopPropagation()
               onConfirmReject(tender)
             }}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-sky text-white border border-tn-sky hover:bg-tn-sky transition-colors">
+            <RejectIcon /> Reject
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onView(tender)
+            }}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors"
           >
-            <RejectIcon /> Reject
+            <EyeIcon /> View
           </button>
 
           {role === ROLES.ADMINISTRATOR ? (
@@ -130,16 +140,18 @@ function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove,
             </button>
           )}
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete(tender)
-            }}
-            className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition-colors flex-shrink-0"
-            title="Delete"
-          >
-            <TrashIcon />
-          </button>
+          {role === ROLES.DEPARTMENT_HEAD && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(tender)
+              }}
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition-colors flex-shrink-0"
+              title="Delete"
+            >
+              <TrashIcon />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -147,7 +159,8 @@ function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove,
 }
 
 // ── Bidder Card ───────────────────────────────────────────────────────────────
-function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove, onConfirmReject, onDelete  }) {
+// No delete icon for bidders, for any role.
+function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove, onConfirmReject }) {
   return (
     <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col h-full">
       <div className="h-48 overflow-hidden bg-[#FFF2DB]">
@@ -201,14 +214,6 @@ function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove
               <EditIcon /> Edit
             </button>
           )}
-
-          <button
-            onClick={() => onDelete(bidder)}
-            className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition-colors flex-shrink-0"
-            title="Delete"
-          >
-            <TrashIcon />
-          </button>
         </div>
       </div>
     </div>
@@ -338,10 +343,15 @@ export default function Approvement() {
 
   useEffect(() => { setCurrentPage(1) }, [search, statusFilter, categoryFilter, activeTab])
 
+  // Tenders go to /tender-view with the tender data + role + fromPath so
+  // TenderView's Edit button (and the Sidebar's fromPath chain) keep working.
+  // Bidders still go to /finalbidder, unchanged.
   function handleView(item) {
-    navigate('/finalbidder', {
-      state: { fromPath: rootPath, readOnly: true },
-    })
+    if (activeTab === 'bidders') {
+      navigate('/finalbidder', { state: { fromPath: rootPath, readOnly: true } })
+      return
+    }
+    navigate('/tender-view', { state: { tender: item, role, fromPath: rootPath } })
   }
 
   function handleEdit(item) {
@@ -713,7 +723,6 @@ export default function Approvement() {
                         onEdit={handleEdit}
                         onConfirmApprove={confirmApprove}
                         onConfirmReject={confirmReject}
-                        onDelete={confirmDelete}
                     />
                 ))
             }

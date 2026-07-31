@@ -1,7 +1,8 @@
 // src/models/User.js
 // Matches the ACTUAL fields already in the URSYNC.users collection:
 // fullName, email, phone, passwordHash, roleId (ref), departmentId (ref,
-// nullable), district (ref), status, emailVerified, isDeleted, timestamps.
+// nullable), district (ref), status, emailVerified, isDeleted, timestamps,
+// PLUS accountType/panNumber/isDebarment (needed for the Debarment List page).
 const mongoose = require('mongoose')
 const { Schema } = mongoose
 
@@ -25,6 +26,18 @@ const userSchema = new Schema(
       default: 'PendingVerification',
     },
     emailVerified: { type: Boolean, default: false },
+
+    // ── Account type / debarment fields ─────────────────────────────────
+    // "Individual" bidders are identified by PAN; "Organization" bidders
+    // are identified by their login (email) + organisation chain instead.
+    // This directly drives which columns the Debarment List page shows.
+    accountType: {
+      type: String,
+      enum: ['Individual', 'Organization'],
+      default: 'Individual',
+    },
+    panNumber: { type: String, trim: true, default: null }, // Individual accounts only
+    isDebarment: { type: Boolean, default: false }, // quick flag: does this user have an active debarment record?
 
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },

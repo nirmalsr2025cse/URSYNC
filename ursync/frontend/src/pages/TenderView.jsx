@@ -131,6 +131,7 @@ export default function TenderView() {
   // tender and role passed via navigation state
   const tender = location.state?.tender || null
   const role   = location.state?.role   || 'public'
+  const fromPath = location.state?.fromPath || location.pathname
 
   const [toast, setToast] = useState(null)
 
@@ -359,7 +360,7 @@ export default function TenderView() {
       {/* ── Floating Edit Button (role-gated) ─────────────────────────── */}
       {canEdit && statusAllowed && (
         <button
-          onClick={() => navigate('/create-tender', { state: { tender } })}
+          onClick={() => navigate('/create-tender', { state: { tender, fromPath } })}
           className="fixed bottom-8 right-8 z-40 flex items-center gap-2 px-5 py-3 rounded-full bg-[#1A4A8C] text-white shadow-xl hover:bg-[#0A2240] hover:scale-105 hover:shadow-2xl transition-all duration-200 active:scale-95 text-sm font-bold"
           title="Edit Tender"
           aria-label="Edit Tender"
