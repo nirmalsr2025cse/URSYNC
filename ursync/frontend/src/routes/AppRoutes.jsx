@@ -119,8 +119,9 @@ export default function AppRoutes() {
         <Route path="/cancelled" element={<CancelledRetendered />} />
         <Route path="/tenders-by-org" element={<TendersByOrganization />} />
         <Route path="/create-saved-tenders" element={<CreateSavedTenders />} />
-        <Route path="/create-tender"        element={<CreateTender />} />
-        <Route path="/tender-view"        element={<TenderView />} />
+        <Route path="/create-tender"     element={<CreateTender />} />
+        <Route path="/create-tender/:id"        element={<CreateTender />} />
+        <Route path="/tender-view/:id"        element={<TenderView />} />
         <Route path="/tender-details-view/:id" element={<TenderDetailsView />} />
         <Route path="/tenders-by-class"        element={<TenderByClassification />} />
         <Route path="/apply-tenders"         element={<ApplyTenders />} />

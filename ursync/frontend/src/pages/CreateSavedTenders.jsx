@@ -59,7 +59,7 @@ function SavedTenderCard({ tender, onView, onEdit, onDelete }) {
         </div>
 
         {/* ID */}
-        <p className="text-[10px] font-mono text-[#6B7A8D] uppercase tracking-wide">{tender.id}</p>
+        <p className="text-[10px] font-mono text-[#6B7A8D] uppercase tracking-wide">{tender.tenderId}</p>
 
         {/* Project name */}
         <h3 className="text-sm font-bold text-[#0A2240] leading-snug line-clamp-2">{tender.projectName}</h3>
@@ -168,7 +168,7 @@ export default function CreateSavedTenders() {
       const matchesSearch =
         tender.projectName.toLowerCase().includes(search.toLowerCase()) ||
         tender.department.toLowerCase().includes(search.toLowerCase()) ||
-        tender.id.toLowerCase().includes(search.toLowerCase()) ||
+        tender.tenderId.toLowerCase().includes(search.toLowerCase()) ||
         tender.district.toLowerCase().includes(search.toLowerCase())
 
       const matchesStatus =
@@ -182,9 +182,14 @@ export default function CreateSavedTenders() {
   }, [tenders, search, statusFilter, catFilter])
 
   const handleView = (tender) => {
-    navigate('/tender-view', {
+    navigate('/tender-view/' + encodeURIComponent(tender.id), {
       state: {
-        tender,
+        tender: {
+          ...tender,
+          title: tender.projectName,
+          value: tender.amount,
+          closingDate: tender.endDate,
+        },
         role,
         fromPath: rootPath,
       },
@@ -203,7 +208,7 @@ export default function CreateSavedTenders() {
   }, [search, statusFilter, catFilter, role, itemsPerPage])
 
   function handleEdit(tender) {
-    navigate('/create-tender', { state: { tender, fromPath: rootPath } })
+    navigate('/create-tender/' + encodeURIComponent(tender.tenderId) , { state: { tender, fromPath: rootPath } })
   }
 
   function confirmDelete(tender) {
@@ -365,7 +370,7 @@ export default function CreateSavedTenders() {
           <div key={currentPage} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch pb-24 animate-fade-in">
             {paginatedTenders.map(tender => (
               <SavedTenderCard
-                key={tender.id}
+                key={tender.tenderId}
                 tender={tender}
                 onView={handleView}
                 onEdit={handleEdit}
@@ -398,7 +403,7 @@ export default function CreateSavedTenders() {
 
       {/* ── Floating Action Button ──────────────────────────────────────── */}
       <button
-        onClick={() => navigate('/create-tender', { state: { fromPath: rootPath } })}
+        onClick={() => navigate('/create-tender' , { state: { fromPath: rootPath } })}
         className="fixed bottom-8 right-8 z-40 w-14 h-14 rounded-full bg-[#F62440] text-white shadow-lg flex items-center justify-center hover:bg-red-600 hover:scale-110 hover:shadow-xl transition-all duration-200 active:scale-95"
         title="Create New Tender"
         aria-label="Create New Tender"

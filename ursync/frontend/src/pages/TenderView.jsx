@@ -258,7 +258,7 @@ export default function TenderView() {
           </button>
           <div>
             <h1 className="text-lg font-extrabold text-[#0A2240] leading-snug">Tender Details</h1>
-            <p className="text-xs text-[#6B7A8D] font-mono mt-0.5">{tender.id}</p>
+            <p className="text-xs text-[#6B7A8D] font-mono mt-0.5">{tender.tenderId}</p>
           </div>
         </div>
 
@@ -327,8 +327,8 @@ export default function TenderView() {
       {/* ── Project Details ──────────────────────────────────────────────── */}
       <SectionCard title="Project Details" icon={<InfoIcon />}>
         <div className="divide-y divide-[#FFF2DB]">
-          <InfoRow label="Tender ID"       value={tender.id} />
-          <InfoRow label="Title"           value={tender.title} />
+          <InfoRow label="Tender ID"       value={tender.tenderId} />
+          <InfoRow label="Title"           value={tender.projectName} />
           <InfoRow label="Organization"    value={tender.organization} />
           <InfoRow label="Department"      value={tender.department} />
           <InfoRow label="Department Code" value={tender.departmentCode} />
@@ -344,12 +344,6 @@ export default function TenderView() {
           <InfoRow label="Start Date"   value={formatDate(tender.startDate)} />
           <InfoRow label="Closing Date" value={formatDate(tender.closingDate)} />
           <InfoRow label="Duration"     value={tender.duration} />
-          {!isCompleted && !tender.isCancelled && days !== null && (
-            <InfoRow
-              label="Days Remaining"
-              value={days <= 0 ? 'Closed' : days === 0 ? 'Today' : days + ' days'}
-            />
-          )}
         </div>
       </SectionCard>
 
@@ -390,7 +384,7 @@ export default function TenderView() {
 
       {/* ── Documents ───────────────────────────────────────────────────── */}
       <SectionCard title="Documents" icon={<DocIcon />}>
-        <DownloadButton documentUrl={tender.documentUrl} id={tender.id} />
+        <DownloadButton documentUrl={tender.documentUrl} id={tender.tenderId} />
         {!tender.documentUrl && (
           <p className="text-sm text-[#6B7A8D] text-center py-4">
             No document available for this tender.

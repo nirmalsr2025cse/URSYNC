@@ -2,17 +2,21 @@
 const CreateTender = require('../models/CreateTender')
 const User = require('../models/User')
 
-// ── helper: format a Mongo tender doc into the shape CreateSavedTenders.jsx expects ──
+// ── helper: format a Mongo tender doc into the shape CreateSavedTenders.jsx / TenderView.jsx expect ──
 // Maps EVERY field defined in CreateTender.model.js — keep this in sync if the
 // schema changes, otherwise new/renamed fields will silently vanish from the API response.
 function formatTender(t) {
   return {
     id: t._id.toString(),
-    projectName: t.title,
+    tenderId: t.tenderId,
+    title: t.title,                     // TenderView wants "title"
+    projectName: t.title,               // CreateSavedTenders.jsx still uses "projectName"
     description: t.description || '',
     status: t.status,
     priority: t.priority || 'Low',
     department: t.departmentId?.name || '—',
+    departmentCode: t.departmentId?.code || '—',   // now populated from Department collection
+    organization: t.departmentId?.name || '—',
     category: t.categoryId?.name || '—',
     tenderType: t.tenderType || 'Open',
     district: t.districtId?.name || '—',
@@ -24,7 +28,9 @@ function formatTender(t) {
     duration: t.duration || '',
     startDate: t.startDate,
     endDate: t.closingDate,
+    closingDate: t.closingDate,          // alias for TenderView
     amount: t.estimatedValue,
+    value: t.estimatedValue,             // alias for TenderView
     currency: t.currency || 'INR',
     image: t.image,
     documentUrl: t.documentUrl || '',
@@ -32,6 +38,9 @@ function formatTender(t) {
     lastUpdated: t.updatedAt,
     createdBy: t.createdBy?._id?.toString(),
     createdByRole: t.createdBy?.roleId?.name || null,
+    // CreateTender model has no cancellation/retender fields, so:
+    isCancelled: false,
+    isRetendered: false,
   }
 }
 
@@ -70,7 +79,7 @@ exports.getTenders = async (req, res) => {
     // administrator / financial / tender_authority → no extra restriction
 
     const tenders = await CreateTender.find(baseQuery)
-      .populate('departmentId', 'name')
+      .populate('departmentId', 'name code')   // ← 'code' added
       .populate('categoryId', 'name')
       .populate('districtId', 'name')
       .populate({
@@ -102,7 +111,7 @@ exports.getTenderById = async (req, res) => {
     const roleName = me?.roleId?.name
 
     const tender = await CreateTender.findOne({ _id: req.params.id, isDeleted: false })
-      .populate('departmentId', 'name')
+      .populate('departmentId', 'name code')   // ← 'code' added
       .populate('categoryId', 'name')
       .populate('districtId', 'name')
       .populate({
