@@ -4,6 +4,7 @@ const tenderRoutes = require('./routes/tenderRoutes')
 const authRoutes = require('./routes/authRoutes')
 const locationRoutes = require('./routes/locationRoutes')
 const debarmentRoutes = require('./routes/debarmentRoutes') // NEW
+const createTenderRoutes = require('./routes/createTenderRoutes') 
 
 const app = express()
 app.use(
@@ -19,6 +20,7 @@ app.use('/api/tenders', tenderRoutes) // Main Part
 app.use('/api/auth', authRoutes) //Authentication
 app.use('/api/location', locationRoutes)//Tender By Location
 app.use('/api/debarments', debarmentRoutes) // NEW — Debarment List page
+app.use('/api/create-tenders', createTenderRoutes)
 
 
 // 404 handler

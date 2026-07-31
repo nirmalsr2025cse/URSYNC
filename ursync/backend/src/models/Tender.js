@@ -21,7 +21,13 @@ const tenderSchema = new Schema(
     districtId: { type: Schema.Types.ObjectId, ref: 'District' },
 
     procurementType: { type: String, enum: ['Works', 'Goods', 'Services'] },
+    productCategory: { type: String, trim: true, default: '' }, // free-text sub-category, used by classification search/filter
     location: { type: String, trim: true },
+    taluk: { type: String, trim: true, default: '' },
+    village: { type: String, trim: true, default: '' },
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    duration: {type: String, trim: true , default: ''},
 
     estimatedValue: { type: Number, required: true },
     currency: { type: String, default: 'INR' },
@@ -64,7 +70,6 @@ const tenderSchema = new Schema(
     // retender rather than reusing the same one.
     originalTenderId: { type: Schema.Types.ObjectId, ref: 'Tender', default: null },
 
-    sentToDept: { type: Boolean, default: false },
     sentDate: { type: Date },
     approvedApplicationCount: { type: Number, default: 0 },
 

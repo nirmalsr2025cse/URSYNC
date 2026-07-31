@@ -1,17 +1,9 @@
-// src/controllers/classificationController.js
-// Backs TenderByClassification.jsx: keyword + classification + category +
-// productCategory + organizationType + district + status (via the "Sort By"
-// dropdown, which now offers Ongoing/Upcoming/Completed) + value range,
-// all combinable, auto-search friendly.
-
 const Tender = require('../models/Tender')
 const formatCurrency = require('../utils/formatCurrency')
 
 const VALID_STATUSES = ['Ongoing', 'Upcoming', 'Completed']
-const VALID_CLASSIFICATIONS = ['Works', 'Goods', 'Services'] // matches Tender.procurementType enum
+const VALID_CLASSIFICATIONS = ['Works', 'Goods', 'Services']
 
-// Department model has no organizationType field — classify by keyword,
-// same rule set used across the tenders-by-organisation page.
 const ORG_TYPE_KEYWORDS = {
   'Government Department': ['department', 'highways', 'rural'],
   'Corporation': ['corporation'],
@@ -21,42 +13,19 @@ const ORG_TYPE_KEYWORDS = {
 }
 const ORGANIZATION_TYPES = Object.keys(ORG_TYPE_KEYWORDS)
 
-function buildBaseStages(req) {
+function buildJoinStages(req) {
   const stages = [
     { $match: { isDeleted: false, isCancelled: false } },
-    {
-      $lookup: {
-        from: 'departments',
-        localField: 'departmentId',
-        foreignField: '_id',
-        as: 'departmentDoc',
-      },
-    },
+    { $lookup: { from: 'departments', localField: 'departmentId', foreignField: '_id', as: 'departmentDoc' } },
     { $unwind: '$departmentDoc' },
-    {
-      $lookup: {
-        from: 'categories',
-        localField: 'categoryId',
-        foreignField: '_id',
-        as: 'categoryDoc',
-      },
-    },
+    { $lookup: { from: 'categories', localField: 'categoryId', foreignField: '_id', as: 'categoryDoc' } },
     { $unwind: '$categoryDoc' },
-    {
-      $lookup: {
-        from: 'districts',
-        localField: 'districtId',
-        foreignField: '_id',
-        as: 'districtDoc',
-      },
-    },
+    { $lookup: { from: 'districts', localField: 'districtId', foreignField: '_id', as: 'districtDoc' } },
     { $unwind: { path: '$districtDoc', preserveNullAndEmptyArrays: true } },
   ]
-
   if (req.isDepartmentRestricted && req.departmentCode) {
     stages.push({ $match: { 'departmentDoc.code': req.departmentCode } })
   }
-
   return stages
 }
 
@@ -100,38 +69,31 @@ function toCardShape(t) {
     description: t.description,
     image: t.image,
     documentUrl: t.documentUrl || null,
-
     department: t.departmentDoc.name,
     departmentCode: t.departmentDoc.code,
+    organization: t.departmentDoc.organization || t.departmentDoc.name,
     organizationName: t.departmentDoc.organization || t.departmentDoc.name,
-
     classification: t.procurementType,
     category: t.categoryDoc.name,
     productCategory: t.productCategory || '',
     district: t.districtDoc ? t.districtDoc.name : (t.location || ''),
     location: t.location || (t.districtDoc ? t.districtDoc.name : ''),
-
+    taluk: t.taluk || '',
+    village: t.village || '',
+    latitude: t.latitude ?? null,
+    longitude: t.longitude ?? null,
+    duration: t.duration || '',
     value: formatCurrency(t.estimatedValue),
     estimatedValue: t.estimatedValue,
     startDate: t.startDate,
     closingDate: t.closingDate,
     status: t.status,
+    isCancelled: t.isCancelled || false,
+    isRetendered: t.isRetendered || false,
+    cancelledReason: t.cancelledReason || null,
   }
 }
 
-/**
- * GET /api/tenders/by-classification
- * Query params (all optional, all combinable):
- *   keyword           - free text across title/description/id/dept/org/category/district/productCategory
- *   classification    - Works | Goods | Services   (Tender.procurementType)
- *   category          - category name
- *   productCategory   - product category text
- *   organizationType  - one of ORGANIZATION_TYPES
- *   district          - district name
- *   status            - Ongoing | Upcoming | Completed
- *   minValue, maxValue- estimated value range (numbers)
- *   page, limit
- */
 async function searchTendersByClassification(req, res) {
   try {
     const keyword = String(req.query.keyword || '').trim()
@@ -156,28 +118,23 @@ async function searchTendersByClassification(req, res) {
       return res.status(400).json({ message: `organizationType must be one of ${ORGANIZATION_TYPES.join(', ')}` })
     }
 
-    const stages = buildBaseStages(req)
+    const stages = buildJoinStages(req)
 
     if (status) stages.push({ $match: { status } })
     if (classification) stages.push({ $match: { procurementType: classification } })
     if (category) stages.push({ $match: { 'categoryDoc.name': category } })
     if (productCategory) stages.push({ $match: { productCategory: { $regex: productCategory, $options: 'i' } } })
     if (organizationType) stages.push(orgTypeMatchStage(organizationType))
-    if (district) {
-      stages.push({ $match: { $or: [{ 'districtDoc.name': district }, { location: district }] } })
-    }
+    if (district) stages.push({ $match: { $or: [{ 'districtDoc.name': district }, { location: district }] } })
     if (minValue !== null || maxValue !== null) {
       const valueMatch = {}
       if (minValue !== null && !Number.isNaN(minValue)) valueMatch.$gte = minValue
       if (maxValue !== null && !Number.isNaN(maxValue)) valueMatch.$lt = maxValue
       stages.push({ $match: { estimatedValue: valueMatch } })
     }
-    if (keyword) {
-      stages.push({ $match: { $and: buildKeywordClause(keyword) } })
-    }
+    if (keyword) stages.push({ $match: { $and: buildKeywordClause(keyword) } })
 
     stages.push({ $sort: { closingDate: 1 } })
-
     stages.push({
       $facet: {
         data: [{ $skip: (page - 1) * limit }, { $limit: limit }],
@@ -201,21 +158,13 @@ async function searchTendersByClassification(req, res) {
   }
 }
 
-/**
- * GET /api/tenders/by-classification/meta
- * Dropdown option lists, reflecting real data currently in use.
- */
 async function getClassificationFilterMeta(req, res) {
   try {
-    const stages = buildBaseStages(req)
+    const stages = buildJoinStages(req)
 
     const [categoryDocs, districtDocs, productCategoryDocs] = await Promise.all([
       Tender.aggregate([...stages, { $group: { _id: '$categoryDoc.name' } }, { $sort: { _id: 1 } }]),
-      Tender.aggregate([
-        ...stages,
-        { $group: { _id: { $ifNull: ['$districtDoc.name', '$location'] } } },
-        { $sort: { _id: 1 } },
-      ]),
+      Tender.aggregate([...stages, { $group: { _id: { $ifNull: ['$districtDoc.name', '$location'] } } }, { $sort: { _id: 1 } }]),
       Tender.aggregate([
         ...stages,
         { $match: { productCategory: { $nin: [null, ''] } } },

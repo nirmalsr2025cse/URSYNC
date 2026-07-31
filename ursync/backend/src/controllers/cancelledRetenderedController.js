@@ -1,73 +1,30 @@
 // src/controllers/cancelledRetenderedController.js
-// Backs CancelledRetendered.jsx.
-//
-// Schema notes (Tender.js):
-//   - isCancelled:true  -> status is FROZEN at whatever it was the moment
-//     of cancellation. We surface `status` as-is for display but the real
-//     signal for "why" is `cancelledReason`.
-//   - isRetendered:true -> status is a REAL, live value (Ongoing/Upcoming),
-//     never Completed (enforced in the pre-save hook) — so this is safe
-//     to show as the actual current status of the retender cycle.
-//
-// Role visibility (mirrors the old client-side logic in CancelledRetendered.jsx):
-//   - department_employee / department_head -> only their own department's tenders
-//   - tender_person                          -> only cancelled tenders THEY cancelled
-//   - everyone else (admin, financial, tender_authority, public)
-//                                             -> everything
-
 const mongoose = require('mongoose')
 const Tender = require('../models/Tender')
 const formatCurrency = require('../utils/formatCurrency')
 
 const DEPT_RESTRICTED_ROLES = ['department_employee', 'department_head']
 
-function buildBaseStages(req, tab) {
+function buildJoinStages(req, tab) {
   const stages = [
     { $match: { isDeleted: false, ...(tab === 'cancelled' ? { isCancelled: true } : { isRetendered: true }) } },
-    {
-      $lookup: {
-        from: 'departments',
-        localField: 'departmentId',
-        foreignField: '_id',
-        as: 'departmentDoc',
-      },
-    },
+    { $lookup: { from: 'departments', localField: 'departmentId', foreignField: '_id', as: 'departmentDoc' } },
     { $unwind: '$departmentDoc' },
-    {
-      $lookup: {
-        from: 'categories',
-        localField: 'categoryId',
-        foreignField: '_id',
-        as: 'categoryDoc',
-      },
-    },
+    { $lookup: { from: 'categories', localField: 'categoryId', foreignField: '_id', as: 'categoryDoc' } },
     { $unwind: '$categoryDoc' },
-    {
-      $lookup: {
-        from: 'districts',
-        localField: 'districtId',
-        foreignField: '_id',
-        as: 'districtDoc',
-      },
-    },
+    { $lookup: { from: 'districts', localField: 'districtId', foreignField: '_id', as: 'districtDoc' } },
     { $unwind: { path: '$districtDoc', preserveNullAndEmptyArrays: true } },
   ]
 
-  const role = req.user?.role
-
-  // Department-scoped roles only see their own department's tenders —
-  // same rule used across every other tenders listing endpoint.
+  // FIX: role lives on req.role (set by authMiddleware), not req.user.role
+  const role = req.role
   if (DEPT_RESTRICTED_ROLES.includes(role) && req.departmentCode) {
     stages.push({ $match: { 'departmentDoc.code': req.departmentCode } })
   }
-
-  // A tender_person only ever sees cancelled tenders THEY personally
-  // cancelled — never other people's, and never the retendered tab
-  // (that's filtered out at the route level too, see controller below).
-  if (role === 'tender_person' && req.user?.id) {
-    stages.push({ $match: { cancelledBy: new mongoose.Types.ObjectId(req.user.id) } })
+  // FIX: req.user is a Mongoose doc — use ._id (already an ObjectId), no need to re-wrap
+  if (role === 'tender_person' && req.user?._id) {
+    stages.push({ $match: { cancelledBy: req.user._id } })
   }
-
   return stages
 }
 
@@ -79,25 +36,23 @@ function toCardShape(t, tab) {
     description: t.description,
     image: t.image,
     documentUrl: t.documentUrl || null,
-
     department: t.departmentDoc.name,
     departmentCode: t.departmentDoc.code,
     organization: t.departmentDoc.organization || t.departmentDoc.name,
-
     category: t.categoryDoc.name,
     location: t.location || (t.districtDoc ? t.districtDoc.name : ''),
-
+    taluk: t.taluk || '',
+    village: t.village || '',
+    latitude: t.latitude ?? null,
+    longitude: t.longitude ?? null,
+    duration: t.duration || '',
     value: formatCurrency(t.estimatedValue),
     estimatedValue: t.estimatedValue,
-
-    // The date shown on the card reflects whichever event this tab is about.
+    startDate: t.startDate,
     closingDate: tab === 'cancelled' ? t.cancelledAt : t.retenderedAt,
-
-    // Cancelled tab: status is frozen (per schema) — shown as-is, but the
-    // reason is the meaningful signal, surfaced separately for the UI.
-    // Retendered tab: status is real/live (Ongoing/Upcoming/Completed-never).
     status: t.status,
-
+    isCancelled: t.isCancelled || false,
+    isRetendered: t.isRetendered || false,
     cancelledReason: t.cancelledReason || null,
     cancelledAt: t.cancelledAt || null,
     retenderedAt: t.retenderedAt || null,
@@ -105,13 +60,6 @@ function toCardShape(t, tab) {
   }
 }
 
-/**
- * GET /api/tenders/cancelled-retendered
- * Query params:
- *   tab      - "cancelled" | "retendered" (required)
- *   search   - matches Tender ID or organisation name
- *   page, limit
- */
 async function getCancelledRetenderedTenders(req, res) {
   try {
     const tab = String(req.query.tab || '').trim()
@@ -119,8 +67,7 @@ async function getCancelledRetenderedTenders(req, res) {
       return res.status(400).json({ message: 'tab must be "cancelled" or "retendered"' })
     }
 
-    // tender_person role never sees the retendered tab at all.
-    if (tab === 'retendered' && req.user?.role === 'tender_person') {
+    if (tab === 'retendered' && req.role === 'tender_person') {
       return res.json({ tenders: [], totalCount: 0, totalPages: 1, currentPage: 1 })
     }
 
@@ -128,7 +75,7 @@ async function getCancelledRetenderedTenders(req, res) {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1)
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 6)
 
-    const stages = buildBaseStages(req, tab)
+    const stages = buildJoinStages(req, tab)
 
     if (search) {
       const regex = { $regex: search, $options: 'i' }
@@ -143,10 +90,7 @@ async function getCancelledRetenderedTenders(req, res) {
       })
     }
 
-    stages.push({
-      $sort: tab === 'cancelled' ? { cancelledAt: -1 } : { retenderedAt: -1 },
-    })
-
+    stages.push({ $sort: tab === 'cancelled' ? { cancelledAt: -1 } : { retenderedAt: -1 } })
     stages.push({
       $facet: {
         data: [{ $skip: (page - 1) * limit }, { $limit: limit }],

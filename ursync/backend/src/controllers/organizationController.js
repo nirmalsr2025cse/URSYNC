@@ -1,16 +1,8 @@
-// src/controllers/organizationController.js
-// Backs TenderByOrganization.jsx: free-text search + organizationType +
-// tenderCategory + district + status(expiry) filters, all combinable,
-// cheap enough to call on every debounced keystroke.
-
 const Tender = require('../models/Tender')
 const formatCurrency = require('../utils/formatCurrency')
 
 const VALID_STATUSES = ['Ongoing', 'Upcoming', 'Completed']
 
-// Department model has no organizationType field, so we classify by
-// keyword — the same rule set the frontend used to apply client-side
-// (matchOrgType in TenderByOrganization.jsx).
 const ORG_TYPE_KEYWORDS = {
   'Government Department': ['department', 'highways', 'rural'],
   'Corporation': ['corporation'],
@@ -20,85 +12,31 @@ const ORG_TYPE_KEYWORDS = {
 }
 const ORGANIZATION_TYPES = Object.keys(ORG_TYPE_KEYWORDS)
 
-function buildBaseStages(req) {
+function buildJoinStages(req) {
   const stages = [
     { $match: { isDeleted: false, isCancelled: false } },
-    {
-      $lookup: {
-        from: 'departments',
-        localField: 'departmentId',
-        foreignField: '_id',
-        as: 'departmentDoc',
-      },
-    },
+    { $lookup: { from: 'departments', localField: 'departmentId', foreignField: '_id', as: 'departmentDoc' } },
     { $unwind: '$departmentDoc' },
-    {
-      $lookup: {
-        from: 'categories',
-        localField: 'categoryId',
-        foreignField: '_id',
-        as: 'categoryDoc',
-      },
-    },
+    { $lookup: { from: 'categories', localField: 'categoryId', foreignField: '_id', as: 'categoryDoc' } },
     { $unwind: '$categoryDoc' },
-    {
-      $lookup: {
-        from: 'districts',
-        localField: 'districtId',
-        foreignField: '_id',
-        as: 'districtDoc',
-      },
-    },
-    // districtId is NOT required on the real schema, so preserve docs
-    // that have no matching district.
+    { $lookup: { from: 'districts', localField: 'districtId', foreignField: '_id', as: 'districtDoc' } },
     { $unwind: { path: '$districtDoc', preserveNullAndEmptyArrays: true } },
   ]
-
   if (req.isDepartmentRestricted && req.departmentCode) {
     stages.push({ $match: { 'departmentDoc.code': req.departmentCode } })
   }
-
   return stages
 }
 
-function toCardShape(t) {
-  return {
-    id: t.tenderCode,
-    tenderCode: t.tenderCode,
-    title: t.title,
-    description: t.description,
-    image: t.image,
-    documentUrl: t.documentUrl || null,
-
-    department: t.departmentDoc.name,
-    departmentCode: t.departmentDoc.code,
-    organizationName: t.departmentDoc.organization || t.departmentDoc.name,
-
-    category: t.categoryDoc.name,
-    district: t.districtDoc ? t.districtDoc.name : (t.location || ''),
-    location: t.location || (t.districtDoc ? t.districtDoc.name : ''),
-
-    value: formatCurrency(t.estimatedValue),
-    estimatedValue: t.estimatedValue,
-    startDate: t.startDate,
-    closingDate: t.closingDate,
-    status: t.status,
-  }
-}
-
-// Flags a department as belonging to `type` by checking its
-// name/organization/code against that type's keyword list.
 function orgTypeMatchStage(type) {
   const keywords = ORG_TYPE_KEYWORDS[type] || []
   const fieldsToCheck = ['departmentDoc.name', 'departmentDoc.organization', 'departmentDoc.code']
-
   const orClauses = []
   keywords.forEach((kw) => {
     fieldsToCheck.forEach((field) => {
       orClauses.push({ [field]: { $regex: kw, $options: 'i' } })
     })
   })
-
   return { $match: { $or: orClauses } }
 }
 
@@ -122,17 +60,37 @@ function buildFreeTextClause(organization) {
   })
 }
 
-/**
- * GET /api/tenders/by-organization
- * Query params (all optional, all combinable):
- *   organization      - free text: org name, title, department, district,
- *                        category, tender code, description
- *   organizationType  - one of ORGANIZATION_TYPES
- *   tenderCategory    - category name
- *   district          - district name
- *   expiry            - Ongoing | Upcoming | Completed  (maps to `status`)
- *   page, limit
- */
+function toCardShape(t) {
+  return {
+    id: t.tenderCode,
+    tenderCode: t.tenderCode,
+    title: t.title,
+    description: t.description,
+    image: t.image,
+    documentUrl: t.documentUrl || null,
+    department: t.departmentDoc.name,
+    departmentCode: t.departmentDoc.code,
+    organization: t.departmentDoc.organization || t.departmentDoc.name,
+    organizationName: t.departmentDoc.organization || t.departmentDoc.name,
+    category: t.categoryDoc.name,
+    district: t.districtDoc ? t.districtDoc.name : (t.location || ''),
+    location: t.location || (t.districtDoc ? t.districtDoc.name : ''),
+    taluk: t.taluk || '',
+    village: t.village || '',
+    latitude: t.latitude ?? null,
+    longitude: t.longitude ?? null,
+    duration: t.duration || '',
+    value: formatCurrency(t.estimatedValue),
+    estimatedValue: t.estimatedValue,
+    startDate: t.startDate,
+    closingDate: t.closingDate,
+    status: t.status,
+    isCancelled: t.isCancelled || false,
+    isRetendered: t.isRetendered || false,
+    cancelledReason: t.cancelledReason || null,
+  }
+}
+
 async function searchTendersByOrganization(req, res) {
   try {
     const organization = String(req.query.organization || '').trim()
@@ -150,20 +108,15 @@ async function searchTendersByOrganization(req, res) {
       return res.status(400).json({ message: `organizationType must be one of ${ORGANIZATION_TYPES.join(', ')}` })
     }
 
-    const stages = buildBaseStages(req)
+    const stages = buildJoinStages(req)
 
     if (expiry) stages.push({ $match: { status: expiry } })
     if (organizationType) stages.push(orgTypeMatchStage(organizationType))
     if (tenderCategory) stages.push({ $match: { 'categoryDoc.name': tenderCategory } })
-    if (district) {
-      stages.push({ $match: { $or: [{ 'districtDoc.name': district }, { location: district }] } })
-    }
-    if (organization) {
-      stages.push({ $match: { $and: buildFreeTextClause(organization) } })
-    }
+    if (district) stages.push({ $match: { $or: [{ 'districtDoc.name': district }, { location: district }] } })
+    if (organization) stages.push({ $match: { $and: buildFreeTextClause(organization) } })
 
     stages.push({ $sort: { closingDate: 1 } })
-
     stages.push({
       $facet: {
         data: [{ $skip: (page - 1) * limit }, { $limit: limit }],
@@ -187,12 +140,6 @@ async function searchTendersByOrganization(req, res) {
   }
 }
 
-/**
- * GET /api/tenders/by-organization/status-counts
- * Same filters as above (minus `expiry`) — powers the tab bar counts so
- * they stay accurate while other filters (search/type/category/district)
- * are active, even though the current page of results is status-filtered.
- */
 async function getStatusCounts(req, res) {
   try {
     const organization = String(req.query.organization || '').trim()
@@ -200,16 +147,12 @@ async function getStatusCounts(req, res) {
     const tenderCategory = String(req.query.tenderCategory || '').trim()
     const district = String(req.query.district || '').trim()
 
-    const stages = buildBaseStages(req)
+    const stages = buildJoinStages(req)
 
     if (organizationType) stages.push(orgTypeMatchStage(organizationType))
     if (tenderCategory) stages.push({ $match: { 'categoryDoc.name': tenderCategory } })
-    if (district) {
-      stages.push({ $match: { $or: [{ 'districtDoc.name': district }, { location: district }] } })
-    }
-    if (organization) {
-      stages.push({ $match: { $and: buildFreeTextClause(organization) } })
-    }
+    if (district) stages.push({ $match: { $or: [{ 'districtDoc.name': district }, { location: district }] } })
+    if (organization) stages.push({ $match: { $and: buildFreeTextClause(organization) } })
 
     stages.push({ $group: { _id: '$status', count: { $sum: 1 } } })
 
@@ -231,21 +174,13 @@ async function getStatusCounts(req, res) {
   }
 }
 
-/**
- * GET /api/tenders/by-organization/meta
- * Dropdown option lists, always reflecting real data currently in use.
- */
 async function getOrganizationFilterMeta(req, res) {
   try {
-    const stages = buildBaseStages(req)
+    const stages = buildJoinStages(req)
 
     const [categoryDocs, districtDocs] = await Promise.all([
       Tender.aggregate([...stages, { $group: { _id: '$categoryDoc.name' } }, { $sort: { _id: 1 } }]),
-      Tender.aggregate([
-        ...stages,
-        { $group: { _id: { $ifNull: ['$districtDoc.name', '$location'] } } },
-        { $sort: { _id: 1 } },
-      ]),
+      Tender.aggregate([...stages, { $group: { _id: { $ifNull: ['$districtDoc.name', '$location'] } } }, { $sort: { _id: 1 } }]),
     ])
 
     return res.json({
@@ -260,8 +195,4 @@ async function getOrganizationFilterMeta(req, res) {
   }
 }
 
-module.exports = {
-  searchTendersByOrganization,
-  getStatusCounts,
-  getOrganizationFilterMeta,
-}
+module.exports = { searchTendersByOrganization, getStatusCounts, getOrganizationFilterMeta }

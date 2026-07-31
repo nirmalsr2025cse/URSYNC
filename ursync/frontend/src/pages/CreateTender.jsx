@@ -1,13 +1,19 @@
 // src/pages/CreateTender.jsx
-import React, { useState, useEffect } from 'react'
+// Fields collected here map 1:1 to what TenderDetailsView/TenderView
+// display: title, department (derived), category, description,
+// estimatedValue, startDate, closingDate, duration, location, taluk,
+// village, latitude/longitude, documentUrl, image.
+// No projectName/tenderType/priority/amount(currency-string)/eligibility/
+// technical/resources/notes — those belonged to the old mock draft-workflow
+// and aren't shown anywhere in the details view.
+
+import React, { useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useRole } from '../components/RoleContext'
-import LocationPicker from '../components/LocationPicker'
 import LatLngInput from '../components/LatLngInput'
-import {
-  TENDER_CATEGORIES, TENDER_TYPES, PRIORITY_LEVELS,
-  TN_DISTRICTS, DEPARTMENT_MAP,
-} from '../data/tenderMockData'
+import { TENDER_CATEGORIES, TN_DISTRICTS, DEPARTMENT_MAP } from '../data/tenderMockData'
+
+const MAX_PDF_SIZE_MB = 10
 
 // ── Section Wrapper ───────────────────────────────────────────────────────────
 function FormSection({ title, icon, children }) {
@@ -51,6 +57,85 @@ const inputClass = "w-full px-4 py-2.5 text-sm border border-[#FFE5BF] rounded-x
 const inputError = "w-full px-4 py-2.5 text-sm border border-[#F62440] rounded-xl bg-white text-[#0A2240] placeholder-[#6B7A8D] focus:outline-none focus:ring-2 focus:ring-[#F62440]/30 focus:border-[#F62440] transition-all"
 const readOnlyClass = "w-full px-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-[#FFF2DB] text-[#6B7A8D] cursor-not-allowed"
 
+// ── PDF Upload Field ───────────────────────────────────────────────────────────
+function PdfUploadField({ fileName, fileSizeLabel, onSelect, onRemove, error }) {
+  const inputRef = useRef(null)
+
+  function triggerPick() {
+    inputRef.current?.click()
+  }
+
+  function handleFiles(files) {
+    const file = files?.[0]
+    if (!file) return
+    onSelect(file)
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        className="hidden"
+        onChange={e => handleFiles(e.target.files)}
+      />
+
+      {!fileName ? (
+        <div
+          onClick={triggerPick}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files) }}
+          className={[
+            'flex flex-col items-center justify-center gap-2 px-4 py-6 rounded-xl border-2 border-dashed cursor-pointer transition-colors text-center',
+            error ? 'border-[#F62440] bg-red-50' : 'border-[#FFE5BF] bg-[#FFFAF3] hover:bg-[#FFF2DB]',
+          ].join(' ')}
+        >
+          <div className="w-9 h-9 rounded-lg bg-[#1A4A8C] flex items-center justify-center">
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M12 12v9m0-9l-3 3m3-3l3 3" />
+            </svg>
+          </div>
+          <p className="text-sm font-semibold text-[#0A2240]">
+            Click to upload or drag &amp; drop
+          </p>
+          <p className="text-xs text-[#6B7A8D]">PDF only, up to {MAX_PDF_SIZE_MB}MB</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 p-3 rounded-xl border border-[#FFE5BF] bg-[#FFF2DB]">
+          <div className="w-10 h-10 rounded-lg bg-[#1A4A8C] flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-[#0A2240] truncate">{fileName}</p>
+            <p className="text-xs text-[#6B7A8D]">{fileSizeLabel}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-[#6B7A8D] hover:bg-[#FFE5BF] hover:text-[#F62440] transition-colors flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function formatFileSize(bytes) {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function CreateTender() {
   const navigate  = useNavigate()
@@ -59,64 +144,88 @@ export default function CreateTender() {
   const editData  = location.state?.tender || null
 
   const department = DEPARTMENT_MAP[role] || 'Public Works Department'
+  const fromPath = location.state?.fromPath || '/create-saved-tenders'
 
   const [toast, setToast]   = useState(null)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
 
-  const tender   = location.state?.tender || null
-  const fromPath = location.state?.fromPath || '/create-saved-tenders'
-
-  // ── Form state ──────────────────────────────────────────────────────────────
+  // ── Form state — mirrors exactly what TenderDetailsView displays ──────────
   const [form, setForm] = useState({
-    projectName:       editData?.projectName       || '',
-    department:        editData?.department        || department,
-    category:          editData?.category          || '',
-    tenderType:        editData?.tenderType        || '',
-    shortDescription:  editData?.description       || '',
-    detailedDescription: '',
-    amount:            editData?.amount            || '',
-    duration:          editData?.duration          || '',
-    priority:          editData?.priority          || '',
-    startDate:         editData?.startDate         || '',
-    endDate:           editData?.endDate           || '',
-    district:          editData?.district          || '',
-    taluk:             editData?.taluk             || '',
-    village:           editData?.village           || '',
-    address:           '',
-    // Each holds { address, lat, lng, placeId } once a place is selected via
-    // LocationPicker — the user never types coordinates directly.
-    startLocation:      editData?.startLocation     || null,
-    endLocation:        editData?.endLocation       || null,
-    eligibility:       '',
-    technical:         '',
-    resources:         '',
-    notes:             '',
+    title:            editData?.title            || '',
+    department:       editData?.department        || department,
+    category:         editData?.category          || '',
+    description:      editData?.description       || '',
+    estimatedValue:    editData?.estimatedValue    || '',
+    startDate:        editData?.startDate         || '',
+    closingDate:      editData?.closingDate       || '',
+    duration:         editData?.duration          || '',
+    location:         editData?.location          || '',
+    taluk:            editData?.taluk             || '',
+    village:          editData?.village           || '',
+    // Holds { address, lat, lng, placeId } once selected — user never
+    // types coordinates directly.
+    coordinates:      (editData && typeof editData.latitude === 'number')
+      ? { lat: editData.latitude, lng: editData.longitude, address: editData.location || '' }
+      : null,
+    // documentUrl still ends up as a URL/data-URI string — TenderView's
+    // DownloadButton just needs any href it can point <a> at.
+    documentUrl:      editData?.documentUrl       || '',
+    image:            editData?.image             || '',
   })
+
+  // File metadata shown in the upload widget (kept separate from form.documentUrl
+  // so we can show a nice filename/size chip without depending on data-URI parsing).
+  const [documentFile, setDocumentFile] = useState(
+    editData?.documentUrl ? { name: editData.documentFileName || 'Existing document.pdf', size: null } : null
+  )
 
   function set(key, val) {
     setForm(prev => ({ ...prev, [key]: val }))
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: '' }))
   }
 
+  function handlePdfSelect(file) {
+    if (file.type !== 'application/pdf') {
+      setErrors(prev => ({ ...prev, documentUrl: 'Only PDF files are allowed.' }))
+      return
+    }
+    if (file.size > MAX_PDF_SIZE_MB * 1024 * 1024) {
+      setErrors(prev => ({ ...prev, documentUrl: `File must be under ${MAX_PDF_SIZE_MB}MB.` }))
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      set('documentUrl', reader.result) // base64 data URL, works directly as an <a href>
+      setDocumentFile({ name: file.name, size: file.size })
+      setErrors(prev => ({ ...prev, documentUrl: '' }))
+    }
+    reader.onerror = () => {
+      setErrors(prev => ({ ...prev, documentUrl: 'Could not read this file. Please try again.' }))
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function handlePdfRemove() {
+    setDocumentFile(null)
+    set('documentUrl', '')
+  }
+
   // ── Validation ──────────────────────────────────────────────────────────────
   function validate() {
     const e = {}
-    if (!form.projectName.trim())      e.projectName      = 'Project name is required.'
-    if (!form.category)                e.category         = 'Please select a category.'
-    if (!form.tenderType)              e.tenderType       = 'Please select a tender type.'
-    if (!form.shortDescription.trim()) e.shortDescription = 'Short description is required.'
-    if (!form.amount.trim())           e.amount           = 'Tender amount is required.'
-    if (!form.priority)                e.priority         = 'Please select a priority.'
-    if (!form.startDate)               e.startDate        = 'Start date is required.'
-    if (!form.endDate)                 e.endDate          = 'End date is required.'
-    if (form.startDate && form.endDate && form.endDate <= form.startDate) {
-      e.endDate = 'End date must be after start date.'
+    if (!form.title.trim())          e.title          = 'Title is required.'
+    if (!form.category)              e.category       = 'Please select a category.'
+    if (!form.description.trim())    e.description    = 'Description is required.'
+    if (!form.estimatedValue.toString().trim()) e.estimatedValue = 'Estimated value is required.'
+    if (!form.startDate)             e.startDate      = 'Start date is required.'
+    if (!form.closingDate)           e.closingDate    = 'Closing date is required.'
+    if (form.startDate && form.closingDate && form.closingDate <= form.startDate) {
+      e.closingDate = 'Closing date must be after start date.'
     }
-    if (!form.district.trim())         e.district         = 'District is required.'
-    if (!form.startLocation)           e.startLocation    = 'Please select a starting point from the suggestions.'
-    // Ending point is optional — only relevant for stretch-type projects
-    // (roads, pipelines, cabling). Point-location tenders can leave it blank.
+    if (!form.location.trim())       e.location       = 'Location is required.'
+    if (!form.coordinates)           e.coordinates    = 'Please select a location from the suggestions.'
     return e
   }
 
@@ -192,7 +301,6 @@ export default function CreateTender() {
           </div>
         </div>
 
-        {/* Action buttons */}
         <div className="flex items-center gap-3">
           <button
             onClick={handleSave}
@@ -224,23 +332,23 @@ export default function CreateTender() {
         </div>
       </div>
 
-      {/* ── Section 1: Basic Information ───────────────────────────────── */}
-      <FormSection title="Basic Information" icon={<InfoIcon />}>
-        <Field label="Project Name" required error={errors.projectName}>
+      {/* ── Section 1: Project Details ─────────────────────────────────── */}
+      <FormSection title="Project Details" icon={<InfoIcon />}>
+        <Field label="Title" required error={errors.title}>
           <input
             type="text"
-            value={form.projectName}
-            onChange={e => set('projectName', e.target.value)}
-            placeholder="Enter project name"
-            className={errors.projectName ? inputError : inputClass}
+            value={form.title}
+            onChange={e => set('title', e.target.value)}
+            placeholder="Enter tender title"
+            className={errors.title ? inputError : inputClass}
           />
         </Field>
 
-        <Field label="Department Name">
+        <Field label="Department">
           <input type="text" value={form.department} readOnly className={readOnlyClass} />
         </Field>
 
-        <Field label="Tender Category" required error={errors.category}>
+        <Field label="Category" required error={errors.category}>
           <select value={form.category} onChange={e => set('category', e.target.value)}
                   className={errors.category ? inputError : inputClass}>
             <option value="">Select category</option>
@@ -248,82 +356,43 @@ export default function CreateTender() {
           </select>
         </Field>
 
-        <Field label="Tender Type" required error={errors.tenderType}>
-          <select value={form.tenderType} onChange={e => set('tenderType', e.target.value)}
-                  className={errors.tenderType ? inputError : inputClass}>
-            <option value="">Select type</option>
-            {TENDER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </Field>
-      </FormSection>
-
-      {/* ── Section 2: Description ─────────────────────────────────────── */}
-      <FormSection title="Description" icon={<DocIcon />}>
-        <Field label="Short Description" required error={errors.shortDescription} fullWidth>
-          <div className="relative">
-            <input
-              type="text"
-              value={form.shortDescription}
-              onChange={e => e.target.value.length <= 50 && set('shortDescription', e.target.value)}
-              placeholder="Brief summary (max 50 characters)"
-              className={errors.shortDescription ? inputError : inputClass}
-            />
-            <span className={['absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold',
-              form.shortDescription.length >= 50 ? 'text-[#F62440]' : 'text-[#6B7A8D]'].join(' ')}>
-              {form.shortDescription.length}/50
-            </span>
-          </div>
-        </Field>
-
-        <Field label="Detailed Description" required fullWidth>
+        <Field label="Description" required error={errors.description} fullWidth>
           <textarea
-            value={form.detailedDescription}
-            onChange={e => set('detailedDescription', e.target.value)}
-            rows={5}
-            placeholder="Provide complete details about the tender..."
-            className={inputClass + ' resize-none'}
+            value={form.description}
+            onChange={e => set('description', e.target.value)}
+            rows={4}
+            placeholder="Describe the tender..."
+            className={(errors.description ? inputError : inputClass) + ' resize-none'}
           />
         </Field>
       </FormSection>
 
-      {/* ── Section 3: Tender Information ──────────────────────────────── */}
-      <FormSection title="Tender Information" icon={<CurrencyIcon />}>
-        <Field label="Tender Amount (₹)" required error={errors.amount}>
+      {/* ── Section 2: Financial & Schedule ─────────────────────────────── */}
+      <FormSection title="Financial & Schedule" icon={<CurrencyIcon />}>
+        <Field label="Estimated Value (₹)" required error={errors.estimatedValue}>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#0A2240]">₹</span>
             <input
-              type="text"
-              value={form.amount}
-              onChange={e => set('amount', e.target.value)}
-              placeholder="e.g. 45,00,000"
-              className={(errors.amount ? inputError : inputClass) + ' pl-8'}
+              type="number"
+              value={form.estimatedValue}
+              onChange={e => set('estimatedValue', e.target.value)}
+              placeholder="e.g. 4500000"
+              className={(errors.estimatedValue ? inputError : inputClass) + ' pl-8'}
             />
           </div>
         </Field>
 
-        <Field label="Estimated Duration (Days)">
+        <Field label="Duration">
           <input
-            type="number"
+            type="text"
             value={form.duration}
             onChange={e => set('duration', e.target.value)}
-            placeholder="e.g. 120"
-            min={1}
+            placeholder="e.g. 120 days"
             className={inputClass}
           />
         </Field>
 
-        <Field label="Project Priority" required error={errors.priority}>
-          <select value={form.priority} onChange={e => set('priority', e.target.value)}
-                  className={errors.priority ? inputError : inputClass}>
-            <option value="">Select priority</option>
-            {PRIORITY_LEVELS.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </Field>
-      </FormSection>
-
-      {/* ── Section 4: Application Schedule ───────────────────────────── */}
-      <FormSection title="Application Schedule" icon={<CalendarIcon />}>
-        <Field label="Application Start Date" required error={errors.startDate}>
+        <Field label="Start Date" required error={errors.startDate}>
           <input
             type="date"
             value={form.startDate}
@@ -332,22 +401,22 @@ export default function CreateTender() {
           />
         </Field>
 
-        <Field label="Application End Date" required error={errors.endDate}>
+        <Field label="Closing Date" required error={errors.closingDate}>
           <input
             type="date"
-            value={form.endDate}
+            value={form.closingDate}
             min={form.startDate || ''}
-            onChange={e => set('endDate', e.target.value)}
-            className={errors.endDate ? inputError : inputClass}
+            onChange={e => set('closingDate', e.target.value)}
+            className={errors.closingDate ? inputError : inputClass}
           />
         </Field>
       </FormSection>
 
-      {/* ── Section 5: Location ────────────────────────────────────────── */}
+      {/* ── Section 3: Project Location ────────────────────────────────── */}
       <FormSection title="Project Location" icon={<LocationIcon />}>
-        <Field label="District" required error={errors.district}>
-          <select value={form.district} onChange={e => set('district', e.target.value)}
-                  className={errors.district ? inputError : inputClass}>
+        <Field label="District" required error={errors.location}>
+          <select value={form.location} onChange={e => set('location', e.target.value)}
+                  className={errors.location ? inputError : inputClass}>
             <option value="">Select district</option>
             {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
@@ -359,63 +428,41 @@ export default function CreateTender() {
                  placeholder="Enter taluk" className={inputClass} />
         </Field>
 
-        <Field label="Village / Area">
+        <Field label="Village">
           <input type="text" value={form.village}
                  onChange={e => set('village', e.target.value)}
-                 placeholder="Enter village or area" className={inputClass} />
+                 placeholder="Enter village" className={inputClass} />
         </Field>
 
-        <Field label="Starting Point (lat, long)" required error={errors.startLocation}>
+        <Field label="Coordinates (lat, long)" required error={errors.coordinates} fullWidth>
           <LatLngInput
-            value={form.startLocation}
-            onChange={(loc) => set('startLocation', loc)}
-            inputClassName={errors.startLocation ? inputError : inputClass}
+            value={form.coordinates}
+            onChange={(loc) => set('coordinates', loc)}
+            inputClassName={errors.coordinates ? inputError : inputClass}
           />
-        </Field>
-
-        <Field label="Ending Point (lat, long) — for road / stretch projects">
-          <LatLngInput
-            value={form.endLocation}
-            onChange={(loc) => set('endLocation', loc)}
-            inputClassName={inputClass}
-          />
-        </Field>
-        <Field label="Full Address" fullWidth>
-          <textarea value={form.address}
-                    onChange={e => set('address', e.target.value)}
-                    rows={3} placeholder="Enter complete address..."
-                    className={inputClass + ' resize-none'} />
         </Field>
       </FormSection>
 
-      {/* ── Section 6: Additional Requirements ────────────────────────── */}
-      <FormSection title="Additional Requirements" icon={<ClipboardIcon />}>
-        <Field label="Eligibility Criteria" fullWidth>
-          <textarea value={form.eligibility}
-                    onChange={e => set('eligibility', e.target.value)}
-                    rows={3} placeholder="Specify eligibility criteria for bidders..."
-                    className={inputClass + ' resize-none'} />
+      {/* ── Section 4: Documents ────────────────────────────────────────── */}
+      <FormSection title="Documents" icon={<DocIcon />}>
+        <Field label="Image URL">
+          <input
+            type="text"
+            value={form.image}
+            onChange={e => set('image', e.target.value)}
+            placeholder="Image URL"
+            className={inputClass}
+          />
         </Field>
 
-        <Field label="Technical Requirements" fullWidth>
-          <textarea value={form.technical}
-                    onChange={e => set('technical', e.target.value)}
-                    rows={3} placeholder="List technical requirements..."
-                    className={inputClass + ' resize-none'} />
-        </Field>
-
-        <Field label="Required Resources" fullWidth>
-          <textarea value={form.resources}
-                    onChange={e => set('resources', e.target.value)}
-                    rows={3} placeholder="List required resources and materials..."
-                    className={inputClass + ' resize-none'} />
-        </Field>
-
-        <Field label="Additional Notes" fullWidth>
-          <textarea value={form.notes}
-                    onChange={e => set('notes', e.target.value)}
-                    rows={3} placeholder="Any additional notes or remarks..."
-                    className={inputClass + ' resize-none'} />
+        <Field label="Tender Document (PDF)" error={errors.documentUrl}>
+          <PdfUploadField
+            fileName={documentFile?.name}
+            fileSizeLabel={documentFile?.size != null ? formatFileSize(documentFile.size) : (documentFile ? 'Uploaded' : '')}
+            onSelect={handlePdfSelect}
+            onRemove={handlePdfRemove}
+            error={errors.documentUrl}
+          />
         </Field>
       </FormSection>
 
@@ -458,12 +505,6 @@ function DocIcon() {
 function CurrencyIcon() {
   return <svg {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 }
-function CalendarIcon() {
-  return <svg {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-}
 function LocationIcon() {
   return <svg {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-}
-function ClipboardIcon() {
-  return <svg {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
 }

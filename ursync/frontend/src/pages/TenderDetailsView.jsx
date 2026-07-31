@@ -1,9 +1,16 @@
 // src/pages/TenderDetailsView.jsx
-// Usage: navigate('/tender-details-view', { state: { tender } })
-// Works with tenders from src/data/tenders.js
-// Used by: Home, TendersByLocation, TendersByOrganization,
-//          TendersByDepartment, TendersInArchive, YourTenders,
-//          CancelledRetendered, ApplyTenders
+// Usage: navigate('/tender-details-view/:id', { state: { tender } })
+// Works with DB-backed tender objects (the shape tenderController.js's
+// toCardShape() returns): id/tenderCode, title, description, image,
+// documentUrl, department, departmentCode, organization, category,
+// location, taluk, village, latitude, longitude, value, estimatedValue,
+// startDate, closingDate, status, isCancelled, cancelledReason, isRetendered.
+//
+// Consolidates the old TenderDetailsView.jsx + TenderView.jsx into one
+// page: Project Details / Financial & Schedule / Project Location /
+// Documents. No Approval Timeline — that belonged to the old mock-based
+// draft-tender workflow (projectName/amount/priority fields), which this
+// page doesn't use.
 
 import React from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
@@ -21,14 +28,16 @@ function daysLeft(dateStr) {
   return Math.ceil((new Date(dateStr) - Date.now()) / (1000 * 60 * 60 * 24))
 }
 
+function formatCoord(n) {
+  return typeof n === 'number' ? n.toFixed(5) : '—'
+}
+
 // ── Status / Category configs ─────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  'Open':         { bg: 'bg-green-50',   text: 'text-green-700',   border: 'border-green-200',   dot: 'bg-green-500',   bar: 'bg-green-500'   },
-  'Closing Soon': { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-500',   bar: 'bg-amber-500'   },
-  'Closed':       { bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',     dot: 'bg-red-400',     bar: 'bg-red-400'     },
   'Ongoing':      { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', bar: 'bg-emerald-500' },
   'Upcoming':     { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-500',   bar: 'bg-amber-500'   },
   'Completed':    { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-500',    bar: 'bg-blue-500'    },
+  'Cancelled':    { bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',     dot: 'bg-red-400',     bar: 'bg-red-400'     },
 }
 
 const CATEGORY_COLORS = {
@@ -44,7 +53,7 @@ const CATEGORY_COLORS = {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
-  const sc = STATUS_CONFIG[status] || STATUS_CONFIG['Open']
+  const sc = STATUS_CONFIG[status] || STATUS_CONFIG['Ongoing']
   return (
     <span className={[
       'inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border',
@@ -65,6 +74,42 @@ function CategoryBadge({ category }) {
     ].join(' ')}>
       {category}
     </span>
+  )
+}
+
+// Small badge shown when a tender was retendered — surfaces isRetendered
+// without needing a whole separate section for it.
+function RetenderNotice({ tender }) {
+  if (!tender.isRetendered) return null
+  return (
+    <div className="flex items-center gap-3 rounded-xl px-4 py-3 border bg-indigo-50 border-indigo-200">
+      <svg className="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+      <p className="text-sm font-semibold text-indigo-800">
+        This tender was retendered{tender.retenderedAt ? ` on ${formatDate(tender.retenderedAt)}` : ''}.
+      </p>
+    </div>
+  )
+}
+
+// Notice shown when a tender is cancelled — surfaces cancelledReason.
+function CancelledNotice({ tender }) {
+  if (!tender.isCancelled) return null
+  return (
+    <div className="flex items-start gap-3 rounded-xl px-4 py-3 border bg-red-50 border-red-200">
+      <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.3 3.9L2.7 17.5A1.8 1.8 0 004.3 20h15.4a1.8 1.8 0 001.6-2.5L13.7 3.9a1.8 1.8 0 00-3.4 0z" />
+      </svg>
+      <div>
+        <p className="text-sm font-semibold text-red-700">
+          This tender was cancelled{tender.cancelledAt ? ` on ${formatDate(tender.cancelledAt)}` : ''}.
+        </p>
+        {tender.cancelledReason && (
+          <p className="text-xs text-red-600/80 mt-0.5">{tender.cancelledReason}</p>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -164,7 +209,7 @@ const ip = { className: 'w-4 h-4 text-white', fill: 'none', stroke: 'currentColo
 function InfoIcon()     { return <svg {...ip}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> }
 function FinanceIcon()  { return <svg {...ip}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> }
 function DocIcon()      { return <svg {...ip}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" /></svg> }
-function CalIcon()      { return <svg {...ip}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> }
+function LocationIcon() { return <svg {...ip}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg> }
 
 function CurrencyStatIcon() { return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> }
 function ClockStatIcon()    { return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> }
@@ -176,7 +221,6 @@ export default function TenderDetailsView() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // tender passed via navigation state from any page
   const { id } = useParams()
   const decodedId = id ? decodeURIComponent(id) : null
   const tender = location.state?.tender || null
@@ -202,9 +246,13 @@ export default function TenderDetailsView() {
     )
   }
 
-  const sc   = STATUS_CONFIG[tender.status] || STATUS_CONFIG['Open']
+  const sc   = STATUS_CONFIG[tender.status] || STATUS_CONFIG['Ongoing']
   const days = daysLeft(tender.closingDate)
-  const isCompleted = tender.status === 'Completed' || tender.status === 'Closed'
+  const isCompleted = tender.status === 'Completed'
+  const hasCoords = typeof tender.latitude === 'number' && typeof tender.longitude === 'number'
+  const mapsUrl = hasCoords
+    ? `https://www.google.com/maps/search/?api=1&query=${tender.latitude},${tender.longitude}`
+    : null
 
   return (
     <div className="p-4 lg:p-6 space-y-5 min-h-screen animate-fade-in">
@@ -232,6 +280,10 @@ export default function TenderDetailsView() {
           <CategoryBadge category={tender.category} />
         </div>
       </div>
+
+      {/* ── Cancelled / Retendered notices ─────────────────────────────── */}
+      <CancelledNotice tender={tender} />
+      <RetenderNotice tender={tender} />
 
       {/* ── Hero image ─────────────────────────────────────────────────── */}
       {tender.image && (
@@ -282,7 +334,7 @@ export default function TenderDetailsView() {
       </div>
 
       {/* ── Days left notice ────────────────────────────────────────────── */}
-      {!isCompleted && days !== null && days >= 0 && (
+      {!isCompleted && !tender.isCancelled && days !== null && days >= 0 && (
         <div className={[
           'flex items-center gap-3 rounded-xl px-4 py-3 border',
           days <= 3
@@ -303,8 +355,8 @@ export default function TenderDetailsView() {
         </div>
       )}
 
-      {/* ── Basic Information ───────────────────────────────────────────── */}
-      <SectionCard title="Basic Information" icon={<InfoIcon />}>
+      {/* ── Project Details ──────────────────────────────────────────────── */}
+      <SectionCard title="Project Details" icon={<InfoIcon />}>
         <div className="divide-y divide-[#FFF2DB]">
           <InfoRow label="Tender ID"       value={tender.id} />
           <InfoRow label="Title"           value={tender.title} />
@@ -322,7 +374,8 @@ export default function TenderDetailsView() {
           <InfoRow label="Tender Value"  value={tender.value} accent />
           <InfoRow label="Start Date"    value={formatDate(tender.startDate)} />
           <InfoRow label="Closing Date"  value={formatDate(tender.closingDate)} />
-          {!isCompleted && days !== null && (
+          <InfoRow label="Duration"  value={tender.duration} />
+          {!isCompleted && !tender.isCancelled && days !== null && (
             <InfoRow
               label="Days Remaining"
               value={days <= 0 ? 'Closed' : days === 0 ? 'Today' : days + ' days'}
@@ -331,11 +384,39 @@ export default function TenderDetailsView() {
         </div>
       </SectionCard>
 
-      {/* ── Location ────────────────────────────────────────────────────── */}
-      <SectionCard title="Location" icon={<CalIcon />}>
+      {/* ── Project Location ────────────────────────────────────────────── */}
+      <SectionCard title="Project Location" icon={<LocationIcon />}>
         <div className="divide-y divide-[#FFF2DB]">
-          <InfoRow label="Location" value={tender.location} />
+          <InfoRow label="Location"  value={tender.location} />
+          <InfoRow label="Taluk"    value={tender.taluk} />
+          <InfoRow label="Village"  value={tender.village} />
+          <InfoRow label="Latitude"  value={formatCoord(tender.latitude)} />
+          <InfoRow label="Longitude" value={formatCoord(tender.longitude)} />
         </div>
+        {hasCoords && (
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 flex items-center gap-3 p-3 rounded-xl border border-[#FFE5BF] bg-[#FFF2DB] hover:bg-[#FFE5BF] transition-colors group"
+          >
+            <div className="w-10 h-10 rounded-lg bg-[#1A4A8C] flex items-center justify-center flex-shrink-0">
+              <LocationIcon />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-[#0A2240] truncate">View on Map</p>
+              <p className="text-xs text-[#6B7A8D]">Open this location in Google Maps</p>
+            </div>
+            <svg className="w-4 h-4 text-[#1A4A8C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </a>
+        )}
+        {!hasCoords && (
+          <p className="text-xs text-[#6B7A8D] mt-3">
+            Precise coordinates aren't available for this tender.
+          </p>
+        )}
       </SectionCard>
 
       {/* ── Documents ───────────────────────────────────────────────────── */}

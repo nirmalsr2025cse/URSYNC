@@ -9,14 +9,6 @@ const VALID_STATUSES = ['Ongoing', 'Upcoming', 'Completed']
 // are excluded by default — pass includeCancelled=true explicitly (e.g.
 // from the dedicated Cancelled/Retendered page) to see them; normal
 // Home-page browsing never surfaces them by accident.
-//
-// IMPORTANT: department/category/district $unwind stages all use
-// preserveNullAndEmptyArrays: true. Without this, ANY tender whose
-// departmentId or categoryId doesn't resolve to an actual document in
-// those collections (bad ObjectId, deleted department/category, seed
-// data mismatch, etc.) gets SILENTLY DROPPED from the aggregation with
-// no error — this was previously causing most tenders to vanish and only
-// one (the one tender with fully valid refs) to render on the frontend.
 function buildJoinStages(req, { includeCancelled = false } = {}) {
   const baseMatch = { isDeleted: false }
   if (!includeCancelled) {
@@ -33,7 +25,7 @@ function buildJoinStages(req, { includeCancelled = false } = {}) {
         as: 'departmentDoc',
       },
     },
-    { $unwind: { path: '$departmentDoc', preserveNullAndEmptyArrays: true } },
+    { $unwind: '$departmentDoc' },
     {
       $lookup: {
         from: 'categories',
@@ -42,7 +34,7 @@ function buildJoinStages(req, { includeCancelled = false } = {}) {
         as: 'categoryDoc',
       },
     },
-    { $unwind: { path: '$categoryDoc', preserveNullAndEmptyArrays: true } },
+    { $unwind: '$categoryDoc' },
     {
       $lookup: {
         from: 'districts',
@@ -63,9 +55,6 @@ function buildJoinStages(req, { includeCancelled = false } = {}) {
 
 // Reshapes one aggregated tender doc into the flat fields TenderCard.jsx /
 // Home.jsx already expect from the old mock data.
-// departmentDoc/categoryDoc may now be undefined (see note above) if a
-// tender has a broken/missing ref — fall back gracefully instead of
-// throwing, so one bad tender can't 500 the whole list.
 function toCardShape(t) {
   return {
     id: t.tenderCode,
@@ -74,11 +63,16 @@ function toCardShape(t) {
     description: t.description,
     image: t.image,
     documentUrl: t.documentUrl || null, // not in current schema — falls back to the "not available" state in TenderCard
-    department: t.departmentDoc?.name || 'Unknown Department',
-    departmentCode: t.departmentDoc?.code || null,
-    organization: t.departmentDoc?.organization || t.departmentDoc?.name || 'Unknown Organisation',
-    category: t.categoryDoc?.name || 'Uncategorised',
+    department: t.departmentDoc.name,
+    departmentCode: t.departmentDoc.code,
+    organization: t.departmentDoc.organization || t.departmentDoc.name,
+    category: t.categoryDoc.name,
     location: t.location || (t.districtDoc ? t.districtDoc.name : ''),
+    taluk: t.taluk || '',
+    village: t.village || '',
+    latitude: t.latitude ?? null,
+    longitude: t.longitude ?? null,
+    duration: t.duration || '',
     value: formatCurrency(t.estimatedValue),
     estimatedValue: t.estimatedValue,
     startDate: t.startDate,
@@ -119,6 +113,8 @@ async function listTenders(req, res) {
             { title: regex },
             { tenderCode: regex },
             { location: regex },
+            { taluk: regex },
+            { village: regex },
             { 'departmentDoc.name': regex },
           ],
         },

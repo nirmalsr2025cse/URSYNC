@@ -1,8 +1,23 @@
-// src/controllers/locationController.js
 const Tender = require('../models/Tender')
 const formatCurrency = require('../utils/formatCurrency')
 const { locationNamesMatch } = require('../utils/normalizeLocationName')
 const googlePlacesService = require('../services/googlePlacesService')
+
+function buildJoinStages(req) {
+  const stages = [
+    { $match: { isDeleted: false, location: { $exists: true, $ne: '' } } },
+    { $lookup: { from: 'departments', localField: 'departmentId', foreignField: '_id', as: 'departmentDoc' } },
+    { $unwind: '$departmentDoc' },
+    { $lookup: { from: 'categories', localField: 'categoryId', foreignField: '_id', as: 'categoryDoc' } },
+    { $unwind: '$categoryDoc' },
+    { $lookup: { from: 'districts', localField: 'districtId', foreignField: '_id', as: 'districtDoc' } },
+    { $unwind: { path: '$districtDoc', preserveNullAndEmptyArrays: true } },
+  ]
+  if (req.isDepartmentRestricted && req.departmentCode) {
+    stages.push({ $match: { 'departmentDoc.code': req.departmentCode } })
+  }
+  return stages
+}
 
 function toCardShape(t) {
   return {
@@ -17,11 +32,19 @@ function toCardShape(t) {
     organization: t.departmentDoc.organization || t.departmentDoc.name,
     category: t.categoryDoc.name,
     location: t.location || (t.districtDoc ? t.districtDoc.name : ''),
+    taluk: t.taluk || '',
+    village: t.village || '',
+    latitude: t.latitude ?? null,
+    longitude: t.longitude ?? null,
+    duration: t.duration || '',
     value: formatCurrency(t.estimatedValue),
     estimatedValue: t.estimatedValue,
     startDate: t.startDate,
     closingDate: t.closingDate,
     status: t.status,
+    isCancelled: t.isCancelled || false,
+    isRetendered: t.isRetendered || false,
+    cancelledReason: t.cancelledReason || null,
   }
 }
 
@@ -31,7 +54,6 @@ async function autocomplete(req, res) {
     if (!query) {
       return res.status(400).json({ message: 'query is required' })
     }
-
     const predictions = await googlePlacesService.autocomplete(query)
     return res.json({ predictions })
   } catch (err) {
@@ -46,7 +68,6 @@ async function placeDetails(req, res) {
     if (!placeId) {
       return res.status(400).json({ message: 'placeId is required' })
     }
-
     const details = await googlePlacesService.placeDetails(placeId)
     return res.json({ place: details })
   } catch (err) {
@@ -64,10 +85,8 @@ async function nearby(req, res) {
     if (!placeId) {
       return res.status(400).json({ message: 'placeId is required' })
     }
-
     const center = await googlePlacesService.placeDetails(placeId)
     const nearbyPlaces = await googlePlacesService.nearbySearch(center.lat, center.lng)
-
     return res.json({ center: { lat: center.lat, lng: center.lng }, nearbyPlaces })
   } catch (err) {
     console.error('locationController.nearby error:', err.message)
@@ -78,7 +97,6 @@ async function nearby(req, res) {
   }
 }
 
-// Main endpoint the frontend calls: placeId in -> matched tenders + map data out
 async function tendersByLocation(req, res) {
   try {
     const placeId = String(req.query.placeId || '').trim()
@@ -86,7 +104,6 @@ async function tendersByLocation(req, res) {
       return res.status(400).json({ message: 'placeId is required' })
     }
 
-    // 1. Resolve the selected place -> coordinates
     let center
     try {
       center = await googlePlacesService.placeDetails(placeId)
@@ -97,57 +114,15 @@ async function tendersByLocation(req, res) {
       throw err
     }
 
-    // 2. Nearby places within 5km
     const nearbyPlaces = await googlePlacesService.nearbySearch(center.lat, center.lng)
 
     if (nearbyPlaces.length === 0) {
-      return res.json({
-        center: { lat: center.lat, lng: center.lng },
-        nearbyPlaces: [],
-        markers: [],
-        tenders: [],
-      })
+      return res.json({ center: { lat: center.lat, lng: center.lng }, nearbyPlaces: [], markers: [], tenders: [] })
     }
 
-    // 3. Pull candidate tenders (non-deleted, with location set) and join, same shape as tenderController
-    const stages = [
-      { $match: { isDeleted: false, location: { $exists: true, $ne: '' } } },
-      {
-        $lookup: {
-          from: 'departments',
-          localField: 'departmentId',
-          foreignField: '_id',
-          as: 'departmentDoc',
-        },
-      },
-      { $unwind: '$departmentDoc' },
-      {
-        $lookup: {
-          from: 'categories',
-          localField: 'categoryId',
-          foreignField: '_id',
-          as: 'categoryDoc',
-        },
-      },
-      { $unwind: '$categoryDoc' },
-      {
-        $lookup: {
-          from: 'districts',
-          localField: 'districtId',
-          foreignField: '_id',
-          as: 'districtDoc',
-        },
-      },
-      { $unwind: { path: '$districtDoc', preserveNullAndEmptyArrays: true } },
-    ]
-
-    if (req.isDepartmentRestricted && req.departmentCode) {
-      stages.push({ $match: { 'departmentDoc.code': req.departmentCode } })
-    }
-
+    const stages = buildJoinStages(req)
     const candidateTenders = await Tender.aggregate(stages)
 
-    // 4. Compare nearby place names against Tender.location (normalized, not a Mongo text search)
     const matchedTenders = []
     const matchedPlaceIds = new Set()
 
@@ -161,11 +136,7 @@ async function tendersByLocation(req, res) {
     }
 
     const matchingPlaces = nearbyPlaces.filter((p) => matchedPlaceIds.has(p.placeId))
-    const markers = matchingPlaces.map((p) => ({
-      lat: p.lat,
-      lng: p.lng,
-      title: p.name,
-    }))
+    const markers = matchingPlaces.map((p) => ({ lat: p.lat, lng: p.lng, title: p.name }))
 
     return res.json({
       center: { lat: center.lat, lng: center.lng },

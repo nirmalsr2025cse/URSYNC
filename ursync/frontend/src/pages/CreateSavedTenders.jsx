@@ -1,8 +1,9 @@
 // src/pages/CreateSavedTenders.jsx
-import React, { useState, useMemo, useEffect } from 'react'
-import { useNavigate , useLocation } from 'react-router-dom'
-import { MOCK_SAVED_TENDERS, STATUS_CONFIG, PRIORITY_CONFIG, TENDER_CATEGORIES } from '../data/tenderMockData'
-import {useRole} from '../components/RoleContext'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { STATUS_CONFIG, PRIORITY_CONFIG, TENDER_CATEGORIES } from '../data/tenderMockData'
+import { useRole } from '../components/RoleContext'
+import { useApi } from '../api/client'
 import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -114,13 +115,18 @@ function SavedTenderCard({ tender, onView, onEdit, onDelete }) {
 export default function CreateSavedTenders() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { role } = useRole();
-  const [tenders, setTenders]     = useState(MOCK_SAVED_TENDERS)
-  const [search, setSearch]       = useState('')
-  const [statusFilter, setStatus] = useState('All')
-  const [catFilter, setCat]       = useState('All')
-  const [toast, setToast]         = useState(null)
+  const { role } = useRole()
+  const { apiFetch } = useApi()
+
+  const [tenders, setTenders]         = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState(null)
+  const [search, setSearch]           = useState('')
+  const [statusFilter, setStatus]     = useState('All')
+  const [catFilter, setCat]           = useState('All')
+  const [toast, setToast]             = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
+  const [deleting, setDeleting]       = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = useResponsiveItemsPerPage()
 
@@ -131,80 +137,97 @@ export default function CreateSavedTenders() {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
   }
-  const visibleTenders = tenders.filter((tender) => {
-    if (role === 'department_head') {
-      return (
-        tender.createdByRole === 'department_employee' ||
-        tender.createdByRole === 'department_head'
-      );
-    }
 
-    else if (role === 'department_employee') {
-      return tender.createdByRole === 'department_employee';
+  // ── Fetch tenders from backend ──────────────────────────────────────────
+  // The backend already applies the role-based visibility rules:
+  //  - department_employee → only their own Draft tenders, own department
+  //  - department_head     → only tenders THEY created, own department
+  //  - administrator/etc.  → everything
+  const fetchTenders = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch('/create-tenders')
+      setTenders(res.data || [])
+    } catch (err) {
+      setError(err.message || 'Failed to load tenders')
+    } finally {
+      setLoading(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-    return true;
-  });
-  // Filtered list
+  useEffect(() => {
+    fetchTenders()
+  }, [fetchTenders])
+
+  // Filtered list (search/status/category filters run client-side on top
+  // of the already role-filtered data returned by the backend)
   const filtered = useMemo(() => {
-    return visibleTenders.filter((tender) => {
+    return tenders.filter((tender) => {
       const matchesSearch =
         tender.projectName.toLowerCase().includes(search.toLowerCase()) ||
         tender.department.toLowerCase().includes(search.toLowerCase()) ||
         tender.id.toLowerCase().includes(search.toLowerCase()) ||
-        tender.district.toLowerCase().includes(search.toLowerCase());
+        tender.district.toLowerCase().includes(search.toLowerCase())
 
       const matchesStatus =
-        statusFilter === 'All' || tender.status === statusFilter;
+        statusFilter === 'All' || tender.status === statusFilter
 
       const matchesCategory =
-        catFilter === 'All' || tender.category === catFilter;
+        catFilter === 'All' || tender.category === catFilter
 
-      return matchesSearch && matchesStatus && matchesCategory;
-    });
-  }, [visibleTenders, search, statusFilter, catFilter]);
+      return matchesSearch && matchesStatus && matchesCategory
+    })
+  }, [tenders, search, statusFilter, catFilter])
 
-   const handleView = (tender) => {
+  const handleView = (tender) => {
     navigate('/tender-view', {
       state: {
         tender,
         role,
-        fromPath: rootPath
+        fromPath: rootPath,
       },
-    });
-  };
-  
+    })
+  }
 
-  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const totalPages = Math.ceil(filtered.length / itemsPerPage)
 
   const paginatedTenders = filtered.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
-  );
-
+  )
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [search, statusFilter, catFilter, role, itemsPerPage]);
+    setCurrentPage(1)
+  }, [search, statusFilter, catFilter, role, itemsPerPage])
 
-  
   function handleEdit(tender) {
-    navigate('/create-tender', { state: { tender , fromPath: rootPath } })
+    navigate('/create-tender', { state: { tender, fromPath: rootPath } })
   }
 
   function confirmDelete(tender) {
     setDeleteModal(tender)
   }
 
-  function handleDelete() {
-    setTenders(prev => prev.filter(t => t.id !== deleteModal.id))
-    setDeleteModal(null)
-    showToast('Tender deleted successfully.', 'error')
+  // ── Delete via backend, then refresh local state ────────────────────────
+  async function handleDelete() {
+    if (!deleteModal) return
+    setDeleting(true)
+    try {
+      await apiFetch(`/create-tenders/${deleteModal.id}`, { method: 'DELETE' })
+      setTenders(prev => prev.filter(t => t.id !== deleteModal.id))
+      showToast('Tender deleted successfully.', 'error')
+    } catch (err) {
+      showToast(err.message || 'Failed to delete tender.', 'error')
+    } finally {
+      setDeleting(false)
+      setDeleteModal(null)
+    }
   }
 
   const statusOptions = ['All', 'Draft', 'Pending Approval', 'Sent to Head', 'Sent to Administrator', 'Approved', 'Rejected']
   const categoryOptions = ['All', ...TENDER_CATEGORIES]
-
 
   return (
     <div className="p-4 lg:p-6 space-y-5 relative">
@@ -236,13 +259,13 @@ export default function CreateSavedTenders() {
               Are you sure you want to delete <span className="font-semibold text-[#0A2240]">"{deleteModal.projectName}"</span>? This action cannot be undone.
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteModal(null)}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-[#FFE5BF] text-[#0A2240] hover:bg-[#FFF2DB] transition-colors">
+              <button onClick={() => setDeleteModal(null)} disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-[#FFE5BF] text-[#0A2240] hover:bg-[#FFF2DB] transition-colors disabled:opacity-50">
                 Cancel
               </button>
-              <button onClick={handleDelete}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors">
-                Delete
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors disabled:opacity-50">
+                {deleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>
@@ -316,40 +339,66 @@ export default function CreateSavedTenders() {
         )}
       </div>
 
-      {/* ── Cards Grid ─────────────────────────────────────────────────── */}
-      {filtered.length > 0 ? (
-        <div key={currentPage} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch pb-24 animate-fade-in">
-          {paginatedTenders.map(tender => (
-            <SavedTenderCard
-              key={tender.id}
-              tender={tender}
-              onView={handleView}
-              onEdit={handleEdit}
-              onDelete={confirmDelete}
-            />
-          ))}
-        </div>
-      ) : (
+      {/* ── Loading / Error states ───────────────────────────────────────── */}
+      {loading && (
         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-[#FFE5BF] border-dashed">
-          <div className="w-14 h-14 rounded-full bg-[#FFF2DB] flex items-center justify-center mb-4 border border-[#FFE5BF]">
-            <svg className="w-6 h-6 text-[#6B7A8D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <p className="font-bold text-[#0A2240] mb-1">No tenders found</p>
-          <p className="text-sm text-[#6B7A8D]">Try adjusting your search or filters.</p>
+          <p className="text-sm text-[#6B7A8D]">Loading tenders…</p>
         </div>
       )}
+
+      {!loading && error && (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-red-200 border-dashed">
+          <p className="font-bold text-red-600 mb-1">Couldn't load tenders</p>
+          <p className="text-sm text-[#6B7A8D] mb-4">{error}</p>
+          <button
+            onClick={fetchTenders}
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* ── Cards Grid ─────────────────────────────────────────────────── */}
+      {!loading && !error && (
+        filtered.length > 0 ? (
+          <div key={currentPage} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch pb-24 animate-fade-in">
+            {paginatedTenders.map(tender => (
+              <SavedTenderCard
+                key={tender.id}
+                tender={tender}
+                onView={handleView}
+                onEdit={handleEdit}
+                onDelete={confirmDelete}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-[#FFE5BF] border-dashed">
+            <div className="w-14 h-14 rounded-full bg-[#FFF2DB] flex items-center justify-center mb-4 border border-[#FFE5BF]">
+              <svg className="w-6 h-6 text-[#6B7A8D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <p className="font-bold text-[#0A2240] mb-1">No tenders found</p>
+            <p className="text-sm text-[#6B7A8D]">Try adjusting your search or filters.</p>
+          </div>
+        )
+      )}
+
       {/* ── Pagination Controls ──────────────────────────────────────── */}
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-      />
+      {!loading && !error && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
+      )}
+
       {/* ── Floating Action Button ──────────────────────────────────────── */}
       <button
-        onClick={() => navigate('/create-tender', { state: { fromPath: rootPath } } )}
+        onClick={() => navigate('/create-tender', { state: { fromPath: rootPath } })}
         className="fixed bottom-8 right-8 z-40 w-14 h-14 rounded-full bg-[#F62440] text-white shadow-lg flex items-center justify-center hover:bg-red-600 hover:scale-110 hover:shadow-xl transition-all duration-200 active:scale-95"
         title="Create New Tender"
         aria-label="Create New Tender"
