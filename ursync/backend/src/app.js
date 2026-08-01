@@ -5,6 +5,7 @@ const authRoutes = require('./routes/authRoutes')
 const locationRoutes = require('./routes/locationRoutes')
 const debarmentRoutes = require('./routes/debarmentRoutes') // NEW
 const createTenderRoutes = require('./routes/createTenderRoutes') 
+const reportsFeedbacksRoutes = require('./routes/reportsFeedbacksRoutes') // NEW
 
 const app = express()
 app.use(
@@ -21,6 +22,7 @@ app.use('/api/auth', authRoutes) //Authentication
 app.use('/api/location', locationRoutes)//Tender By Location
 app.use('/api/debarments', debarmentRoutes) // NEW — Debarment List page
 app.use('/api/create-tenders', createTenderRoutes)
+app.use('/api/reports-feedbacks', reportsFeedbacksRoutes) // NEW — Reports & Feedbacks page
 
 
 // 404 handler

@@ -1,8 +1,14 @@
 // src/pages/ReportsFeedbacks.jsx
-import React, { useState, useMemo } from 'react'
-import { REPORT_MESSAGES, FEEDBACK_MESSAGES } from '../data/reportFeedbackMockData'
+// Wired to the real backend: GET /api/reports-feedbacks/reports and
+// GET /api/reports-feedbacks/feedbacks. Department-based visibility is
+// enforced server-side (see reportsFeedbacksController.js) — the frontend
+// no longer filters by department itself, it just renders whatever the
+// backend decided this user is allowed to see.
+
+import React, { useState, useEffect, useMemo } from 'react'
 import Pagination from '../components/Pagination'
 import { useRole } from '../components/RoleContext'
+import { useApi } from '../api/client'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(d) {
@@ -36,7 +42,7 @@ function ReportCard({ item, showDept }) {
       <div className="h-1 w-full bg-[#0A2240]" />
       <div className="p-4 flex flex-col flex-1 gap-3">
 
-        <p className="text-[10px] font-mono text-[#6B7A8D] uppercase tracking-wide">{item.id}</p>
+        <p className="text-[10px] font-mono text-[#6B7A8D] uppercase tracking-wide">{item.reportCode}</p>
 
         <h3 className="text-sm font-bold text-[#0A2240] leading-snug line-clamp-2">{item.title}</h3>
 
@@ -62,7 +68,7 @@ function FeedbackCard({ item, showDept }) {
       <div className="p-4 flex flex-col flex-1 gap-3">
 
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-mono text-[#6B7A8D] uppercase tracking-wide">{item.id}</p>
+          <p className="text-[10px] font-mono text-[#6B7A8D] uppercase tracking-wide">{item.feedbackCode}</p>
           <StarRating rating={item.rating} />
         </div>
 
@@ -99,6 +105,28 @@ function EmptyState({ label }) {
   )
 }
 
+// ── Error State ───────────────────────────────────────────────────────────────
+function ErrorState({ message, onRetry }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-red-200 border-dashed col-span-full">
+      <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4 border border-red-200">
+        <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <p className="font-bold text-red-600 mb-1">Couldn't load this data.</p>
+      <p className="text-sm text-[#6B7A8D] mb-4">{message}</p>
+      <button
+        onClick={onRetry}
+        className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+      >
+        Retry
+      </button>
+    </div>
+  )
+}
+
 // ── MetaRow ───────────────────────────────────────────────────────────────────
 function MetaRow({ icon, label }) {
   const paths = {
@@ -123,46 +151,70 @@ const TABS = [
   { id: 'feedbacks', label: 'Feedbacks' },
 ]
 
-// Department mapping per role — matches your existing project
-const ROLE_DEPARTMENT_MAP = {
-  department_employee: 'Public Works Department',
-  department_head:     'Public Works Department',
-}
-
 const PAGE_SIZE = 6
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ReportsFeedbacks() {
   const { role } = useRole()
+  const { apiFetch } = useApi()
+
   const [activeTab,   setActiveTab]   = useState('reports')
   const [currentPage, setCurrentPage] = useState(1)
   const [animating,   setAnimating]   = useState(false)
 
-  // ── Role logic ────────────────────────────────────────────────────────────
-  const isDeptRole   = role === 'department_employee' || role === 'department_head'
-  const isAdmin      = role === 'administrator'
-  const userDept     = ROLE_DEPARTMENT_MAP[role] || null
+  const [reports,   setReports]   = useState([])
+  const [feedbacks, setFeedbacks] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState(null)
 
-  // ── Filter cards by department for dept roles ─────────────────────────────
-  // Department roles → only their department's cards, no dept label shown
-  // Administrator    → all cards, dept label shown
-  // Others           → all cards, no dept label
-  const reports = useMemo(() => {
-    if (isDeptRole && userDept) {
-      return REPORT_MESSAGES.filter((r) => r.department === userDept)
-    }
-    return REPORT_MESSAGES
-  }, [role])
+  // Every role now only ever receives their own department's reports and
+  // feedbacks (enforced server-side, filtered strictly by departmentId,
+  // never by userId or role) — so showing a department label on each card
+  // would be redundant; every card belongs to the same department already.
+  const showDept = false
 
-  const feedbacks = useMemo(() => {
-    if (isDeptRole && userDept) {
-      return FEEDBACK_MESSAGES.filter((f) => f.department === userDept)
-    }
-    return FEEDBACK_MESSAGES
-  }, [role])
+  // ── Fetch both reports and feedbacks up front ─────────────────────────────
+  // Both lists are small enough (paginated client-side) that fetching them
+  // together avoids a network round-trip every time the tab is switched.
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
 
-  // showDept = true only for Administrator
-  const showDept = isAdmin
+    Promise.all([
+      apiFetch('/reports-feedbacks/reports'),
+      apiFetch('/reports-feedbacks/feedbacks'),
+    ])
+      .then(([reportsRes, feedbacksRes]) => {
+        if (cancelled) return
+        setReports(reportsRes.data || [])
+        setFeedbacks(feedbacksRes.data || [])
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || 'Failed to load reports & feedbacks.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function refetch() {
+    setLoading(true)
+    setError(null)
+    Promise.all([
+      apiFetch('/reports-feedbacks/reports'),
+      apiFetch('/reports-feedbacks/feedbacks'),
+    ])
+      .then(([reportsRes, feedbacksRes]) => {
+        setReports(reportsRes.data || [])
+        setFeedbacks(feedbacksRes.data || [])
+      })
+      .catch((err) => setError(err.message || 'Failed to load reports & feedbacks.'))
+      .finally(() => setLoading(false))
+  }
 
   // ── Active tab data ───────────────────────────────────────────────────────
   const data       = activeTab === 'reports' ? reports : feedbacks
@@ -203,20 +255,6 @@ export default function ReportsFeedbacks() {
         </nav>
       </div>
 
-      {/* ── Dept notice for dept roles ─────────────────────────────────── */}
-      {isDeptRole && userDept && (
-        <div className="flex items-center gap-3 bg-[#FFF2DB] border border-[#FFE5BF] rounded-xl px-4 py-3">
-          <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="text-xs text-amber-800 font-medium">
-            Showing reports and feedbacks for{' '}
-            <span className="font-bold">{userDept}</span> only.
-          </p>
-        </div>
-      )}
-
       {/* ── Tab Bar ────────────────────────────────────────────────────── */}
       <div className="inline-flex items-center bg-white border border-[#FFE5BF] rounded-full p-1 shadow-sm gap-1">
         {TABS.map((tab) => {
@@ -249,36 +287,53 @@ export default function ReportsFeedbacks() {
             {activeTab === 'reports' ? 'Reports' : 'Feedbacks'}
           </h2>
           <p className="text-xs text-[#6B7A8D]">
-            {data.length} {activeTab === 'reports' ? 'report' : 'feedback'}{data.length !== 1 ? 's' : ''} found
+            {loading ? 'Loading…' : `${data.length} ${activeTab === 'reports' ? 'report' : 'feedback'}${data.length !== 1 ? 's' : ''} found`}
           </p>
         </div>
       </div>
 
+      {/* ── Loading State ──────────────────────────────────────────────── */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="w-8 h-8 border-2 border-[#FFE5BF] border-t-[#1A4A8C] rounded-full animate-spin mb-4" />
+          <p className="text-sm text-[#6B7A8D]">Loading reports & feedbacks…</p>
+        </div>
+      )}
+
+      {/* ── Error State ────────────────────────────────────────────────── */}
+      {!loading && error && (
+        <ErrorState message={error} onRetry={refetch} />
+      )}
+
       {/* ── Cards Grid ─────────────────────────────────────────────────── */}
-      <div className={[
-        'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch transition-opacity duration-150',
-        animating ? 'opacity-0' : 'opacity-100',
-      ].join(' ')}>
-        {paginated.length === 0 && (
-          <EmptyState label={
+      {!loading && !error && (
+        <div className={[
+          'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch transition-opacity duration-150',
+          animating ? 'opacity-0' : 'opacity-100',
+        ].join(' ')}>
+          {paginated.length === 0 && (
+            <EmptyState label={
+              activeTab === 'reports'
+                ? 'No reports available.'
+                : 'No feedback available.'
+            } />
+          )}
+          {paginated.map((item) =>
             activeTab === 'reports'
-              ? 'No reports available.'
-              : 'No feedback available.'
-          } />
-        )}
-        {paginated.map((item) =>
-          activeTab === 'reports'
-            ? <ReportCard   key={item.id} item={item} showDept={showDept} />
-            : <FeedbackCard key={item.id} item={item} showDept={showDept} />
-        )}
-      </div>
+              ? <ReportCard   key={item.id} item={item} showDept={showDept} />
+              : <FeedbackCard key={item.id} item={item} showDept={showDept} />
+          )}
+        </div>
+      )}
 
       {/* ── Pagination ─────────────────────────────────────────────────── */}
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-      />
+      {!loading && !error && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
+      )}
     </div>
   )
 }

@@ -1,19 +1,29 @@
 // src/pages/CreateTender.jsx
-// Fields collected here map 1:1 to what TenderDetailsView/TenderView
-// display: title, department (derived), category, description,
-// estimatedValue, startDate, closingDate, duration, location, taluk,
-// village, latitude/longitude, documentUrl, image.
-// No projectName/tenderType/priority/amount(currency-string)/eligibility/
-// technical/resources/notes — those belonged to the old mock draft-workflow
-// and aren't shown anywhere in the details view.
+// Wired to the real backend: POST/PUT /api/create-tenders, PATCH
+// /api/create-tenders/:id/send-to-head, PATCH .../send-to-administrator,
+// GET /api/create-tenders/meta/form for department/category/district IDs.
+//
+// Fields collected map 1:1 to CreateTender.model.js: title, description,
+// categoryId, districtId, location, taluk, village, latitude/longitude,
+// estimatedValue, currency, duration, startDate, closingDate, tenderType,
+// priority, image, documentUrl, tenderId.
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useRole } from '../components/RoleContext'
+import { useApi } from '../api/client'
 import LatLngInput from '../components/LatLngInput'
-import { TENDER_CATEGORIES, TN_DISTRICTS, DEPARTMENT_MAP } from '../data/tenderMockData'
 
 const MAX_PDF_SIZE_MB = 10
+
+// <input type="date"> requires strict "yyyy-MM-dd" — Mongo/JS Date values
+// come back as full ISO datetime strings ("2026-09-01T00:00:00.000Z"), so
+// they need slicing before they can be used as a date input's value.
+function toDateInputValue(value) {
+  if (!value) return ''
+  const iso = value instanceof Date ? value.toISOString() : String(value)
+  return iso.slice(0, 10) // "2026-09-01T00:00:00.000Z" -> "2026-09-01"
+}
 
 // ── Section Wrapper ───────────────────────────────────────────────────────────
 function FormSection({ title, icon, children }) {
@@ -129,6 +139,44 @@ function PdfUploadField({ fileName, fileSizeLabel, onSelect, onRemove, error }) 
   )
 }
 
+// ── Duration <-> Date auto-calculation helpers ────────────────────────────
+// Duration is stored as free text (e.g. "120 days"), but for the
+// auto-calc we only care about the leading integer.
+function parseDurationDays(durationStr) {
+  if (!durationStr) return null
+  const match = String(durationStr).match(/\d+/)
+  if (!match) return null
+  const n = parseInt(match[0], 10)
+  return Number.isFinite(n) ? n : null
+}
+
+// yyyy-MM-dd + integer days -> yyyy-MM-dd
+// NOTE: deliberately avoids `new Date(str)` + `.toISOString()` — that path
+// interprets the input as LOCAL time then converts to UTC, which silently
+// shifts the date backward by a day in timezones ahead of UTC (e.g. IST,
+// UTC+5:30). Doing the arithmetic purely in UTC Y/M/D components sidesteps
+// that entirely.
+function addDaysToDate(dateStr, days) {
+  if (!dateStr || days == null) return ''
+  const [y, m, d] = dateStr.split('-').map(Number)
+  if (!y || !m || !d) return ''
+  const date = new Date(Date.UTC(y, m - 1, d))
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+// yyyy-MM-dd, yyyy-MM-dd -> integer days (closing - start)
+function diffInDays(startStr, endStr) {
+  if (!startStr || !endStr) return null
+  const [y1, m1, d1] = startStr.split('-').map(Number)
+  const [y2, m2, d2] = endStr.split('-').map(Number)
+  if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return null
+  const start = Date.UTC(y1, m1 - 1, d1)
+  const end = Date.UTC(y2, m2 - 1, d2)
+  const days = Math.round((end - start) / (1000 * 60 * 60 * 24))
+  return days >= 0 ? days : null
+}
+
 function formatFileSize(bytes) {
   if (!bytes && bytes !== 0) return ''
   if (bytes < 1024) return bytes + ' B'
@@ -141,48 +189,132 @@ export default function CreateTender() {
   const navigate  = useNavigate()
   const location  = useLocation()
   const { role }  = useRole()
+  const { apiFetch } = useApi()
+
   const editData  = location.state?.tender || null
+  const fromPath  = location.state?.fromPath || '/create-saved-tenders'
 
-  const department = DEPARTMENT_MAP[role] || 'Public Works Department'
-  const fromPath = location.state?.fromPath || '/create-saved-tenders'
+  const [toast, setToast]     = useState(null)
+  const [saving, setSaving]   = useState(false)
+  const [errors, setErrors]   = useState({})
+  const [metaLoading, setMetaLoading] = useState(true)
+  const [metaError, setMetaError]     = useState(null)
+  const [meta, setMeta] = useState({ department: null, categories: [], districts: [] })
 
-  const [toast, setToast]   = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
+  // Tracks the DB _id of the tender currently being edited. Starts as
+  // editData?.id (editing an existing draft) and gets set the moment a
+  // brand-new tender is first saved, so a subsequent "Send" doesn't try to
+  // create a second duplicate document.
+  const [tenderRecordId, setTenderRecordId] = useState(editData?.id || null)
 
-  // ── Form state — mirrors exactly what TenderDetailsView displays ──────────
+  // ── Form state ──────────────────────────────────────────────────────────────
   const [form, setForm] = useState({
-    title:            editData?.title            || '',
-    department:       editData?.department        || department,
-    category:         editData?.category          || '',
-    description:      editData?.description       || '',
-    estimatedValue:    editData?.estimatedValue    || '',
-    startDate:        editData?.startDate         || '',
-    closingDate:      editData?.closingDate       || '',
-    duration:         editData?.duration          || '',
-    location:         editData?.location          || '',
-    taluk:            editData?.taluk             || '',
-    village:          editData?.village           || '',
-    // Holds { address, lat, lng, placeId } once selected — user never
-    // types coordinates directly.
+    tenderId:         editData?.tenderId          || '',
+    title:            editData?.title             || '',
+    categoryId:       editData?.categoryId         || '',
+    districtId:       editData?.districtId         || '',
+    description:      editData?.description        || '',
+    estimatedValue:   editData?.estimatedValue      || editData?.amount || '',
+    startDate:        toDateInputValue(editData?.startDate),
+    closingDate:      toDateInputValue(editData?.closingDate || editData?.endDate),
+    duration:         editData?.duration            || '',
+    location:         editData?.location            || '',
+    taluk:            editData?.taluk               || '',
+    village:          editData?.village             || '',
+    // Holds { address, lat, lng } once selected — user never types
+    // coordinates directly.
     coordinates:      (editData && typeof editData.latitude === 'number')
       ? { lat: editData.latitude, lng: editData.longitude, address: editData.location || '' }
       : null,
-    // documentUrl still ends up as a URL/data-URI string — TenderView's
-    // DownloadButton just needs any href it can point <a> at.
-    documentUrl:      editData?.documentUrl       || '',
-    image:            editData?.image             || '',
+    documentUrl:      editData?.documentUrl        || '',
+    image:            editData?.image              || '',
   })
 
-  // File metadata shown in the upload widget (kept separate from form.documentUrl
-  // so we can show a nice filename/size chip without depending on data-URI parsing).
   const [documentFile, setDocumentFile] = useState(
     editData?.documentUrl ? { name: editData.documentFileName || 'Existing document.pdf', size: null } : null
   )
 
+  // ── Load department/category/district IDs from the backend ──────────────────
+  useEffect(() => {
+    let cancelled = false
+    setMetaLoading(true)
+    setMetaError(null)
+
+    apiFetch('/create-tenders/meta/form')
+      .then((res) => {
+        if (cancelled) return
+        setMeta(res.data)
+        // Prefill categoryId/districtId when editing and the backend
+        // returned them as populated objects (formatTender gives us
+        // names, not ids, on GET) — only backfill if the form doesn't
+        // already have a valid id selected.
+        setForm((prev) => ({
+          ...prev,
+          categoryId: prev.categoryId || '',
+          districtId: prev.districtId || '',
+        }))
+      })
+      .catch((err) => {
+        if (!cancelled) setMetaError(err.message || 'Failed to load form options.')
+      })
+      .finally(() => {
+        if (!cancelled) setMetaLoading(false)
+      })
+
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function set(key, val) {
     setForm(prev => ({ ...prev, [key]: val }))
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: '' }))
+  }
+
+  // Duration + Start Date -> auto-calculates Closing Date.
+  // Start Date + Closing Date -> auto-calculates Duration.
+  // Whichever field the user edits, the *other pair* is what gets
+  // recomputed, so we never fight the field the user is actively typing in.
+
+  function handleStartDateChange(value) {
+    setForm(prev => {
+      const next = { ...prev, startDate: value }
+      const days = parseDurationDays(prev.duration)
+      if (days != null && value) {
+        // Duration is known -> recompute Closing Date from the new Start Date.
+        next.closingDate = addDaysToDate(value, days)
+      } else if (prev.closingDate && value) {
+        // No duration set yet, but Closing Date exists -> recompute Duration.
+        const d = diffInDays(value, prev.closingDate)
+        if (d != null) next.duration = `${d} days`
+      }
+      return next
+    })
+    setErrors(prev => ({ ...prev, startDate: '', closingDate: '' }))
+  }
+
+  function handleDurationChange(value) {
+    setForm(prev => {
+      const next = { ...prev, duration: value }
+      const days = parseDurationDays(value)
+      if (days != null && prev.startDate) {
+        next.closingDate = addDaysToDate(prev.startDate, days)
+      }
+      return next
+    })
+    if (errors.duration) setErrors(prev => ({ ...prev, duration: '' }))
+    setErrors(prev => ({ ...prev, closingDate: '' }))
+  }
+
+  function handleClosingDateChange(value) {
+    setForm(prev => {
+      const next = { ...prev, closingDate: value }
+      if (prev.startDate && value) {
+        const d = diffInDays(prev.startDate, value)
+        if (d != null) next.duration = `${d} days`
+      }
+      return next
+    })
+    setErrors(prev => ({ ...prev, closingDate: '' }))
   }
 
   function handlePdfSelect(file) {
@@ -215,8 +347,10 @@ export default function CreateTender() {
   // ── Validation ──────────────────────────────────────────────────────────────
   function validate() {
     const e = {}
+    if (!form.tenderId.trim())       e.tenderId       = 'Tender ID is required.'
     if (!form.title.trim())          e.title          = 'Title is required.'
-    if (!form.category)              e.category       = 'Please select a category.'
+    if (!form.categoryId)            e.categoryId     = 'Please select a category.'
+    if (!form.districtId)            e.districtId     = 'Please select a district.'
     if (!form.description.trim())    e.description    = 'Description is required.'
     if (!form.estimatedValue.toString().trim()) e.estimatedValue = 'Estimated value is required.'
     if (!form.startDate)             e.startDate      = 'Start date is required.'
@@ -234,27 +368,124 @@ export default function CreateTender() {
     setTimeout(() => setToast(null), 3500)
   }
 
+  // Scrolls to / focuses the first field with an error so a validation
+  // failure is never silent — used by both Save and Send below.
+  function focusFirstError(e) {
+    const firstKey = Object.keys(e)[0]
+    if (!firstKey) return
+    // Fields are rendered with plain inputs/selects/textareas; a
+    // best-effort querySelector keeps this decoupled from refs per field.
+    const el = document.querySelector(`[name="${firstKey}"]`)
+    if (el && el.scrollIntoView) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
+
+  function buildPayload() {
+    return {
+      tenderId: form.tenderId,
+      title: form.title,
+      description: form.description,
+      categoryId: form.categoryId,
+      districtId: form.districtId,
+      location: form.location,
+      taluk: form.taluk,
+      village: form.village,
+      latitude: form.coordinates?.lat ?? null,
+      longitude: form.coordinates?.lng ?? null,
+      estimatedValue: Number(form.estimatedValue),
+      duration: form.duration,
+      startDate: form.startDate,
+      closingDate: form.closingDate,
+      image: form.image,
+      documentUrl: form.documentUrl,
+    }
+  }
+
+  // Creates the tender if it doesn't exist yet, otherwise updates it.
+  // Returns the tender's DB _id either way — used both by Save and as the
+  // first step of Send (a tender must exist in the DB before it can be
+  // sent onward).
+  async function persistTender() {
+    const payload = buildPayload()
+
+    if (tenderRecordId) {
+      const res = await apiFetch(`/create-tenders/${tenderRecordId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      })
+      return res.data._id || tenderRecordId
+    }
+
+    const res = await apiFetch('/create-tenders', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    const newId = res.data._id
+    setTenderRecordId(newId)
+    return newId
+  }
+
   // ── Save ────────────────────────────────────────────────────────────────────
   async function handleSave() {
     const e = validate()
-    if (Object.keys(e).length) { setErrors(e); return }
+    if (Object.keys(e).length) {
+      setErrors(e)
+      showToast('Please fix the highlighted fields before saving.', 'error')
+      focusFirstError(e)
+      return
+    }
     setSaving(true)
-    await new Promise(r => setTimeout(r, 1000))
-    setSaving(false)
-    showToast(editData ? 'Tender updated successfully!' : 'Tender saved as draft!')
-    setTimeout(() => navigate(fromPath), 1500)
+    try {
+      await persistTender()
+      showToast(tenderRecordId ? 'Tender updated successfully!' : 'Tender saved as draft!')
+      setTimeout(() => navigate(fromPath), 1200)
+    } catch (err) {
+      showToast(err.message || 'Failed to save tender.', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  // ── Send ────────────────────────────────────────────────────────────────────
+  // ── Send (role-aware) ───────────────────────────────────────────────────────
+  // department_employee -> send-to-head
+  // department_head     -> send-to-administrator
   async function handleSend() {
     const e = validate()
-    if (Object.keys(e).length) { setErrors(e); return }
+    if (Object.keys(e).length) {
+      setErrors(e)
+      showToast('Please fix the highlighted fields before sending.', 'error')
+      focusFirstError(e)
+      return
+    }
+
+    const endpointByRole = {
+      department_employee: 'send-to-head',
+      department_head: 'send-to-administrator',
+    }
+    const action = endpointByRole[role]
+    if (!action) {
+      showToast('Your role cannot send tenders onward.', 'error')
+      return
+    }
+
     setSaving(true)
-    await new Promise(r => setTimeout(r, 1000))
-    setSaving(false)
-    const label = role === 'department_employee' ? 'Department Head' : 'Administrator'
-    showToast('Tender sent to ' + label + ' successfully!')
-    setTimeout(() => navigate('/create-saved-tenders'), 1500)
+    try {
+      // Save first (create or update) so there's a persisted Draft to send.
+      const id = await persistTender()
+      if (!id) {
+        throw new Error('Could not persist the tender before sending. Please try Save first.')
+      }
+      await apiFetch(`/create-tenders/${id}/${action}`, { method: 'PATCH' })
+
+      const label = role === 'department_employee' ? 'Department Head' : 'Administrator'
+      showToast(`Tender sent to ${label} successfully!`)
+      setTimeout(() => navigate('/create-saved-tenders'), 1200)
+    } catch (err) {
+      showToast(err.message || 'Failed to send tender.', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function handleBack() {
@@ -262,6 +493,31 @@ export default function CreateTender() {
   }
 
   const sendLabel = role === 'department_employee' ? 'Send to Head' : 'Send to Administrator'
+  const canSend = role === 'department_employee' || role === 'department_head'
+
+  if (metaLoading) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[50vh]">
+        <div className="w-8 h-8 border-2 border-[#FFE5BF] border-t-[#1A4A8C] rounded-full animate-spin mb-4" />
+        <p className="text-sm text-[#6B7A8D]">Loading form…</p>
+      </div>
+    )
+  }
+
+  if (metaError) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[50vh]">
+        <p className="font-bold text-red-600 mb-1">Couldn't load the form.</p>
+        <p className="text-sm text-[#6B7A8D] mb-4">{metaError}</p>
+        <button
+          onClick={handleBack}
+          className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+        >
+          Go Back
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="p-4 lg:p-6 space-y-5 pb-10">
@@ -293,10 +549,10 @@ export default function CreateTender() {
           </button>
           <div>
             <h1 className="text-xl font-extrabold text-[#0A2240]">
-              {editData ? 'Edit Tender' : 'Create Tender'}
+              {tenderRecordId ? 'Edit Tender' : 'Create Tender'}
             </h1>
             <p className="text-xs text-[#6B7A8D] mt-0.5">
-              Fill in all required fields to {editData ? 'update' : 'submit'} the tender.
+              Fill in all required fields to {tenderRecordId ? 'update' : 'submit'} the tender.
             </p>
           </div>
         </div>
@@ -319,24 +575,39 @@ export default function CreateTender() {
             )}
             Save
           </button>
-          <button
-            onClick={handleSend}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-            {sendLabel}
-          </button>
+          {canSend && (
+            <button
+              onClick={handleSend}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+              {sendLabel}
+            </button>
+          )}
         </div>
       </div>
 
       {/* ── Section 1: Project Details ─────────────────────────────────── */}
       <FormSection title="Project Details" icon={<InfoIcon />}>
+        <Field label="Tender ID" required error={errors.tenderId}>
+          <input
+            type="text"
+            name="tenderId"
+            value={form.tenderId}
+            onChange={e => set('tenderId', e.target.value)}
+            placeholder="e.g. TN/PWD/2026/010"
+            disabled={!!tenderRecordId}
+            className={tenderRecordId ? readOnlyClass : (errors.tenderId ? inputError : inputClass)}
+          />
+        </Field>
+
         <Field label="Title" required error={errors.title}>
           <input
             type="text"
+            name="title"
             value={form.title}
             onChange={e => set('title', e.target.value)}
             placeholder="Enter tender title"
@@ -345,19 +616,20 @@ export default function CreateTender() {
         </Field>
 
         <Field label="Department">
-          <input type="text" value={form.department} readOnly className={readOnlyClass} />
+          <input type="text" value={meta.department?.name || '—'} readOnly className={readOnlyClass} />
         </Field>
 
-        <Field label="Category" required error={errors.category}>
-          <select value={form.category} onChange={e => set('category', e.target.value)}
-                  className={errors.category ? inputError : inputClass}>
+        <Field label="Category" required error={errors.categoryId}>
+          <select name="categoryId" value={form.categoryId} onChange={e => set('categoryId', e.target.value)}
+                  className={errors.categoryId ? inputError : inputClass}>
             <option value="">Select category</option>
-            {TENDER_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            {meta.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
 
         <Field label="Description" required error={errors.description} fullWidth>
           <textarea
+            name="description"
             value={form.description}
             onChange={e => set('description', e.target.value)}
             rows={4}
@@ -374,6 +646,7 @@ export default function CreateTender() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#0A2240]">₹</span>
             <input
               type="number"
+              name="estimatedValue"
               value={form.estimatedValue}
               onChange={e => set('estimatedValue', e.target.value)}
               placeholder="e.g. 4500000"
@@ -386,7 +659,7 @@ export default function CreateTender() {
           <input
             type="text"
             value={form.duration}
-            onChange={e => set('duration', e.target.value)}
+            onChange={e => handleDurationChange(e.target.value)}
             placeholder="e.g. 120 days"
             className={inputClass}
           />
@@ -395,8 +668,9 @@ export default function CreateTender() {
         <Field label="Start Date" required error={errors.startDate}>
           <input
             type="date"
+            name="startDate"
             value={form.startDate}
-            onChange={e => set('startDate', e.target.value)}
+            onChange={e => handleStartDateChange(e.target.value)}
             className={errors.startDate ? inputError : inputClass}
           />
         </Field>
@@ -404,9 +678,10 @@ export default function CreateTender() {
         <Field label="Closing Date" required error={errors.closingDate}>
           <input
             type="date"
+            name="closingDate"
             value={form.closingDate}
             min={form.startDate || ''}
-            onChange={e => set('closingDate', e.target.value)}
+            onChange={e => handleClosingDateChange(e.target.value)}
             className={errors.closingDate ? inputError : inputClass}
           />
         </Field>
@@ -414,12 +689,18 @@ export default function CreateTender() {
 
       {/* ── Section 3: Project Location ────────────────────────────────── */}
       <FormSection title="Project Location" icon={<LocationIcon />}>
-        <Field label="District" required error={errors.location}>
-          <select value={form.location} onChange={e => set('location', e.target.value)}
-                  className={errors.location ? inputError : inputClass}>
+        <Field label="District" required error={errors.districtId}>
+          <select name="districtId" value={form.districtId} onChange={e => set('districtId', e.target.value)}
+                  className={errors.districtId ? inputError : inputClass}>
             <option value="">Select district</option>
-            {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+            {meta.districts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
+        </Field>
+
+        <Field label="Location / Area" required error={errors.location}>
+          <input type="text" name="location" value={form.location}
+                 onChange={e => set('location', e.target.value)}
+                 placeholder="e.g. Coimbatore" className={errors.location ? inputError : inputClass} />
         </Field>
 
         <Field label="Taluk">
@@ -435,11 +716,13 @@ export default function CreateTender() {
         </Field>
 
         <Field label="Coordinates (lat, long)" required error={errors.coordinates} fullWidth>
-          <LatLngInput
-            value={form.coordinates}
-            onChange={(loc) => set('coordinates', loc)}
-            inputClassName={errors.coordinates ? inputError : inputClass}
-          />
+          <div name="coordinates">
+            <LatLngInput
+              value={form.coordinates}
+              onChange={(loc) => set('coordinates', loc)}
+              inputClassName={errors.coordinates ? inputError : inputClass}
+            />
+          </div>
         </Field>
       </FormSection>
 
@@ -481,13 +764,15 @@ export default function CreateTender() {
         >
           {saving ? 'Saving...' : 'Save Draft'}
         </button>
-        <button
-          onClick={handleSend}
-          disabled={saving}
-          className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors disabled:opacity-50"
-        >
-          {saving ? 'Sending...' : sendLabel}
-        </button>
+        {canSend && (
+          <button
+            onClick={handleSend}
+            disabled={saving}
+            className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-semibold bg-[#F62440] text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Sending...' : sendLabel}
+          </button>
+        )}
       </div>
     </div>
   )

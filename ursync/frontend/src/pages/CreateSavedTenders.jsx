@@ -231,8 +231,6 @@ export default function CreateSavedTenders() {
     }
   }
 
-  const statusOptions = ['All', 'Draft', 'Pending Approval', 'Sent to Head', 'Sent to Administrator', 'Approved', 'Rejected']
-  const categoryOptions = ['All', ...TENDER_CATEGORIES]
 
   return (
     <div className="p-4 lg:p-6 space-y-5 relative">
@@ -314,24 +312,6 @@ export default function CreateSavedTenders() {
             </button>
           )}
         </div>
-
-        {/* Status filter */}
-        <select
-          value={statusFilter}
-          onChange={e => setStatus(e.target.value)}
-          className="px-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all cursor-pointer"
-        >
-          {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-
-        {/* Category filter */}
-        <select
-          value={catFilter}
-          onChange={e => setCat(e.target.value)}
-          className="px-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all cursor-pointer"
-        >
-          {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
 
         {/* Clear filters */}
         {(search || statusFilter !== 'All' || catFilter !== 'All') && (
