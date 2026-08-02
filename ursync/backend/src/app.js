@@ -6,6 +6,9 @@ const locationRoutes = require('./routes/locationRoutes')
 const debarmentRoutes = require('./routes/debarmentRoutes') // NEW
 const createTenderRoutes = require('./routes/createTenderRoutes') 
 const reportsFeedbacksRoutes = require('./routes/reportsFeedbacksRoutes') // NEW
+const approvementRoutes = require('./routes/approvementRoutes') // NEW
+const createTenderApprovalRoutes = require('./routes/createTenderApprovalRoutes') // NEW
+const publicTenderRoutes = require('./routes/publicTenderRoutes') // NEW 
 
 const app = express()
 app.use(
@@ -23,6 +26,9 @@ app.use('/api/location', locationRoutes)//Tender By Location
 app.use('/api/debarments', debarmentRoutes) // NEW — Debarment List page
 app.use('/api/create-tenders', createTenderRoutes)
 app.use('/api/reports-feedbacks', reportsFeedbacksRoutes) // NEW — Reports & Feedbacks page
+app.use('/api/approvement', approvementRoutes) // NEW — Approvement page
+app.use('/api/create-tender-approval', createTenderApprovalRoutes) // NEW — Create Tender Approval page
+app.use('/api/public-tenders', publicTenderRoutes) // NEW — Public Tenders page
 
 
 // 404 handler

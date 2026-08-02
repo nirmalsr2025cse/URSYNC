@@ -78,6 +78,12 @@ function toCardShape(t) {
     startDate: t.startDate,
     closingDate: t.closingDate,
     status: t.status,
+    // NEW — Upcoming / Open / Completed, kept in sync by
+    // Tender.syncApplicationStatuses() via the applicationStatusCron job
+    // based on startDate/closingDate. Exposed here so Home.jsx / TenderCard
+    // can render it the same way Completed.jsx (public-tenders endpoint)
+    // already does.
+    application: t.application,
     isCancelled: t.isCancelled || false,
     isRetendered: t.isRetendered || false,
     cancelledReason: t.cancelledReason || null,

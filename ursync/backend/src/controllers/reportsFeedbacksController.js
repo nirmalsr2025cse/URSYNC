@@ -1,9 +1,12 @@
 // src/controllers/reportsFeedbacksController.js
 //
-// Visibility rule (applies to EVERY role — no exceptions, no admin bypass):
-//   A user only ever sees reports/feedbacks belonging to THEIR OWN
-//   department. Filtering is purely by departmentId — never by userId,
-//   never by role.
+// Visibility rule:
+//   - administrator: sees EVERY report/feedback across ALL departments,
+//     sorted by submittedDate descending (newest first). This is the one
+//     explicit exception to the department-only rule below.
+//   - every other role: only ever sees reports/feedbacks belonging to
+//     THEIR OWN department. Filtering is purely by departmentId — never
+//     by userId, never by any other role-specific logic.
 //
 // NOTE on isDeleted: seeded/legacy documents may not have an `isDeleted`
 // field at all. Using `{ $ne: true }` matches both "isDeleted: false" AND
@@ -99,14 +102,22 @@ exports.getReports = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Not authenticated' })
     }
 
-    const myDepartmentId = me.departmentId?._id || me.departmentId
-    if (!myDepartmentId) {
-      return res.status(200).json({ success: true, count: 0, data: [] })
+    const isAdministrator = me.roleId?.name === 'administrator'
+    const query = { isDeleted: NOT_DELETED }
+
+    if (isAdministrator) {
+      // No departmentId filter — administrator sees every department.
+    } else {
+      const myDepartmentId = me.departmentId?._id || me.departmentId
+      if (!myDepartmentId) {
+        return res.status(200).json({ success: true, count: 0, data: [] })
+      }
+      query.departmentId = myDepartmentId
     }
 
-    const reports = await Report.find({ isDeleted: NOT_DELETED, departmentId: myDepartmentId })
+    const reports = await Report.find(query)
       .populate('departmentId', 'name code')
-      .sort({ submittedDate: -1 })
+      .sort({ submittedDate: -1 }) // newest first — this is the "date wise" ordering for the admin's cross-department view
       .lean()
 
     const tenderCodeMap = await buildTenderCodeMap(reports, 'report(s)')
@@ -127,12 +138,20 @@ exports.getFeedbacks = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Not authenticated' })
     }
 
-    const myDepartmentId = me.departmentId?._id || me.departmentId
-    if (!myDepartmentId) {
-      return res.status(200).json({ success: true, count: 0, data: [] })
+    const isAdministrator = me.roleId?.name === 'administrator'
+    const query = { isDeleted: NOT_DELETED }
+
+    if (isAdministrator) {
+      // No departmentId filter — administrator sees every department.
+    } else {
+      const myDepartmentId = me.departmentId?._id || me.departmentId
+      if (!myDepartmentId) {
+        return res.status(200).json({ success: true, count: 0, data: [] })
+      }
+      query.departmentId = myDepartmentId
     }
 
-    const feedbacks = await Feedback.find({ isDeleted: NOT_DELETED, departmentId: myDepartmentId })
+    const feedbacks = await Feedback.find(query)
       .populate('departmentId', 'name code')
       .sort({ submittedDate: -1 })
       .lean()
@@ -163,10 +182,13 @@ exports.getReportById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Report not found' })
     }
 
-    const myDepartmentId = (me.departmentId?._id || me.departmentId)?.toString()
-    const reportDeptId = report.departmentId?._id?.toString()
-    if (!myDepartmentId || myDepartmentId !== reportDeptId) {
-      return res.status(403).json({ success: false, message: 'Not authorized to view this report' })
+    const isAdministrator = me.roleId?.name === 'administrator'
+    if (!isAdministrator) {
+      const myDepartmentId = (me.departmentId?._id || me.departmentId)?.toString()
+      const reportDeptId = report.departmentId?._id?.toString()
+      if (!myDepartmentId || myDepartmentId !== reportDeptId) {
+        return res.status(403).json({ success: false, message: 'Not authorized to view this report' })
+      }
     }
 
     const tenderCodeMap = await buildTenderCodeMap([report], 'report(s)')
@@ -194,10 +216,13 @@ exports.getFeedbackById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Feedback not found' })
     }
 
-    const myDepartmentId = (me.departmentId?._id || me.departmentId)?.toString()
-    const feedbackDeptId = feedback.departmentId?._id?.toString()
-    if (!myDepartmentId || myDepartmentId !== feedbackDeptId) {
-      return res.status(403).json({ success: false, message: 'Not authorized to view this feedback' })
+    const isAdministrator = me.roleId?.name === 'administrator'
+    if (!isAdministrator) {
+      const myDepartmentId = (me.departmentId?._id || me.departmentId)?.toString()
+      const feedbackDeptId = feedback.departmentId?._id?.toString()
+      if (!myDepartmentId || myDepartmentId !== feedbackDeptId) {
+        return res.status(403).json({ success: false, message: 'Not authorized to view this feedback' })
+      }
     }
 
     const tenderCodeMap = await buildTenderCodeMap([feedback], 'feedback(s)')

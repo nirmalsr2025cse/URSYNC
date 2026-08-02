@@ -1,10 +1,20 @@
 // src/pages/Approvement.jsx
+// TENDERS are now wired to the real backend:
+//   GET   /api/approvement/tenders
+//   PATCH /api/approvement/tenders/:id/approve
+//   PATCH /api/approvement/tenders/:id/reject
+// department_head sees only tenders 'Sent to Head' addressed to them;
+// administrator sees only tenders 'Sent to Administrator' addressed to
+// them — both enforced server-side (see approvementController.js).
+//
+// BIDDERS are intentionally left untouched on mock data, per requirements.
+
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
 import { useRole, ROLES } from "../components/RoleContext";
+import { useApi } from '../api/client'
 import {
-  APPROVAL_TENDERS,
   APPROVAL_BIDDERS,
   TENDER_APPROVAL_STATUS_CONFIG,
   BIDDER_APPROVAL_STATUS_CONFIG,
@@ -251,6 +261,7 @@ export default function Approvement() {
   const location    = useLocation()
   const itemsPerPage = useResponsiveItemsPerPage()
   const rootPath    = location.state?.fromPath || location.pathname
+  const { apiFetch } = useApi()
 
   const [activeTab,      setActiveTab]      = useState('tenders')
   const [animating,      setAnimating]      = useState(false)
@@ -260,15 +271,44 @@ export default function Approvement() {
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [currentPage,    setCurrentPage]    = useState(1)
 
-  const [approvalTenders, setApprovalTenders] = useState(APPROVAL_TENDERS);
+  // Tenders: real backend data. Bidders: unchanged mock data.
+  const [approvalTenders, setApprovalTenders] = useState([]);
+  const [tendersLoading,  setTendersLoading]  = useState(true);
+  const [tendersError,    setTendersError]    = useState(null);
   const [approvalBidders, setApprovalBidders] = useState(APPROVAL_BIDDERS);
+
   const [approveModal, setApproveModal] = useState(null);
   const [rejectModal, setRejectModal] = useState(null);
 
   const [deleteModal, setDeleteModal] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [toast, setToast] = useState(null);
 
   const { role } = useRole();
+
+  // ── Fetch tenders for the Approvement queue ───────────────────────────────
+  // Backend scopes this per-role already (department_head -> Sent to Head
+  // addressed to them; administrator -> Sent to Administrator addressed to
+  // them), so the frontend just renders whatever comes back.
+  function fetchApprovementTenders() {
+    setTendersLoading(true)
+    setTendersError(null)
+    apiFetch('/approvement/tenders')
+      .then((res) => {
+        setApprovalTenders(res.data || [])
+      })
+      .catch((err) => {
+        setTendersError(err.message || 'Failed to load tenders for approvement.')
+      })
+      .finally(() => {
+        setTendersLoading(false)
+      })
+  }
+
+  useEffect(() => {
+    fetchApprovementTenders()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const categoryOptions = activeTab === 'tenders'
     ? ['All', ...APPROVAL_TENDER_CATEGORIES]
@@ -297,9 +337,11 @@ export default function Approvement() {
   const filtered = useMemo(() => {
     let data = activeTab === "tenders" ? approvalTenders : approvalBidders;
 
-    if (activeTab === "tenders") {
-        data = data.filter(tender => tender.status === "Pending Approval");
-    } else {
+    // Tenders are already correctly scoped by the backend (only the
+    // relevant "Sent to Head" / "Sent to Administrator" tenders addressed
+    // to this exact user come back) — no extra status filter needed here.
+    // Bidders remain on the old mock-data status filter.
+    if (activeTab === "bidders") {
         data = data.filter(bidder => bidder.status === "Pending");
     }
 
@@ -309,10 +351,10 @@ export default function Approvement() {
         const matchesSearch = !q || (
         activeTab === "tenders"
             ? (
-                item.id.toLowerCase().includes(q) ||
-                item.projectName.toLowerCase().includes(q) ||
-                item.department.toLowerCase().includes(q) ||
-                item.district.toLowerCase().includes(q)
+                (item.id || '').toLowerCase().includes(q) ||
+                (item.projectName || '').toLowerCase().includes(q) ||
+                (item.department || '').toLowerCase().includes(q) ||
+                (item.district || '').toLowerCase().includes(q)
             )
             : (
                 item.id.toLowerCase().includes(q) ||
@@ -351,7 +393,7 @@ export default function Approvement() {
       navigate('/finalbidder', { state: { fromPath: rootPath, readOnly: true } })
       return
     }
-    navigate('/tender-view', { state: { tender: item, role, fromPath: rootPath } })
+    navigate('/tender-view/'+ encodeURIComponent(item.id), { state: { tender: item, role, fromPath: rootPath } })
   }
 
   function handleEdit(item) {
@@ -359,8 +401,15 @@ export default function Approvement() {
         navigate('/finalbidder', { state: { fromPath: rootPath } })
         return
     }
-    navigate('/create-tender', {
-      state: { tender:item, type: activeTab, fromPath: rootPath },
+    // CreateTender.jsx's edit form expects `id` to be the real Mongo _id
+    // (it becomes tenderRecordId, used directly in PUT/PATCH URLs). The
+    // Approvement queue's `id` field is the human-readable tender code
+    // instead (e.g. "TN/PWD/2026/001") — swap in `recordId` here so Save
+    // and Send-to-Administrator hit a valid ObjectId route. `tenderId`
+    // (the business code, shown read-only on the form) is untouched.
+    const tenderForEdit = { ...item, id: item.recordId }
+    navigate('/create-tender/'+ encodeURIComponent(item.id), {
+      state: { tender: tenderForEdit, type: activeTab, fromPath: rootPath },
     })
   }
 
@@ -369,45 +418,60 @@ export default function Approvement() {
     }
 
     function handleApprove() {
-    showToast(
-        `Tender "${approveModal.id}" approved successfully.`,
-        "success"
-    );
+    if (activeTab === 'bidders') {
+      // Bidders remain mock-only for now, per requirements.
+      showToast(`Bidder "${approveModal.id}" approved successfully.`, "success");
+      setApproveModal(null);
+      return
+    }
 
-    setApproveModal(null);
+    const target = approveModal
+    setApproveModal(null)
 
-    // If you want to update status also
-    setTenders(prev =>
-        prev.map(t =>
-        t.id === approveModal.id
-            ? { ...t, status: "Approved" }
-            : t
-        )
-    );
-
-    setApproveModal(null);
+    apiFetch(`/approvement/tenders/${target.recordId}/approve`, { method: 'PATCH' })
+      .then(() => {
+        showToast(`Tender "${target.id}" approved successfully.`, "success")
+        // Approved tenders leave the approvement queue entirely, so just
+        // remove it from the local list rather than re-fetching everything.
+        setApprovalTenders(prev => prev.filter(t => t.recordId !== target.recordId))
+      })
+      .catch((err) => {
+        showToast(err.message || 'Failed to approve tender.', 'error')
+      })
     }
 
     function confirmReject(tender) {
+        setRejectReason('')
         setRejectModal(tender);
     }
 
     function handleReject() {
-        showToast(
-            `Tender "${rejectModal.id}" rejected successfully.`,
-            "error"
-        );
+        if (activeTab === 'bidders') {
+          showToast(`Bidder "${rejectModal.id}" rejected successfully.`, "error");
+          setRejectModal(null);
+          return
+        }
 
-        setRejectModal(null);
+        const reason = rejectReason.trim()
+        if (!reason) {
+          showToast('Please enter a reason for rejection.', 'error')
+          return
+        }
 
-        // Update status if needed
-        setApprovalTenders(prev =>
-            prev.map(t =>
-            t.id === rejectModal.id
-                ? { ...t, status: "Rejected" }
-                : t
-            )
-        );
+        const target = rejectModal
+        setRejectModal(null)
+
+        apiFetch(`/approvement/tenders/${target.recordId}/reject`, {
+          method: 'PATCH',
+          body: JSON.stringify({ reason }),
+        })
+          .then(() => {
+            showToast(`Tender "${target.id}" rejected successfully.`, "error")
+            setApprovalTenders(prev => prev.filter(t => t.recordId !== target.recordId))
+          })
+          .catch((err) => {
+            showToast(err.message || 'Failed to reject tender.', 'error')
+          })
     }
 
   const hasFilters = search || statusFilter !== 'All' || categoryFilter !== 'All'
@@ -426,8 +490,12 @@ export default function Approvement() {
 
     function handleDelete() {
     if (activeTab === "tenders") {
+        // NOTE: no delete endpoint was requested for the Approvement queue —
+        // this still only updates local state, matching the previous
+        // mock-data behavior. Wire this to a real DELETE/soft-delete
+        // endpoint if department heads should be able to delete from here.
         setApprovalTenders(prev =>
-        prev.filter(t => t.id !== deleteModal.id)
+        prev.filter(t => t.recordId !== deleteModal.recordId)
         );
     } else {
         setApprovalBidders(prev =>
@@ -561,6 +629,19 @@ export default function Approvement() {
                 ?
             </p>
 
+            <div className="mt-4 text-left">
+                <label className="block text-xs font-semibold text-[#0A2240] mb-1.5">
+                    Reason for rejection <span className="text-[#F62440]">*</span>
+                </label>
+                <textarea
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                    rows={3}
+                    placeholder="Explain why this tender is being rejected..."
+                    className="w-full px-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-[#6B7A8D] focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 transition-all resize-none"
+                />
+            </div>
+
             <div className="flex gap-3 mt-6">
                 <button
                 onClick={() => setRejectModal(null)}
@@ -571,7 +652,8 @@ export default function Approvement() {
 
                 <button
                 onClick={handleReject}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white"
+                disabled={!rejectReason.trim()}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                 Confirm
                 </button>
@@ -675,9 +757,24 @@ export default function Approvement() {
         )}
       </div>
 
+      {/* ── Tenders error state ────────────────────────────────────────── */}
+      {activeTab === 'tenders' && tendersError && (
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-red-200 border-dashed">
+          <p className="font-bold text-red-600 mb-1">Couldn't load tenders.</p>
+          <p className="text-sm text-[#6B7A8D] mb-4">{tendersError}</p>
+          <button
+            onClick={fetchApprovementTenders}
+            className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ── Cards Grid ──────────────────────────────────────────────────── */}
+      {!(activeTab === 'tenders' && tendersError) && (
       <div className={['transition-opacity duration-150', animating ? 'opacity-0' : 'opacity-100'].join(' ')}>
-        {loading ? (
+        {loading || (activeTab === 'tenders' && tendersLoading) ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map(i => <CardSkeleton key={i} />)}
           </div>
@@ -704,7 +801,7 @@ export default function Approvement() {
             {activeTab === 'tenders'
               ? paginated.map(tender => (
                   <TenderApprovementCard
-                        key={tender.id}
+                        key={tender.recordId}
                         tender={tender}
                         role={role}
                         onView={handleView}
@@ -729,9 +826,10 @@ export default function Approvement() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Pagination ──────────────────────────────────────────────────── */}
-      {!loading && filtered.length > 0 && (
+      {!loading && !(activeTab === 'tenders' && tendersLoading) && filtered.length > 0 && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}

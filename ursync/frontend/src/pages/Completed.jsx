@@ -1,36 +1,56 @@
 // src/pages/Completed.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import TenderCard, { TenderCardSkeleton } from '../components/TenderCard'
 import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
-import { tenders } from '../data/tenders'
-
-// ── Flatten and filter only Completed tenders ─────────────────────────────────
-const COMPLETED_TENDERS = [
-  ...tenders.ongoing,
-  ...tenders.upcoming,
-  ...tenders.completed,
-].filter((t) => t.status === 'Completed')
+import { useApi } from '../api/client'
 
 export default function Completed() {
   const navigate  = useNavigate()
   const PAGE_SIZE = useResponsiveItemsPerPage()
+  const { apiFetch } = useApi()
 
   const [search,      setSearch]      = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
-  // ── Client-side filtering ─────────────────────────────────────────────────
+  const [tenders, setTenders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+
+  // ── Fetch every published (approved) tender, no role or status filter ────
+  // Every document in the live tenders collection only exists because it
+  // was already approved by a Tender Authority, so this list IS the
+  // "approved tenders" list — nothing further to filter on the backend.
+  const fetchTenders = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch('/public-tenders')
+      setTenders(res.data || [])
+    } catch (err) {
+      setError(err.message || 'Failed to load tenders')
+    } finally {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    fetchTenders()
+  }, [fetchTenders])
+
+  // ── Client-side search over the fetched list ──────────────────────────────
   const filtered = useMemo(() => {
-    if (!search.trim()) return COMPLETED_TENDERS
+    if (!search.trim()) return tenders
     const q = search.trim().toLowerCase()
-    return COMPLETED_TENDERS.filter((t) =>
+    return tenders.filter((t) =>
       t.id?.toLowerCase().includes(q)           ||
       t.title?.toLowerCase().includes(q)        ||
       t.department?.toLowerCase().includes(q)   ||
       t.organization?.toLowerCase().includes(q) ||
       t.location?.toLowerCase().includes(q)
     )
-  }, [search])
+  }, [search, tenders])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
 
@@ -38,6 +58,10 @@ export default function Completed() {
     const start = (currentPage - 1) * PAGE_SIZE
     return filtered.slice(start, start + PAGE_SIZE)
   }, [filtered, currentPage, PAGE_SIZE])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search])
 
   function handleSearch(e) {
     setSearch(e.target.value)
@@ -51,7 +75,7 @@ export default function Completed() {
 
   function handleCardClick(tender) {
     navigate('/tender-details-view/' + encodeURIComponent(tender.id), {
-      state: { tender , fromPath: '/completed'},
+      state: { tender, fromPath: '/completed' },
     })
   }
 
@@ -91,7 +115,7 @@ export default function Completed() {
               value={search}
               onChange={handleSearch}
               placeholder="Search by Tender ID, title, department, or organization..."
-              className="input-base pl-10"
+              className="w-full pl-10 pr-9 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
             />
             {search && (
               <button
@@ -128,52 +152,75 @@ export default function Completed() {
           </div>
         </div>
         <span className="text-xs font-medium text-tn-muted bg-tn-light border border-tn-border px-3 py-1.5 rounded-full">
-          {filtered.length} completed
+          {filtered.length} total
         </span>
       </div>
 
-      {/* ── Cards ──────────────────────────────────────────────────────── */}
-      {paginated.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-tn-border border-dashed">
-          <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
-            <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-          </div>
-          <p className="font-bold text-tn-navy mb-1">No completed tenders found</p>
-          <p className="text-sm text-tn-muted text-center max-w-xs">
-            {search
-              ? 'No tenders match your search. Try different keywords.'
-              : 'There are no completed tenders available right now.'
-            }
-          </p>
-          {search && (
-            <button
-              onClick={handleClear}
-              className="mt-4 text-xs font-semibold text-tn-blue hover:underline"
-            >
-              Clear search
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch">
-          {paginated.map((tender) => (
-            <div key={tender.id} className="flex">
-              <TenderCard
-                tender={tender}
-                viewMode="grid"
-                className="flex-1"
-                onClick={() => handleCardClick(tender)}
-              />
-            </div>
-          ))}
+      {/* ── Loading skeletons ─────────────────────────────────────────── */}
+      {loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {[1, 2, 3, 4, 5, 6].map((i) => <TenderCardSkeleton key={i} />)}
         </div>
       )}
 
+      {/* ── Fetch error ───────────────────────────────────────────────── */}
+      {!loading && error && (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-red-200 border-dashed">
+          <p className="font-bold text-red-600 mb-1">Couldn't load tenders</p>
+          <p className="text-sm text-tn-muted mb-4">{error}</p>
+          <button
+            onClick={fetchTenders}
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-tn-blue text-white hover:opacity-90 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* ── Cards ──────────────────────────────────────────────────────── */}
+      {!loading && !error && (
+        paginated.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-tn-border border-dashed">
+            <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
+              <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+            </div>
+            <p className="font-bold text-tn-navy mb-1">No tenders found</p>
+            <p className="text-sm text-tn-muted text-center max-w-xs">
+              {search
+                ? 'No tenders match your search. Try different keywords.'
+                : 'There are no approved tenders available right now.'
+              }
+            </p>
+            {search && (
+              <button
+                onClick={handleClear}
+                className="mt-4 text-xs font-semibold text-tn-blue hover:underline"
+              >
+                Clear search
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch">
+            {paginated.map((tender) => (
+              <div key={tender._id} className="flex">
+                <TenderCard
+                  tender={tender}
+                  viewMode="grid"
+                  className="flex-1"
+                  onClick={() => handleCardClick(tender)}
+                />
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
       {/* ── Pagination ─────────────────────────────────────────────────── */}
-      {filtered.length > PAGE_SIZE && (
+      {!loading && !error && filtered.length > PAGE_SIZE && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}

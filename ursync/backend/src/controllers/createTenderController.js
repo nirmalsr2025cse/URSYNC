@@ -16,6 +16,11 @@
 //                              this same head, it stays 'Draft' (Save never
 //                              transitions status — only the explicit
 //                              "Send to Administrator" action does)
+//   - CAN ALSO edit a tender that is NOT their own draft, as long as it is
+//     currently status: 'Sent to Head' AND sentTo === this head's own _id
+//     — i.e. an employee's tender that was routed to them for review. This
+//     edit does NOT reset status back to 'Draft'; it stays 'Sent to Head'
+//     so the head can still explicitly "Send to Administrator" afterward.
 //   - "Send to Administrator" -> status: 'Sent to Administrator', sentTo:
 //                              an active administrator user
 //   - List view             -> ONLY this head's OWN Draft tenders in their
@@ -248,8 +253,20 @@ exports.getTenderById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Tender not found' })
     }
 
-    if (roleName === 'department_employee' || roleName === 'department_head') {
-      if (tender.createdBy._id.toString() !== me._id.toString()) {
+    if (roleName === 'department_employee' || roleName === 'department_head' || roleName === 'administrator') {
+      const isOwner = tender.createdBy._id.toString() === me._id.toString()
+      const isHeadReview =
+        roleName === 'department_head' &&
+        tender.status === 'Sent to Head' &&
+        tender.sentTo &&
+        tender.sentTo.toString() === me._id.toString()
+      const isAdminReview =
+        roleName === 'administrator' &&
+        tender.status === 'Sent to Administrator' &&
+        tender.sentTo &&
+        tender.sentTo.toString() === me._id.toString()
+
+      if (!isOwner && !isHeadReview && !isAdminReview) {
         return res.status(403).json({ success: false, message: 'Not authorized to view this tender' })
       }
     }
@@ -332,33 +349,55 @@ exports.createTender = async (req, res) => {
 }
 
 // ── PUT /api/create-tenders/:id  ("Save") ─────────────────────────────────
-// Save NEVER changes status — it always leaves (or forces) the tender at
-// 'Draft'. Only the explicit send-to-head / send-to-administrator actions
-// below transition status. This applies to both department_employee and
-// department_head: "if it is in draft stage and createdBy is the current
-// user, save keeps it as Draft."
+// Two distinct authorized edit paths:
 //
-// Editing is only allowed while the tender is still 'Draft' — once it's
-// been sent onward (Sent to Head / Sent to Administrator / Approved /
-// Rejected), the creator can no longer silently edit it out from under
-// whoever it was sent to.
+// 1. OWNER DRAFT EDIT — the creator (department_employee OR department_head)
+//    editing their own tender while it's still 'Draft'. Status never moves
+//    forward here; it's explicitly re-set to 'Draft' (a no-op in this case).
+//
+// 2. HEAD REVIEW EDIT — a department_head editing a tender that ISN'T
+//    theirs, but was routed to them for approval: status is currently
+//    'Sent to Head' AND sentTo === this head's own _id. In this path the
+//    status is left completely untouched — the head is correcting details
+//    before deciding to approve/reject/forward, not restarting the workflow.
+//
+// Any other combination (wrong owner, wrong status, wrong reviewer) is
+// rejected.
 exports.updateTender = async (req, res) => {
   try {
     const me = await loadCurrentUser(req)
     if (!me) {
       return res.status(401).json({ success: false, message: 'Not authenticated' })
     }
+    const roleName = me.roleId?.name
 
     const tender = await CreateTender.findOne({ _id: req.params.id, isDeleted: false })
     if (!tender) {
       return res.status(404).json({ success: false, message: 'Tender not found' })
     }
 
-    if (tender.createdBy.toString() !== me._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Not authorized to edit this tender' })
-    }
+    const isOwner = tender.createdBy.toString() === me._id.toString()
+    const isOwnerDraftEdit = isOwner && tender.status === 'Draft'
 
-    if (tender.status !== 'Draft') {
+    const isHeadReviewEdit =
+      roleName === 'department_head' &&
+      tender.status === 'Sent to Head' &&
+      tender.sentTo &&
+      tender.sentTo.toString() === me._id.toString()
+
+    const isAdminReviewEdit =
+      roleName === 'administrator' &&
+      tender.status === 'Sent to Administrator' &&
+      tender.sentTo &&
+      tender.sentTo.toString() === me._id.toString()
+
+    if (!isOwnerDraftEdit && !isHeadReviewEdit && !isAdminReviewEdit) {
+      if (!isOwner && !isHeadReviewEdit && !isAdminReviewEdit) {
+        return res.status(403).json({ success: false, message: 'Not authorized to edit this tender' })
+      }
+      // isOwner is true but status isn't Draft, and it's not a valid
+      // head/admin review edit either -> already sent onward, can't
+      // silently edit it.
       return res.status(409).json({
         success: false,
         message: `This tender has already been sent (status: "${tender.status}") and can no longer be edited.`,
@@ -371,14 +410,20 @@ exports.updateTender = async (req, res) => {
       'duration', 'startDate', 'closingDate', 'tenderType', 'priority',
       'image', 'documentUrl',
       // NOTE: 'status' and 'sentTo' are intentionally NOT in this list —
-      // Save can never change them directly; only the send-to-* actions can.
+      // Save/edit can never change them directly; only the send-to-* /
+      // approve / reject actions can.
     ]
 
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) tender[field] = req.body[field]
     })
 
-    tender.status = 'Draft' // explicit, even though it's already Draft — Save never moves this forward
+    if (isOwnerDraftEdit) {
+      tender.status = 'Draft' // explicit, even though it's already Draft
+    }
+    // isHeadReviewEdit / isAdminReviewEdit: status is deliberately left
+    // untouched — stays 'Sent to Head' / 'Sent to Administrator' so the
+    // reviewer can still act on it (approve/reject/forward) afterward.
     tender.updatedBy = me._id
     await tender.save()
 
@@ -444,8 +489,9 @@ exports.sendToHead = async (req, res) => {
 }
 
 // ── PATCH /api/create-tenders/:id/send-to-administrator ──────────────────
-// department_head only. Transitions Draft -> 'Sent to Administrator', and
-// sets sentTo to an active administrator user.
+// department_head only. Transitions Sent to Head -> 'Sent to Administrator',
+// and sets sentTo to an active administrator user. This is the head's own
+// forward action — separate from the Approvement page's approve/reject.
 exports.sendToAdministrator = async (req, res) => {
   try {
     const me = await loadCurrentUser(req)
@@ -465,14 +511,15 @@ exports.sendToAdministrator = async (req, res) => {
     if (!tender) {
       return res.status(404).json({ success: false, message: 'Tender not found' })
     }
-    if (tender.createdBy.toString() !== me._id.toString()) {
+
+    const isOwnDraft = tender.createdBy.toString() === me._id.toString() && tender.status === 'Draft'
+    const isReceivedForReview =
+      tender.status === 'Sent to Head' &&
+      tender.sentTo &&
+      tender.sentTo.toString() === me._id.toString()
+
+    if (!isOwnDraft && !isReceivedForReview) {
       return res.status(403).json({ success: false, message: 'Not authorized to send this tender.' })
-    }
-    if (tender.status !== 'Draft') {
-      return res.status(409).json({
-        success: false,
-        message: `This tender is already "${tender.status}" and cannot be sent again.`,
-      })
     }
 
     const admin = await resolveAdministrator()
