@@ -1,11 +1,22 @@
 // src/pages/ApplyTenderForm.jsx
-import React, { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { APPLY_TENDERS } from '../data/applyTenderMockData'
+import React, { useState, useEffect, useRef } from 'react'
+import { useNavigate, useLocation, useParams } from 'react-router-dom'
+import { useApi } from '../api/client'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function isDeadlinePassed(deadline) {
   return new Date(deadline) < new Date()
+}
+
+// yyyy-mm-dd in the user's local timezone — the format <input type="date">
+// requires. Using local getFullYear/Month/Date (not toISOString) avoids the
+// date shifting by a day for users east/west of UTC.
+function todayLocalISODate() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -74,17 +85,203 @@ const iconProps = {
   viewBox: '0 0 24 24',
 }
 
+// ── JPEG Image Upload box (supports camera capture on mobile/tablet) ─────────
+// A single reusable control: tap/click opens the device's file picker, and on
+// touch devices with `capture` set, the OS offers the camera directly as an
+// option (front/back depending on `capture` value) alongside the gallery.
+function ImageUploadBox({ label, file, existingUrl, existingName, disabled, onChange, capture = 'environment' }) {
+  const inputRef = useRef(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [fileError, setFileError] = useState('')
+
+  useEffect(() => {
+    if (!file) {
+      // No newly-picked file this session — fall back to whatever was
+      // already saved for this document from a previous visit, if any.
+      setPreviewUrl(existingUrl || null)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file, existingUrl])
+
+  function handleFiles(fileList) {
+    const picked = fileList && fileList[0]
+    if (!picked) return
+
+    const isJpeg = picked.type === 'image/jpeg' || picked.type === 'image/jpg'
+    if (!isJpeg) {
+      setFileError('Only JPEG images are allowed.')
+      onChange(null)
+      return
+    }
+    if (picked.size > 5 * 1024 * 1024) {
+      setFileError('File must be under 5MB.')
+      onChange(null)
+      return
+    }
+    setFileError('')
+    onChange(picked)
+  }
+
+  function handleRemove(e) {
+    e.stopPropagation()
+    onChange(null)
+    setFileError('')
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/jpg"
+        capture={capture}
+        disabled={disabled}
+        onChange={(e) => handleFiles(e.target.files)}
+        className="hidden"
+      />
+      <div
+        onClick={() => !disabled && inputRef.current?.click()}
+        className={[
+          'w-full rounded-xl border transition-colors overflow-hidden',
+          fileError ? 'border-[#F62440]' : 'border-[#FFE5BF]',
+          disabled
+            ? 'bg-[#FFF2DB] cursor-not-allowed'
+            : 'bg-white cursor-pointer hover:bg-[#FFF2DB]',
+        ].join(' ')}
+      >
+        {previewUrl ? (
+          <div className="flex items-center gap-3 px-3 py-2">
+            <img src={previewUrl} alt={label} className="w-12 h-12 object-cover rounded-lg border border-[#FFE5BF] flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-[#0A2240] truncate">
+                {file ? file.name : (existingName || 'Previously uploaded')}
+              </p>
+              <p className="text-[10px] text-[#6B7A8D]">
+                {file ? `${(file.size / 1024).toFixed(0)} KB — tap to replace` : 'Saved earlier — tap to replace'}
+              </p>
+            </div>
+            {!disabled && (
+              <button
+                type="button"
+                onClick={handleRemove}
+                className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full bg-red-50 text-red-500 hover:bg-red-100"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-4 py-2.5">
+            <svg className="w-4 h-4 text-[#1A4A8C] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-8-8l4-4m0 0l4 4m-4-4v12" />
+            </svg>
+            <span className="text-[#6B7A8D] text-xs">
+              {disabled ? 'No file uploaded' : 'Tap to upload or take a photo (JPEG)'}
+            </span>
+          </div>
+        )}
+      </div>
+      {fileError && <p className="text-[10px] text-[#F62440] mt-1">{fileError}</p>}
+    </div>
+  )
+}
+
 // ── Main Form ─────────────────────────────────────────────────────────────────
 export default function ApplyTenderForm() {
   const navigate   = useNavigate()
   const location   = useLocation()
-  const tenderId   = location.state?.tenderId
-  const tender     = APPLY_TENDERS.find((t) => t.id === tenderId)
-  const isClosed   = tender ? isDeadlinePassed(tender.applicationDeadline) : false
+  const { tenderCode: tenderCodeParam } = useParams()
+  const { apiFetch } = useApi()
+
+  // URL param is the source of truth (works on refresh/bookmark/share);
+  // location.state.tenderCode is only a fast-path fallback if it's missing.
+  const tenderCode = tenderCodeParam
+    ? decodeURIComponent(tenderCodeParam)
+    : location.state?.tenderCode
+
+  const [tender,        setTender]        = useState(null)
+  const [tenderLoading,  setTenderLoading]  = useState(true)
+  const [tenderError,    setTenderError]    = useState(null)
+
+  const isClosed = tender ? isDeadlinePassed(tender.applicationDeadline) : false
 
   const [saving,  setSaving]  = useState(false)
   const [toast,   setToast]   = useState(null)
   const [errors,  setErrors]  = useState({})
+
+  // ── Fetch the real tender from the backend by its tenderCode ─────────────
+  useEffect(() => {
+    if (!tenderCode) {
+      setTenderLoading(false)
+      setTenderError('No tender specified.')
+      return
+    }
+    setTenderLoading(true)
+    setTenderError(null)
+    apiFetch('/apply-tenders/' + encodeURIComponent(tenderCode))
+      .then((res) => setTender(res.data || null))
+      .catch((err) => setTenderError(err.message || 'Failed to load tender.'))
+      .finally(() => setTenderLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenderCode])
+
+  // ── Persist the current tenderCode so downstream pages (e.g. the payment
+  // flow) can recover and route the user back into THIS exact form if they
+  // land there without proper router state (manual URL entry, refresh,
+  // bookmark, etc.) — without forcing a full page reload or dumping them
+  // back to the generic tenders list.
+  useEffect(() => {
+    if (tenderCode) {
+      sessionStorage.setItem('lastTenderCode', tenderCode)
+    }
+  }, [tenderCode])
+
+  // ── Districts dropdown data ────────────────────────────────────────────
+  // Static Tamil Nadu district list — there is no districts collection in
+  // the backend, so this is the single source of truth (no API call).
+  const FALLBACK_TN_DISTRICTS = [
+    'Ariyalur', 'Chengalpattu', 'Chennai', 'Coimbatore', 'Cuddalore',
+    'Dharmapuri', 'Dindigul', 'Erode', 'Kallakurichi', 'Kanchipuram',
+    'Kanyakumari', 'Karur', 'Krishnagiri', 'Madurai', 'Mayiladuthurai',
+    'Nagapattinam', 'Namakkal', 'Nilgiris', 'Perambalur', 'Pudukkottai',
+    'Ramanathapuram', 'Ranipet', 'Salem', 'Sivaganga', 'Tenkasi',
+    'Thanjavur', 'Theni', 'Thoothukudi', 'Tiruchirappalli', 'Tirunelveli',
+    'Tirupathur', 'Tiruppur', 'Tiruvallur', 'Tiruvannamalai', 'Tiruvarur',
+    'Vellore', 'Viluppuram', 'Virudhunagar',
+  ]
+  const [districts] = useState(FALLBACK_TN_DISTRICTS)
+
+  // ── Load any previously-saved (unpaid) draft for this tender ──────────────
+  // NOTE: temp-applications are referenced by the tender's Mongo `_id`
+  // (stable DB reference), never by `tenderCode` (human-readable routing
+  // key). `tenderCode` is only used for navigation/URLs in this component.
+  const [draftLoaded, setDraftLoaded] = useState(false)
+  const [savedDocuments, setSavedDocuments] = useState([]) // [{label, url, originalName}]
+  const [savedSignatureUrl, setSavedSignatureUrl] = useState(null)
+
+  useEffect(() => {
+    if (!tender?._id) return
+    apiFetch('/temp-applications/' + encodeURIComponent(tender._id))
+      .then((res) => {
+        if (res.data) {
+          setForm((p) => ({ ...p, ...res.data.formData }))
+          setSavedDocuments(res.data.documents || [])
+          setSavedSignatureUrl(res.data.signatureUrl || null)
+        }
+      })
+      .catch(() => {
+        // No saved draft yet, or failed to load — start blank, not fatal.
+      })
+      .finally(() => setDraftLoaded(true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tender])
 
   // ── Form state ────────────────────────────────────────────────────────────
   const [form, setForm] = useState({
@@ -104,16 +301,14 @@ export default function ApplyTenderForm() {
     state:              'Tamil Nadu',
     pinCode:            '',
     // Section 2 — Tender (pre-filled, read-only)
-    tenderId:           tender?.id             || '',
-    tenderName:         tender?.projectName    || '',
-    department:         tender?.department     || '',
-    tenderCategory:     tender?.category       || '',
-    tenderType:         tender?.tenderType     || '',
-    projectLocation:    tender?.location       || '',
-    projectDuration:    tender?.projectDuration?.toString() || '',
-    bidValidity:        tender?.bidValidity?.toString()     || '',
+    tenderId:           '',
+    tenderName:         '',
+    department:         '',
+    tenderCategory:     '',
+    projectLocation:    '',
+    projectDuration:    '',
     bidAmount:          '',
-    emdAmount:          tender?.emdAmount      || '',
+    emdAmount:          '',
     securityDeposit:    '',
     experienceYears:    '',
     prevGovtProjects:   '',
@@ -121,11 +316,42 @@ export default function ApplyTenderForm() {
     financialCapacity:  '',
     // Section 3 — Declaration
     acceptTerms:        false,
-    digitalSignature:   '',
     applicantSignature: '',
     declarationDate:    '',
     remarks:            '',
   })
+
+  // ── Uploaded JPEG files ────────────────────────────────────────────────────
+  // Documents section files, keyed by document label.
+  const [documentFiles, setDocumentFiles] = useState({})
+  // Digital Signature is now an uploaded JPEG image instead of free text.
+  const [signatureFile, setSignatureFile] = useState(null)
+
+  function setDocumentFile(label, file) {
+    setDocumentFiles((prev) => ({ ...prev, [label]: file }))
+  }
+
+  // Once the tender arrives from the backend, populate the read-only
+  // Section 2 fields (form state was initialized empty since tender
+  // wasn't available synchronously anymore).
+  useEffect(() => {
+    if (!tender) return
+    setForm((p) => ({
+      ...p,
+      tenderId:        tender.id             || tender.tenderCode || '',
+      tenderName:       tender.projectName    || tender.title || '',
+      department:       tender.department     || '',
+      tenderCategory:   tender.category       || '',
+      projectLocation:  tender.location       || '',
+      projectDuration:  tender.projectDuration?.toString() || tender.duration || '',
+      emdAmount:        tender.emdAmount      || '',
+      // Always reflect the current date if nothing's been set yet — so
+      // reopening a never-submitted draft days later still shows today's
+      // date instead of a blank or stale one from whenever the draft was
+      // first started.
+      declarationDate:  p.declarationDate || todayLocalISODate(),
+    }))
+  }, [tender])
 
   function set(key, val) {
     setForm((p) => ({ ...p, [key]: val }))
@@ -169,6 +395,43 @@ export default function ApplyTenderForm() {
     setTimeout(() => setToast(null), 3000)
   }
 
+  // ── Persist the current draft (text fields + any newly-picked files) ─────
+  // Uses a raw fetch (not apiFetch) because apiFetch always sets
+  // Content-Type: application/json, which breaks multipart/form-data —
+  // the browser must set that header itself (with the boundary) for
+  // FormData bodies.
+  //
+  // IMPORTANT: temp-applications are keyed by the tender's Mongo `_id`,
+  // NOT `tenderCode`. `tenderCode` is only for routing/URLs elsewhere in
+  // this component — sending it here would 500 on the backend, since
+  // `Tender.findById` expects a real ObjectId.
+  async function persistDraft() {
+    const token = localStorage.getItem('token')
+    const idForDraft = tender._id
+
+    const body = new FormData()
+    body.append('formData', JSON.stringify(form))
+    Object.entries(documentFiles).forEach(([label, file]) => {
+      if (file) body.append(label, file)
+    })
+    if (signatureFile) body.append('signature', signatureFile)
+
+    const res = await fetch(
+      `${(import.meta.env?.VITE_API_BASE_URL) || 'http://localhost:5000/api'}/temp-applications/${encodeURIComponent(idForDraft)}`,
+      {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body,
+      }
+    )
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.message || `Save failed: ${res.status}`)
+    }
+    return res.json()
+  }
+
   // ── Save ──────────────────────────────────────────────────────────────────
   async function handleSave() {
     const e = validate()
@@ -178,12 +441,20 @@ export default function ApplyTenderForm() {
       return
     }
     setSaving(true)
-    await new Promise((r) => setTimeout(r, 800))
-    setSaving(false)
-    showToast('Application Saved Successfully!')
+    try {
+      await persistDraft()
+      showToast('Application Saved Successfully!')
+    } catch (err) {
+      showToast(err.message || 'Failed to save application.', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  // ── Next → navigate to payment page ───────────────────────────────────────
+  // ── Next → save draft, then navigate to payment page ──────────────────────
+  // Navigation/state passed forward uses `tenderCode` (the human-readable
+  // routing key) — `_id` is only used internally for the temp-application
+  // persistence call above.
   async function handleNext() {
     const e = validate()
     if (Object.keys(e).length) {
@@ -194,9 +465,13 @@ export default function ApplyTenderForm() {
     setSaving(true)
     await new Promise((r) => setTimeout(r, 600))
     setSaving(false)
+
+    const code = tender.tenderCode || tender.id
+    sessionStorage.setItem('lastTenderCode', code)   // ← ADD THIS LINE
+
     navigate('/apply-tenders/payment', {
       state: {
-        tenderId: tender.id,
+        tenderCode: code,
         formData: form,
       },
     })
@@ -215,11 +490,24 @@ export default function ApplyTenderForm() {
     ].join(' ')
   }
 
-  if (!tender) {
+  // ── Loading state ─────────────────────────────────────────────────────────
+  if (tenderLoading) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="w-10 h-10 border-4 border-[#FFE5BF] border-t-[#1A4A8C] rounded-full animate-spin mb-4" />
+        <p className="text-sm text-[#6B7A8D]">Loading tender details…</p>
+      </div>
+    )
+  }
+
+  // ── Error / not found state ──────────────────────────────────────────────
+  if (tenderError || !tender) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
         <p className="font-bold text-[#0A2240] mb-2 text-lg">Tender not found.</p>
-        <p className="text-sm text-[#6B7A8D] mb-4">The tender you are looking for does not exist.</p>
+        <p className="text-sm text-[#6B7A8D] mb-4">
+          {tenderError || 'The tender you are looking for does not exist.'}
+        </p>
         <button
           onClick={() => navigate('/apply-tenders')}
           className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#0A2240] text-white hover:bg-[#1A4A8C] transition-colors"
@@ -247,7 +535,7 @@ export default function ApplyTenderForm() {
           </button>
           <div>
             <h1 className="text-xl font-extrabold text-[#0A2240]">Apply Tender</h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5 line-clamp-1">{tender.projectName}</p>
+            <p className="text-xs text-[#6B7A8D] mt-0.5 line-clamp-1">{tender.projectName || tender.title}</p>
           </div>
         </div>
 
@@ -346,9 +634,17 @@ export default function ApplyTenderForm() {
                     className={inputCls('address') + ' resize-none'} />
         </Field>
         <Field label="District" required error={errors.district}>
-          <input value={form.district} onChange={(e) => set('district', e.target.value)}
-                 readOnly={isClosed} placeholder="District"
-                 className={inputCls('district')} />
+          <select
+            value={form.district}
+            onChange={(e) => set('district', e.target.value)}
+            disabled={isClosed}
+            className={inputCls('district') + (isClosed ? '' : ' cursor-pointer')}
+          >
+            <option value="">Select district</option>
+            {districts.map((d) => (
+              <option key={d._id || d} value={d.name || d}>{d.name || d}</option>
+            ))}
+          </select>
         </Field>
         <Field label="State">
           <input value={form.state} readOnly className={inputCls('', true)} />
@@ -379,17 +675,11 @@ export default function ApplyTenderForm() {
         <Field label="Tender Category">
           <input value={form.tenderCategory} readOnly className={inputCls('', true)} />
         </Field>
-        <Field label="Tender Type">
-          <input value={form.tenderType} readOnly className={inputCls('', true)} />
-        </Field>
         <Field label="Project Location">
           <input value={form.projectLocation} readOnly className={inputCls('', true)} />
         </Field>
         <Field label="Project Duration (Days)">
           <input value={form.projectDuration} readOnly className={inputCls('', true)} />
-        </Field>
-        <Field label="Bid Validity (Days)">
-          <input value={form.bidValidity} readOnly className={inputCls('', true)} />
         </Field>
         <Field label="Bid Amount (₹)" required error={errors.bidAmount}>
           <div className="relative">
@@ -442,6 +732,9 @@ export default function ApplyTenderForm() {
       </Section>
 
       {/* ── Section 3: Documents ───────────────────────────────────────── */}
+      {/* Each box opens the device file picker; on phones/tablets the OS
+          also offers "Take Photo" alongside the gallery thanks to the
+          `capture` attribute on the underlying <input type="file">. */}
       <Section title="Documents" icon={
         <svg {...iconProps}>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -459,21 +752,14 @@ export default function ApplyTenderForm() {
           'Additional Documents',
         ].map((doc) => (
           <Field key={doc} label={doc}>
-            <div className={[
-              'w-full px-4 py-2.5 text-sm rounded-xl border border-[#FFE5BF]',
-              'flex items-center gap-2',
-              isClosed
-                ? 'bg-[#FFF2DB] cursor-not-allowed'
-                : 'bg-white cursor-pointer hover:bg-[#FFF2DB] transition-colors',
-            ].join(' ')}>
-              <svg className="w-4 h-4 text-[#1A4A8C] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-8-8l4-4m0 0l4 4m-4-4v12" />
-              </svg>
-              <span className="text-[#6B7A8D] text-xs">
-                {isClosed ? 'No file uploaded' : 'Click to upload'}
-              </span>
-            </div>
+            <ImageUploadBox
+              label={doc}
+              file={documentFiles[doc] || null}
+              existingUrl={savedDocuments.find((d) => d.label === doc)?.url}
+              existingName={savedDocuments.find((d) => d.label === doc)?.originalName}
+              onChange={(file) => setDocumentFile(doc, file)}
+              disabled={isClosed}
+            />
           </Field>
         ))}
       </Section>
@@ -503,10 +789,19 @@ export default function ApplyTenderForm() {
             <p className="text-[10px] text-[#F62440] mt-1">{errors.acceptTerms}</p>
           )}
         </Field>
+        {/* Digital Signature — now a JPEG image upload (e.g. a scanned/photo
+            of a handwritten signature) instead of a free-text field. Uses
+            `capture="user"` so on phones/tablets the front camera is offered
+            for a quick selfie-style signature capture, alongside the gallery. */}
         <Field label="Digital Signature">
-          <input value={form.digitalSignature} onChange={(e) => set('digitalSignature', e.target.value)}
-                 readOnly={isClosed} placeholder="Digital signature ID"
-                 className={inputCls('')} />
+          <ImageUploadBox
+            label="Digital Signature"
+            file={signatureFile}
+            existingUrl={savedSignatureUrl}
+            onChange={setSignatureFile}
+            disabled={isClosed}
+            capture="user"
+          />
         </Field>
         <Field label="Applicant Signature">
           <input value={form.applicantSignature} onChange={(e) => set('applicantSignature', e.target.value)}

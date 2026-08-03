@@ -15,6 +15,7 @@ const roleSchema = new Schema(
         'administrator',
         'financial',
         'tender_authority',
+        'tender_person',
       ],
     },
     displayName: { type: String, required: true },

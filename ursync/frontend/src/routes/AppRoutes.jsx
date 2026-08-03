@@ -125,7 +125,7 @@ export default function AppRoutes() {
         <Route path="/tender-details-view/:id" element={<TenderDetailsView />} />
         <Route path="/tenders-by-class"        element={<TenderByClassification />} />
         <Route path="/apply-tenders"         element={<ApplyTenders />} />
-        <Route path="/apply-tenders/apply" element={<ApplyTenderForm />} />
+        <Route path="/apply-tenders/apply/:tenderCode" element={<ApplyTenderForm />} />
         <Route path="/tenders-by-dept" element={<TenderByDepartment />} />
         <Route path="/your-tenders" element={<YourTenders />} />
         <Route path="/debarment" element={<DebarmentList />} />

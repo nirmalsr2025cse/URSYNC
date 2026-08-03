@@ -54,6 +54,14 @@
 // untouched (still 'Sent to Tender Authority', still assigned to you) and a
 // real error message comes back — you can just retry. If it succeeds, the
 // draft is then marked Approved, so the two are always consistent.
+//
+// TENDER ID/CODE FIX: CreateTender's `tenderId` (e.g. "TN/PWD/2026/010") is
+// the tender's real, human-assigned identifier — it must carry over as-is
+// to Tender.tenderCode on publish. The code used to generate a brand-new
+// random tenderCode instead (buildTenderCode()), which meant the draft in
+// `createtenders` and its published counterpart in `tenders` showed two
+// different codes for the same tender. Fixed below: tenderCode is now set
+// directly from tender.tenderId.
 
 const CreateTender = require('../models/CreateTender')
 const Tender = require('../models/Tender')
@@ -116,18 +124,6 @@ function populateOpts() {
     { path: 'createdBy', select: 'fullName email' },
     { path: 'sentTo', select: 'fullName email' },
   ]
-}
-
-// Builds a unique, human-readable tender code, e.g. "TN/PWD/2026/482913".
-// CreateTender documents carry a `tenderId` field, but it's the draft's own
-// working identifier, not guaranteed unique against the live `tenders`
-// collection's tenderCode index — so a fresh code is generated here instead.
-function buildTenderCode(deptCode) {
-  const year = new Date().getFullYear()
-  // Random suffix (not just Date.now()) so two approvals landing in the
-  // same millisecond can't generate the same code.
-  const suffix = `${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
-  return `TN/${deptCode || 'GEN'}/${year}/${suffix}`
 }
 
 // ── Financial: list pending tenders ─────────────────────────────────────────
@@ -326,6 +322,19 @@ exports.tenderAuthorityApprove = async (req, res) => {
       })
     }
 
+    // CreateTender.tenderId (e.g. "TN/PWD/2026/010") is the tender's real,
+    // human-assigned identifier, set when the draft was created. It must
+    // carry over as-is to Tender.tenderCode — NOT be replaced with a
+    // freshly generated code — so the draft and its published counterpart
+    // always show the same tender code.
+    if (!tender.tenderId || !tender.tenderId.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'This tender is missing its tenderId — cannot publish.',
+      })
+    }
+    const tenderCode = tender.tenderId.trim()
+
     // Always publish as "Upcoming" regardless of startDate — status no
     // longer auto-computes to "Ongoing" at publish time. It will still be
     // eligible to change later via whatever process/cron updates status
@@ -333,93 +342,85 @@ exports.tenderAuthorityApprove = async (req, res) => {
     // creation.
     const liveStatus = 'Upcoming'
 
-    // Look up the department's short code (e.g. "PWD", "TWAD") to build a
-    // readable tenderCode — CreateTender's own `tenderId` isn't guaranteed
-    // unique against the live tenders collection.
+    // Look up the department's short code (e.g. "PWD", "TWAD") — kept for
+    // any other display/reporting use, though it's no longer needed to
+    // build the tenderCode now that tenderId is reused directly.
     const dept = await Department.findById(tender.departmentId).select('code').lean()
 
     // ── STEP 1: create the live Tender doc first ──────────────────────────
-    // Try a couple of times in the (very unlikely) event of a tenderCode
-    // collision, instead of letting a single collision surface as a 500.
-    let createdTender = null
-    let lastErr = null
-    for (let attempt = 0; attempt < 3 && !createdTender; attempt++) {
-      const tenderCode = buildTenderCode(dept?.code)
-      try {
-        createdTender = await Tender.create({
-          tenderCode,
-          title: tender.title,
-          description: tender.description,
-          image: tender.image,
-          documentUrl: tender.documentUrl || null,
+    let createdTender
+    try {
+      createdTender = await Tender.create({
+        tenderCode,
+        title: tender.title,
+        description: tender.description,
+        image: tender.image,
+        documentUrl: tender.documentUrl || null,
 
-          departmentId: tender.departmentId,
-          categoryId: tender.categoryId,
-          districtId: tender.districtId,
+        departmentId: tender.departmentId,
+        categoryId: tender.categoryId,
+        districtId: tender.districtId,
 
-          procurementType: undefined, // not tracked on CreateTender; leave unset
-          productCategory: '',
-          location: tender.location,
-          taluk: tender.taluk || '',
-          village: tender.village || '',
-          latitude: tender.latitude ?? null,
-          longitude: tender.longitude ?? null,
-          duration: tender.duration || '',
+        procurementType: undefined, // not tracked on CreateTender; leave unset
+        productCategory: '',
+        location: tender.location,
+        taluk: tender.taluk || '',
+        village: tender.village || '',
+        latitude: tender.latitude ?? null,
+        longitude: tender.longitude ?? null,
+        duration: tender.duration || '',
 
-          // Project schedule — copied straight from the CreateTender draft,
-          // NOT from this approval request.
-          startDate: tender.startDate,
-          closingDate: tender.closingDate,
+        // Project schedule — copied straight from the CreateTender draft,
+        // NOT from this approval request.
+        startDate: tender.startDate,
+        closingDate: tender.closingDate,
 
-          estimatedValue: tender.estimatedValue,
-          currency: tender.currency || 'INR',
+        estimatedValue: tender.estimatedValue,
+        currency: tender.currency || 'INR',
 
-          // Application window — entered by the Tender Authority just now.
-          // `application` itself is set by the Tender model's pre-save hook
-          // based on these three dates (defaults to 'Upcoming', flips to
-          // 'Open'/'Completed' over time via
-          // Tender.syncApplicationStatuses() on a schedule).
-          applicationStartDate: appStart,
-          applicationEndDate: appEnd,
-          applicationDeadline: appDeadline,
+        // Application window — entered by the Tender Authority just now.
+        // `application` itself is set by the Tender model's pre-save hook
+        // based on these three dates (defaults to 'Upcoming', flips to
+        // 'Open'/'Completed' over time via
+        // Tender.syncApplicationStatuses() on a schedule).
+        applicationStartDate: appStart,
+        applicationEndDate: appEnd,
+        applicationDeadline: appDeadline,
 
-          status: liveStatus,
+        status: liveStatus,
 
-          createdBy: tender.createdBy,
-          updatedBy: currentUser._id,
-        })
-      } catch (createErr) {
-        // 11000 = duplicate key (tenderCode collision) — retry with a fresh code.
-        if (createErr.code === 11000) {
-          lastErr = createErr
-          continue
-        }
-        // Any other error (validation, cast, etc.) — surface it clearly
-        // instead of a bare 500, and DO NOT touch the CreateTender doc at
-        // all, so it's left exactly as it was (still assigned to this
-        // Tender Authority user, still 'Sent to Tender Authority') and the
-        // approval can simply be retried once the data problem is fixed.
-        console.error('tenderAuthorityApprove: failed to create live Tender doc:', createErr)
-        return res.status(500).json({
+        createdBy: tender.createdBy,
+        updatedBy: currentUser._id,
+      })
+    } catch (createErr) {
+      // 11000 = duplicate key. Since tenderCode now comes straight from the
+      // draft's own tenderId, a collision here means a Tender with this
+      // exact code already exists (e.g. this draft was already approved
+      // and published once before) — surface that clearly instead of
+      // retrying with a different, mismatched code. The CreateTender doc is
+      // NOT touched, so it's left exactly as it was and can be inspected.
+      if (createErr.code === 11000) {
+        return res.status(409).json({
           success: false,
-          message: 'Failed to publish the live tender. The draft was left unchanged — please try again.',
-          error: createErr.message,
-          ...(createErr.errors
-            ? { fields: Object.keys(createErr.errors).reduce((acc, k) => {
-                acc[k] = createErr.errors[k].message
-                return acc
-              }, {}) }
-            : {}),
+          message: `A tender with code "${tenderCode}" already exists in the tenders collection. This draft may have already been published.`,
         })
       }
-    }
-
-    if (!createdTender) {
-      console.error('tenderAuthorityApprove: exhausted tenderCode retries:', lastErr)
+      // Any other error (validation, cast, etc.) — surface it clearly
+      // instead of a bare 500, and DO NOT touch the CreateTender doc at
+      // all, so it's left exactly as it was (still assigned to this
+      // Tender Authority user, still 'Sent to Tender Authority') and the
+      // approval can simply be retried once the data problem is fixed.
+      console.error('tenderAuthorityApprove: failed to create live Tender doc:', createErr)
       return res.status(500).json({
         success: false,
-        message: 'Failed to generate a unique tender code after multiple attempts. The draft was left unchanged — please try again.',
-        error: lastErr?.message,
+        message: 'Failed to publish the live tender. The draft was left unchanged — please try again.',
+        error: createErr.message,
+        ...(createErr.errors
+          ? { fields: Object.keys(createErr.errors).reduce((acc, k) => {
+              acc[k] = createErr.errors[k].message
+              return acc
+            }, {}) }
+          : {}),
       })
     }
 

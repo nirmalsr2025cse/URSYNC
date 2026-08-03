@@ -1,7 +1,16 @@
-import React, { useState, useMemo } from 'react'
+// src/pages/ApplyTenders.jsx
+// Wired to the real backend: GET /api/apply-tenders?application=Open|Upcoming
+// and GET /api/apply-tenders/meta for the department/district/category
+// filter dropdowns. "Open" tab -> Tender.application === 'Open'.
+// "Upcoming" tab -> Tender.application === 'Upcoming'. This is the
+// APPLICATION window (applicationStartDate/applicationDeadline), separate
+// from the project lifecycle `status` field used on the Home page.
+
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import TenderCard from '../components/TenderCard'
-import { APPLY_TENDERS, CATEGORIES, DEPARTMENTS, DISTRICTS, APPLICATION_STATUS_CONFIG } from '../data/applyTenderMockData'
+import { useApi } from '../api/client'
+import { APPLICATION_STATUS_CONFIG } from '../data/applyTenderMockData'
 
 const TABS = [
   { id: 'Open',     label: 'Open'     },
@@ -63,11 +72,13 @@ function AppStatusBadge({ status }) {
 }
 
 function isDeadlinePassed(deadline) {
+  if (!deadline) return false
   return new Date(deadline) < new Date()
 }
 
 export default function ApplyTenders() {
   const navigate = useNavigate()
+  const { apiFetch } = useApi()
 
   const [activeTab,    setActiveTab]    = useState('Open')
   const [currentPage,  setCurrentPage]  = useState(1)
@@ -77,6 +88,52 @@ export default function ApplyTenders() {
   const [district,     setDistrict]     = useState('All')
   const [category,     setCategory]     = useState('All')
   const [sortBy,       setSortBy]       = useState('newest')
+
+  const [tenders,      setTenders]      = useState([])
+  const [tabCounts,    setTabCounts]    = useState({ Open: 0, Upcoming: 0 })
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState(null)
+
+  const [filterOptions, setFilterOptions] = useState({ departments: ['All'], districts: ['All'], categories: ['All'] })
+
+  // ── Fetch filter options once on mount ────────────────────────────────────
+  useEffect(() => {
+    apiFetch('/apply-tenders/meta')
+      .then((res) => setFilterOptions(res.data))
+      .catch(() => {
+        // Non-fatal — filters just fall back to "All" only if this fails.
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Fetch tenders for the active tab ──────────────────────────────────────
+  function fetchTenders() {
+    setLoading(true)
+    setError(null)
+    apiFetch(`/apply-tenders?application=${activeTab}`)
+      .then((res) => {
+        setTenders(res.data || [])
+        setTabCounts(prev => ({ ...prev, [activeTab]: (res.data || []).length }))
+      })
+      .catch((err) => setError(err.message || 'Failed to load tenders.'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchTenders()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  // Also fetch the other tab's count once, purely for the tab badge numbers
+  // (so switching tabs doesn't show a stale/zero count before its own fetch
+  // completes).
+  useEffect(() => {
+    const otherTab = activeTab === 'Open' ? 'Upcoming' : 'Open'
+    apiFetch(`/apply-tenders?application=${otherTab}`)
+      .then((res) => setTabCounts(prev => ({ ...prev, [otherTab]: (res.data || []).length })))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function switchTab(id) {
     if (id === activeTab) return
@@ -90,15 +147,16 @@ export default function ApplyTenders() {
     setCategory('All'); setSortBy('newest'); setCurrentPage(1)
   }
 
+  // ── Client-side search/filter/sort over the already-fetched tab data ─────
   const filtered = useMemo(() => {
-    let list = APPLY_TENDERS.filter((t) => t.status === activeTab)
+    let list = tenders
 
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter((t) =>
-        t.projectName.toLowerCase().includes(q) ||
-        t.id.toLowerCase().includes(q) ||
-        t.organization.toLowerCase().includes(q)
+        (t.projectName || '').toLowerCase().includes(q) ||
+        (t.id || '').toLowerCase().includes(q) ||
+        (t.organization || '').toLowerCase().includes(q)
       )
     }
     if (dept     !== 'All') list = list.filter((t) => t.department === dept)
@@ -107,12 +165,12 @@ export default function ApplyTenders() {
 
     if (sortBy === 'newest')   list = [...list].sort((a, b) => new Date(b.startDate) - new Date(a.startDate))
     if (sortBy === 'oldest')   list = [...list].sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
-    if (sortBy === 'value_hi') list = [...list].sort((a, b) => parseInt(b.estimatedValue.replace(/,/g, '')) - parseInt(a.estimatedValue.replace(/,/g, '')))
-    if (sortBy === 'value_lo') list = [...list].sort((a, b) => parseInt(a.estimatedValue.replace(/,/g, '')) - parseInt(b.estimatedValue.replace(/,/g, '')))
+    if (sortBy === 'value_hi') list = [...list].sort((a, b) => (b.estimatedValue || 0) - (a.estimatedValue || 0))
+    if (sortBy === 'value_lo') list = [...list].sort((a, b) => (a.estimatedValue || 0) - (b.estimatedValue || 0))
     if (sortBy === 'deadline') list = [...list].sort((a, b) => new Date(a.applicationDeadline) - new Date(b.applicationDeadline))
 
     return list
-  }, [activeTab, search, dept, district, category, sortBy])
+  }, [tenders, search, dept, district, category, sortBy])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated  = useMemo(() => {
@@ -120,9 +178,26 @@ export default function ApplyTenders() {
     return filtered.slice(start, start + PAGE_SIZE)
   }, [filtered, currentPage])
 
+  useEffect(() => { setCurrentPage(1) }, [search, dept, district, category])
+
   const hasFilters = search || dept !== 'All' || district !== 'All' || category !== 'All'
 
   const selectClass = "px-3 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all cursor-pointer"
+
+  // Navigates to the Apply Tender form with the tender's code encoded
+  // directly in the URL path (/apply-tenders/apply/:tenderCode) instead of
+  // relying solely on location.state — this makes the link work correctly
+  // on a page refresh, when bookmarked, or when shared/opened directly.
+  // tender.tenderCode is what the live Tender model actually stores; we
+  // fall back to tender.id for any records that only carry the older key.
+  function goToApply(tender) {
+    navigate('/apply-tenders/apply/' + encodeURIComponent(tender.tenderCode || tender.id), {
+      // Still pass state as a fast-path so ApplyTenderForm.jsx can render
+      // immediately without waiting on a fetch, if it chooses to use it —
+      // but the URL param is now the source of truth it should read first.
+      state: { tenderCode: tender.tenderCode },
+    })
+  }
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
@@ -184,13 +259,13 @@ export default function ApplyTenders() {
         {/* Second filter row */}
         <div className="flex flex-col sm:flex-row gap-3">
           <select value={dept} onChange={(e) => { setDept(e.target.value); setCurrentPage(1) }} className={selectClass + ' flex-1'}>
-            {DEPARTMENTS.map((d) => <option key={d} value={d}>{d === 'All' ? 'All Departments' : d}</option>)}
+            {filterOptions.departments.map((d) => <option key={d} value={d}>{d === 'All' ? 'All Departments' : d}</option>)}
           </select>
           <select value={district} onChange={(e) => { setDistrict(e.target.value); setCurrentPage(1) }} className={selectClass}>
-            {DISTRICTS.map((d) => <option key={d} value={d}>{d === 'All' ? 'All Districts' : d}</option>)}
+            {filterOptions.districts.map((d) => <option key={d} value={d}>{d === 'All' ? 'All Districts' : d}</option>)}
           </select>
           <select value={category} onChange={(e) => { setCategory(e.target.value); setCurrentPage(1) }} className={selectClass}>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>)}
+            {filterOptions.categories.map((c) => <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>)}
           </select>
           {hasFilters && (
             <button
@@ -209,7 +284,7 @@ export default function ApplyTenders() {
         <div className="flex w-full sm:w-auto items-center bg-white border border-[#FFE5BF] rounded-full p-1 shadow-sm gap-1">
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id
-            const count = APPLY_TENDERS.filter((t) => t.status === tab.id).length
+            const count = tabCounts[tab.id] || 0
             return (
               <button
                 key={tab.id}
@@ -238,12 +313,40 @@ export default function ApplyTenders() {
         </div>
       </div>
 
+      {/* ── Error state ──────────────────────────────────────────────── */}
+      {error && (
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-red-200 border-dashed">
+          <p className="font-bold text-red-600 mb-1">Couldn't load tenders.</p>
+          <p className="text-sm text-[#6B7A8D] mb-4">{error}</p>
+          <button
+            onClick={fetchTenders}
+            className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ── Cards Grid ────────────────────────────────────────────────── */}
+      {!error && (
       <div className={[
         'transition-opacity duration-150',
         animating ? 'opacity-0' : 'opacity-100',
       ].join(' ')}>
-        {paginated.length === 0 ? (
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden animate-pulse">
+                <div className="h-40 bg-[#FFF2DB]" />
+                <div className="p-4 space-y-3">
+                  <div className="h-4 w-3/4 bg-[#FFE5BF] rounded" />
+                  <div className="h-3 w-full bg-[#FFE5BF] rounded" />
+                  <div className="h-3 w-1/2 bg-[#FFE5BF] rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : paginated.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-[#FFE5BF] border-dashed">
             <div className="w-14 h-14 rounded-full bg-[#FFF2DB] flex items-center justify-center mb-4 border border-[#FFE5BF]">
               <svg className="w-6 h-6 text-[#6B7A8D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -264,7 +367,7 @@ export default function ApplyTenders() {
                   <div className="flex items-center justify-between mb-1 px-1">
                     {activeTab === 'Upcoming'
                         ? <div />
-                        : <AppStatusBadge status={tender.applicationStatus} />
+                        : <AppStatusBadge status={tender.applicationStatus || 'Not Applied'} />
                     }
                     {closed && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
@@ -282,7 +385,7 @@ export default function ApplyTenders() {
                       activeTab === 'Open' && (
                         <div className="flex gap-2 mt-2">
                           <button
-                            onClick={() => navigate('/apply-tenders/apply', { state: { tenderId: tender.id } })}
+                            onClick={() => goToApply(tender)}
                             disabled={closed}
                             title={closed ? 'Application Closed' : 'Apply for this tender'}
                             className={[
@@ -308,13 +411,16 @@ export default function ApplyTenders() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Pagination ─────────────────────────────────────────────────── */}
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-      />
+      {!loading && !error && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
+      )}
     </div>
   )
 }

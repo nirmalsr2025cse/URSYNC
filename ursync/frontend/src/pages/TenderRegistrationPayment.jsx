@@ -1,5 +1,5 @@
 // src/pages/TenderRegistrationPayment.jsx
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -51,7 +51,35 @@ export default function TenderRegistrationPayment() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const tenderId   = location.state?.tenderId || 'N/A'
+  // ── Route guard ──────────────────────────────────────────────────────────
+  // This page must only be reachable by navigating forward from
+  // ApplyTenderForm.jsx's handleNext(), which passes tenderCode/formData via
+  // router state. (Previously this checked location.state?.tenderId, but
+  // ApplyTenderForm.jsx now sends tenderCode — that mismatch meant
+  // hasValidState was ALWAYS false, even right after a normal, successful
+  // navigation from the form. Fixed below.)
+  //
+  // If a user types this URL directly, refreshes, opens it in a new tab, or
+  // lands here after a client-side rehydration, location.state will be
+  // null — instead of stranding them here or dumping them on the tender
+  // list, send them back into the exact ApplyTenderForm page they were on,
+  // using the tenderCode saved to sessionStorage the moment they clicked
+  // Next there. Only fall back to the tender list if there's truly no
+  // prior tender context at all (e.g. first-ever visit, cleared storage).
+  const hasValidState = Boolean(location.state?.tenderCode)
+
+  useEffect(() => {
+    if (!hasValidState) {
+      const lastTenderCode = sessionStorage.getItem('lastTenderCode')
+      if (lastTenderCode) {
+        navigate('/apply-tenders/apply/' + encodeURIComponent(lastTenderCode), { replace: true })
+      } else {
+        navigate('/apply-tenders', { replace: true })
+      }
+    }
+  }, [hasValidState, navigate])
+
+  const tenderCode = location.state?.tenderCode || 'N/A'
   const tenderName = location.state?.formData?.tenderName || location.state?.tenderName || 'N/A'
   const REGISTRATION_FEE = 500
 
@@ -85,12 +113,18 @@ export default function TenderRegistrationPayment() {
     }
     navigate('/apply-tenders/payment/choose-platform', {
       state: {
-        tenderId,
+        tenderCode,
         tenderName,
         registrationFee: REGISTRATION_FEE,
         mobile,
       },
     })
+  }
+
+  // Don't render the payment UI at all while the redirect is in flight —
+  // avoids a flash of fake "N/A" data before useEffect kicks the user out.
+  if (!hasValidState) {
+    return null
   }
 
   return (
@@ -129,7 +163,7 @@ export default function TenderRegistrationPayment() {
           </div>
           <div>
             <dt className="text-xs font-semibold text-[#6B7A8D] mb-1">Tender ID</dt>
-            <dd className="font-bold text-[#0A2240]">{tenderId}</dd>
+            <dd className="font-bold text-[#0A2240]">{tenderCode}</dd>
           </div>
           <div>
             <dt className="text-xs font-semibold text-[#6B7A8D] mb-1">Registration Fee</dt>

@@ -1,3 +1,4 @@
+//src/app.js
 const express = require('express')
 const cors = require('cors')
 const tenderRoutes = require('./routes/tenderRoutes')
@@ -9,6 +10,9 @@ const reportsFeedbacksRoutes = require('./routes/reportsFeedbacksRoutes') // NEW
 const approvementRoutes = require('./routes/approvementRoutes') // NEW
 const createTenderApprovalRoutes = require('./routes/createTenderApprovalRoutes') // NEW
 const publicTenderRoutes = require('./routes/publicTenderRoutes') // NEW 
+const applyTenderRoutes = require('./routes/applyTenderRoutes') // NEW
+const path = require('path')
+const tempBidderApplicationRoutes = require('./routes/tempBidderApplicationRoutes')
 
 const app = express()
 app.use(
@@ -17,6 +21,11 @@ app.use(
   })
 )
 app.use(express.json())
+
+app.use(
+  '/temp-uploads',
+  express.static(path.join(__dirname, '..', 'uploads', 'temp'))
+)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' })) //Checks the serve works correctly
 
@@ -29,6 +38,8 @@ app.use('/api/reports-feedbacks', reportsFeedbacksRoutes) // NEW — Reports & F
 app.use('/api/approvement', approvementRoutes) // NEW — Approvement page
 app.use('/api/create-tender-approval', createTenderApprovalRoutes) // NEW — Create Tender Approval page
 app.use('/api/public-tenders', publicTenderRoutes) // NEW — Public Tenders page
+app.use('/api/apply-tenders', applyTenderRoutes) // NEW — Apply Tenders page
+app.use('/api/temp-applications', tempBidderApplicationRoutes)
 
 
 // 404 handler
