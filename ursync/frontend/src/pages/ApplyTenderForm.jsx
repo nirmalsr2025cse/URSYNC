@@ -1,15 +1,33 @@
 // src/pages/ApplyTenderForm.jsx
+//
+// This form now has TWO modes:
+//
+//   1. APPLY MODE (unchanged behavior) — reached via /apply-tenders/apply/:tenderCode
+//      or with location.state.tenderCode. Loads a Tender, lets the bidder
+//      fill it out, and Save/Next persist a draft + finally submit into
+//      bidderlists (temp-applications backend, untouched).
+//
+//   2. EDIT MODE (new) — reached from AppliedTenders.jsx's "Edit Tender"
+//      button, via location.state = { isEdit: true, applicationId }. Loads
+//      the already-submitted permanent record straight from bidderlists
+//      (GET /api/applied-tenders/:applicationId) and only shows
+//      Cancel + Save (no Next/submit step, since the application already
+//      exists) — Save does PUT /api/applied-tenders/:applicationId.
+//
+// Everything else (sections, validation, ImageUploadBox, etc.) is shared
+// between both modes.
+
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useApi } from '../api/client'
 
 // Single source of truth for the backend base URL, shared by persistDraft
-// AND the authenticated file-view fetch in ImageUploadBox — previously this
-// was only declared inline inside persistDraft, so nothing else could reuse it.
+// AND the authenticated file-view fetch in ImageUploadBox.
 const API_BASE = (import.meta.env?.VITE_API_BASE_URL) || 'http://localhost:5000/api'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function isDeadlinePassed(deadline) {
+  if (!deadline) return false
   return new Date(deadline) < new Date()
 }
 
@@ -98,29 +116,13 @@ const iconProps = {
 }
 
 // ── JPEG/PNG/PDF Upload box (supports camera capture on mobile/tablet) ───────
-// A single reusable control. Two distinct interactions once a file exists:
-//   1. Clicking the "View" button/icon opens the actual stored file INLINE,
-//      in a full-page overlay panel on this same page (no new tab). For a
-//      file the user just picked locally (not saved yet) this reuses its
-//      plain blob: object URL. For a file that's already SAVED on the
-//      backend, this does an authenticated fetch() (with the Bearer token
-//      attached) to pull the bytes first, then renders a blob URL made
-//      from that response inside the panel — a bare <img>/<iframe> pointed
-//      straight at existingUrl can't attach an Authorization header, so it
-//      would hit authMiddleware with no token and silently fail (broken
-//      image / blank frame).
-//   2. Clicking anywhere else on the box (or the "Replace" label) opens the
-//      device file picker to pick a NEW file — this only takes effect once
-//      Save/Next is clicked, at which point the backend deletes the old
-//      GridFS file and stores the new one in its place.
+// (Unchanged from the apply flow — reused as-is in edit mode.)
 function ImageUploadBox({ label, file, existingUrl, existingName, existingContentType, disabled, onChange, capture = 'environment' }) {
   const inputRef = useRef(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [fileError, setFileError] = useState('')
   const [viewLoading, setViewLoading] = useState(false)
 
-  // Inline viewer ("big div" overlay) state — separate from `previewUrl`
-  // above, which only feeds the small 12x12 thumbnail in the box itself.
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerSrc, setViewerSrc] = useState(null)
   const [viewerType, setViewerType] = useState(null)
@@ -128,14 +130,10 @@ function ImageUploadBox({ label, file, existingUrl, existingName, existingConten
 
   useEffect(() => {
     if (!file) {
-      // No newly-picked file this session — fall back to whatever was
-      // already saved for this document from a previous visit, if any.
       setPreviewUrl(null)
       return
     }
     if (isPdf(null, file)) {
-      // Don't create an object URL just to feed an <img> — PDFs get the
-      // filename+size treatment below instead of a thumbnail.
       setPreviewUrl(null)
       return
     }
@@ -144,7 +142,6 @@ function ImageUploadBox({ label, file, existingUrl, existingName, existingConten
     return () => URL.revokeObjectURL(url)
   }, [file])
 
-  // Close the viewer on Escape while it's open.
   useEffect(() => {
     if (!viewerOpen) return
     function onKeyDown(e) {
@@ -155,10 +152,6 @@ function ImageUploadBox({ label, file, existingUrl, existingName, existingConten
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewerOpen])
 
-  // Release the fetched blob: URL if the component unmounts while the
-  // viewer is still open (object URLs are never garbage-collected on
-  // their own) — locally-picked-file URLs are owned/cleaned up by the
-  // `previewUrl` effect above, so only revoke here when it's a fetched one.
   useEffect(() => {
     return () => {
       if (viewerIsBlobUrl && viewerSrc) URL.revokeObjectURL(viewerSrc)
@@ -203,28 +196,18 @@ function ImageUploadBox({ label, file, existingUrl, existingName, existingConten
     setViewerIsBlobUrl(false)
   }
 
-  // Opens the actual stored file INLINE (in the overlay panel below) so the
-  // user can confirm which document was uploaded, without leaving the page.
-  // Stops propagation so it doesn't also open the file picker.
   async function handleView(e) {
     e.stopPropagation()
 
-    // A locally-picked file (not saved yet) never needs auth — it's just
-    // sitting in browser memory. Reuse/create its object URL directly.
     if (file) {
       const url = previewUrl || URL.createObjectURL(file)
       setViewerSrc(url)
       setViewerType(file.type)
-      setViewerIsBlobUrl(false) // owned by the thumbnail effect above; don't revoke here
+      setViewerIsBlobUrl(false)
       setViewerOpen(true)
       return
     }
 
-    // A previously-saved file lives behind authMiddleware on the backend,
-    // so it must be fetched with the token attached before it can be
-    // rendered — plain <img>/<iframe src={existingUrl}> can't attach an
-    // Authorization header, so it would hit authMiddleware with no token
-    // and silently fail (broken image / blank frame).
     if (!existingUrl) return
 
     setViewLoading(true)
@@ -275,7 +258,6 @@ function ImageUploadBox({ label, file, existingUrl, existingName, existingConten
       >
         {hasStoredFile ? (
           <div className="flex items-center gap-3 px-3 py-2">
-            {/* Thumbnail: image preview, or a generic PDF icon */}
             {!pdfSelected && previewUrl ? (
               <img src={previewUrl} alt={label} className="w-12 h-12 object-cover rounded-lg border border-[#FFE5BF] flex-shrink-0" />
             ) : !pdfSelected && !file && existingUrl && !existingContentType?.includes('pdf') ? (
@@ -303,10 +285,6 @@ function ImageUploadBox({ label, file, existingUrl, existingName, existingConten
               </p>
             </div>
 
-            {/* View — opens the actual stored file inline in the overlay
-                panel below so the user can confirm which document was
-                uploaded. Stops propagation so it doesn't also open the
-                file picker. */}
             {(file || existingUrl) && (
               <button
                 type="button"
@@ -358,10 +336,6 @@ function ImageUploadBox({ label, file, existingUrl, existingName, existingConten
       </div>
       {fileError && <p className="text-[10px] text-[#F62440] mt-1">{fileError}</p>}
 
-      {/* Inline viewer — a full-page overlay ("big div") that shows the
-          actual stored file on THIS page, instead of opening a new browser
-          tab. Images render directly via <img>; PDFs render via <iframe>
-          (the browser's native PDF viewer renders inside the frame). */}
       {viewerOpen && (
         <div
           className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
@@ -407,8 +381,13 @@ export default function ApplyTenderForm() {
   const { tenderCode: tenderCodeParam } = useParams()
   const { apiFetch } = useApi()
 
-  // URL param is the source of truth (works on refresh/bookmark/share);
-  // location.state.tenderCode is only a fast-path fallback if it's missing.
+  // ── Mode detection ────────────────────────────────────────────────────
+  // EDIT MODE: came from AppliedTenders.jsx's "Edit Tender" button.
+  const isEditMode = Boolean(location.state?.isEdit)
+  const applicationId = location.state?.applicationId
+
+  // APPLY MODE: URL param is the source of truth (works on refresh/bookmark/
+  // share); location.state.tenderCode is only a fast-path fallback.
   const tenderCode = tenderCodeParam
     ? decodeURIComponent(tenderCodeParam)
     : location.state?.tenderCode
@@ -417,14 +396,18 @@ export default function ApplyTenderForm() {
   const [tenderLoading,  setTenderLoading]  = useState(true)
   const [tenderError,    setTenderError]    = useState(null)
 
-  const isClosed = tender ? isDeadlinePassed(tender.applicationDeadline) : false
+  // In edit mode the underlying tender may already be Completed — that's
+  // fine, editing a submitted application isn't the same as applying to a
+  // new one, so isClosed never disables edit-mode fields.
+  const isClosed = !isEditMode && tender ? isDeadlinePassed(tender.applicationDeadline) : false
 
   const [saving,  setSaving]  = useState(false)
   const [toast,   setToast]   = useState(null)
   const [errors,  setErrors]  = useState({})
 
-  // ── Fetch the real tender from the backend by its tenderCode ─────────────
+  // ── APPLY MODE: fetch the real tender from the backend by tenderCode ────
   useEffect(() => {
+    if (isEditMode) return // edit mode loads its own record below
     if (!tenderCode) {
       setTenderLoading(false)
       setTenderError('No tender specified.')
@@ -437,22 +420,47 @@ export default function ApplyTenderForm() {
       .catch((err) => setTenderError(err.message || 'Failed to load tender.'))
       .finally(() => setTenderLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenderCode])
+  }, [tenderCode, isEditMode])
 
-  // ── Persist the current tenderCode so downstream pages can recover and
-  // route the user back into THIS exact form if they land there without
-  // proper router state (manual URL entry, refresh, bookmark, etc.) —
-  // without forcing a full page reload or dumping them back to the generic
-  // tenders list.
+  // ── EDIT MODE: fetch the permanent bidderlists record ────────────────────
   useEffect(() => {
-    if (tenderCode) {
+    if (!isEditMode) return
+    if (!applicationId) {
+      setTenderLoading(false)
+      setTenderError('No application specified.')
+      return
+    }
+    setTenderLoading(true)
+    setTenderError(null)
+    apiFetch('/applied-tenders/' + encodeURIComponent(applicationId))
+      .then((res) => {
+        const data = res.data
+        if (!data) {
+          setTenderError('Application not found.')
+          return
+        }
+        setTender(data.tender || null)
+        setForm((p) => ({ ...p, ...data.formData }))
+        setSavedDocuments(data.documents || [])
+        setSavedSignatureUrl(data.signatureUrl || null)
+        setSavedSignatureContentType(data.signatureContentType || null)
+        setDraftLoaded(true)
+      })
+      .catch((err) => setTenderError(err.message || 'Failed to load application.'))
+      .finally(() => setTenderLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applicationId, isEditMode])
+
+  // ── Persist the current tenderCode (APPLY MODE only) so downstream pages
+  // can recover and route the user back into THIS exact form if they land
+  // there without proper router state.
+  useEffect(() => {
+    if (!isEditMode && tenderCode) {
       sessionStorage.setItem('lastTenderCode', tenderCode)
     }
-  }, [tenderCode])
+  }, [tenderCode, isEditMode])
 
   // ── Districts dropdown data ────────────────────────────────────────────
-  // Static Tamil Nadu district list — there is no districts collection in
-  // the backend, so this is the single source of truth (no API call).
   const FALLBACK_TN_DISTRICTS = [
     'Ariyalur', 'Chengalpattu', 'Chennai', 'Coimbatore', 'Cuddalore',
     'Dharmapuri', 'Dindigul', 'Erode', 'Kallakurichi', 'Kanchipuram',
@@ -465,16 +473,15 @@ export default function ApplyTenderForm() {
   ]
   const [districts] = useState(FALLBACK_TN_DISTRICTS)
 
-  // ── Load any previously-saved (unsubmitted) draft for this tender ────────
-  // NOTE: temp-applications are referenced by the tender's Mongo `_id`
-  // (stable DB reference), never by `tenderCode` (human-readable routing
-  // key). `tenderCode` is only used for navigation/URLs in this component.
+  // ── APPLY MODE: load any previously-saved (unsubmitted) draft ───────────
+  // NOTE: temp-applications are referenced by the tender's Mongo `_id`.
   const [draftLoaded, setDraftLoaded] = useState(false)
   const [savedDocuments, setSavedDocuments] = useState([]) // [{label, url, originalName, contentType}]
   const [savedSignatureUrl, setSavedSignatureUrl] = useState(null)
   const [savedSignatureContentType, setSavedSignatureContentType] = useState(null)
 
   useEffect(() => {
+    if (isEditMode) return // edit mode's own effect above handles loading
     if (!tender?._id) return
     apiFetch('/temp-applications/' + encodeURIComponent(tender._id))
       .then((res) => {
@@ -490,7 +497,7 @@ export default function ApplyTenderForm() {
       })
       .finally(() => setDraftLoaded(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tender])
+  }, [tender, isEditMode])
 
   // ── Form state ────────────────────────────────────────────────────────────
   const [form, setForm] = useState({
@@ -531,33 +538,28 @@ export default function ApplyTenderForm() {
   })
 
   // ── Uploaded files (JPEG, PNG, or PDF) ─────────────────────────────────────
-  // Documents section files, keyed by document label.
   const [documentFiles, setDocumentFiles] = useState({})
-  // Digital Signature is now an uploaded image/PDF instead of free text.
   const [signatureFile, setSignatureFile] = useState(null)
 
   function setDocumentFile(label, file) {
     setDocumentFiles((prev) => ({ ...prev, [label]: file }))
   }
 
-  // Once the tender arrives from the backend, populate the read-only
-  // Section 2 fields (form state was initialized empty since tender
-  // wasn't available synchronously anymore).
+  // Once the tender arrives, populate the read-only Section 2 fields.
+  // In edit mode the saved formData (loaded above) already has these, but
+  // this keeps them in sync with the live tender doc (e.g. if department
+  // name changed) without clobbering anything the user is mid-editing.
   useEffect(() => {
     if (!tender) return
     setForm((p) => ({
       ...p,
-      tenderId:        tender.id             || tender.tenderCode || '',
-      tenderName:       tender.projectName    || tender.title || '',
-      department:       tender.department     || '',
-      tenderCategory:   tender.category       || '',
-      projectLocation:  tender.location       || '',
-      projectDuration:  tender.projectDuration?.toString() || tender.duration || '',
-      emdAmount:        tender.emdAmount      || '',
-      // Always reflect the current date if nothing's been set yet — so
-      // reopening a never-submitted draft days later still shows today's
-      // date instead of a blank or stale one from whenever the draft was
-      // first started.
+      tenderId:        p.tenderId || tender.id || tender.tenderCode || '',
+      tenderName:       p.tenderName || tender.projectName || tender.title || '',
+      department:       p.department || tender.department || '',
+      tenderCategory:   p.tenderCategory || tender.category || '',
+      projectLocation:  p.projectLocation || tender.location || '',
+      projectDuration:  p.projectDuration || tender.projectDuration?.toString() || tender.duration || '',
+      emdAmount:        p.emdAmount || tender.emdAmount || '',
       declarationDate:  p.declarationDate || todayLocalISODate(),
     }))
   }, [tender])
@@ -585,40 +587,30 @@ export default function ApplyTenderForm() {
     if (form.mobile && !/^\d{10}$/.test(form.mobile.replace(/\s/g, ''))) {
       e.mobile = 'Enter a valid 10-digit mobile number.'
     }
-    if (form.bidAmount && parseFloat(form.bidAmount.replace(/,/g, '')) <= 0) {
+    if (form.bidAmount && parseFloat(form.bidAmount.toString().replace(/,/g, '')) <= 0) {
       e.bidAmount = 'Bid amount must be greater than zero.'
     }
-    if (!form.acceptTerms) {
+    if (!isEditMode && !form.acceptTerms) {
+      // Terms were already accepted at original submission time — edit
+      // mode doesn't re-ask for it.
       e.acceptTerms = 'You must accept the terms and conditions.'
     }
     return e
   }
 
-  // ── All required fields filled? (for enabling Next button) ───────────────
+  // ── All required fields filled? (for enabling Next button, apply mode only)
   const isFormComplete = REQUIRED.every((key) =>
     form[key] && form[key].toString().trim() !== ''
-  ) && form.acceptTerms
+  ) && (isEditMode || form.acceptTerms)
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
   }
 
-  // ── Persist the current draft (text fields + any newly-picked files) ─────
-  // Uses a raw fetch (not apiFetch) because apiFetch always sets
-  // Content-Type: application/json, which breaks multipart/form-data —
-  // the browser must set that header itself (with the boundary) for
-  // FormData bodies.
-  //
-  // IMPORTANT: temp-applications are keyed by the tender's Mongo `_id`,
-  // NOT `tenderCode`. `tenderCode` is only for routing/URLs elsewhere in
-  // this component — sending it here would 500 on the backend, since
-  // `Tender.findById` expects a real ObjectId.
-  //
-  // This is the ONLY place files leave the browser. The backend only writes
-  // to GridFS inside this same request — so a document/signature is only
-  // ever stored (or REPLACED, if a label already had a file) at the moment
-  // Save or Next is clicked, never before.
+  // ── APPLY MODE: persist the current draft (text fields + any newly-picked
+  // files). Uses a raw fetch (not apiFetch) because apiFetch always sets
+  // Content-Type: application/json, which breaks multipart/form-data.
   async function persistDraft() {
     const token = localStorage.getItem('token')
     const idForDraft = tender._id
@@ -646,12 +638,7 @@ export default function ApplyTenderForm() {
     return res.json()
   }
 
-  // ── Submit the finalized application to bidderlists ───────────────────────
-  // Calls POST /temp-applications/:tenderId/submit — this copies the
-  // current draft (same fileIds already in GridFS, same applicationId)
-  // into the permanent `bidderlists` collection and removes it from
-  // tempbidderapplications. Must be called AFTER persistDraft() so any
-  // last-second edits/files are saved first.
+  // ── APPLY MODE: finalize the draft into bidderlists ─────────────────────
   async function submitDraft() {
     const token = localStorage.getItem('token')
     const res = await fetch(
@@ -668,7 +655,37 @@ export default function ApplyTenderForm() {
     return res.json()
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── EDIT MODE: save changes back onto the existing permanent record ─────
+  // PUT /api/applied-tenders/:applicationId — same multipart convention as
+  // persistDraft() above (formData JSON + one field per replaced document +
+  // optional signature), so ImageUploadBox needs no changes to work here.
+  async function persistAppliedEdit() {
+    const token = localStorage.getItem('token')
+
+    const body = new FormData()
+    body.append('formData', JSON.stringify(form))
+    Object.entries(documentFiles).forEach(([label, file]) => {
+      if (file) body.append(label, file)
+    })
+    if (signatureFile) body.append('signature', signatureFile)
+
+    const res = await fetch(
+      `${API_BASE}/applied-tenders/${encodeURIComponent(applicationId)}`,
+      {
+        method: 'PUT',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body,
+      }
+    )
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.message || `Save failed: ${res.status}`)
+    }
+    return res.json()
+  }
+
+  // ── Save (both modes — behavior branches inside) ───────────────────────
   async function handleSave() {
     const e = validate()
     if (Object.keys(e).length) {
@@ -678,26 +695,39 @@ export default function ApplyTenderForm() {
     }
     setSaving(true)
     try {
-      const result = await persistDraft()
-      showToast('Application Saved Successfully!')
+      if (isEditMode) {
+        await persistAppliedEdit()
+        showToast('Application updated successfully!')
 
-      // Re-fetch so any replaced document now shows the NEW file's URL
-      // (the old GridFS file was deleted server-side and a new fileId
-      // issued — the stale blob: preview must be swapped for the real one).
-      if (tender?._id) {
-        apiFetch('/temp-applications/' + encodeURIComponent(tender._id))
+        // Re-fetch so any replaced document now shows the NEW file's URL.
+        apiFetch('/applied-tenders/' + encodeURIComponent(applicationId))
           .then((res) => {
             if (res.data) {
               setSavedDocuments(res.data.documents || [])
               setSavedSignatureUrl(res.data.signatureUrl || null)
               setSavedSignatureContentType(res.data.signatureContentType || null)
-              // Clear locally-picked files now that they're confirmed saved,
-              // so the box falls back to showing the freshly saved version.
               setDocumentFiles({})
               setSignatureFile(null)
             }
           })
           .catch(() => {})
+      } else {
+        await persistDraft()
+        showToast('Application Saved Successfully!')
+
+        if (tender?._id) {
+          apiFetch('/temp-applications/' + encodeURIComponent(tender._id))
+            .then((res) => {
+              if (res.data) {
+                setSavedDocuments(res.data.documents || [])
+                setSavedSignatureUrl(res.data.signatureUrl || null)
+                setSavedSignatureContentType(res.data.signatureContentType || null)
+                setDocumentFiles({})
+                setSignatureFile(null)
+              }
+            })
+            .catch(() => {})
+        }
       }
     } catch (err) {
       showToast(err.message || 'Failed to save application.', 'error')
@@ -706,13 +736,8 @@ export default function ApplyTenderForm() {
     }
   }
 
-  // ── Next → save draft, finalize it into bidderlists, then go back to the
-  // Apply Tenders list. Once submitted, this tender's row moves into the
-  // `bidderlists` collection (same GridFS files, same applicationId — no
-  // re-upload) and is removed from tempbidderapplications. The backend
-  // then excludes this tender from THIS user's Apply Tenders results (see
-  // applyTenderController.listApplyTenders), so the applied card
-  // disappears only for them — other users still see it normally.
+  // ── Next (APPLY MODE only) → save draft, finalize into bidderlists, then
+  // go back to the Apply Tenders list.
   async function handleNext() {
     const e = validate()
     if (Object.keys(e).length) {
@@ -722,15 +747,9 @@ export default function ApplyTenderForm() {
     }
     setSaving(true)
     try {
-      // 1. Persist any last-minute text/file changes as a draft.
       await persistDraft()
-
-      // 2. Finalize the draft into bidderlists.
       await submitDraft()
-
-      // The lastTenderCode fast-path is no longer needed once submitted.
       sessionStorage.removeItem('lastTenderCode')
-
       showToast('Application submitted successfully!')
       navigate('/apply-tenders')
     } catch (err) {
@@ -739,6 +758,11 @@ export default function ApplyTenderForm() {
       setSaving(false)
     }
   }
+
+  // Where Cancel goes back to — Applied Tenders in edit mode, Apply Tenders
+  // list otherwise (matches original behavior).
+  const cancelPath = isEditMode ? '/apply-tenders' : '/apply-tenders'
+  const backButtonPath = isEditMode ? '/apply-tenders' : '/apply-tenders'
 
   // ── Input class ───────────────────────────────────────────────────────────
   function inputCls(errKey, readOnly = false) {
@@ -758,16 +782,20 @@ export default function ApplyTenderForm() {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
         <div className="w-10 h-10 border-4 border-[#FFE5BF] border-t-[#1A4A8C] rounded-full animate-spin mb-4" />
-        <p className="text-sm text-[#6B7A8D]">Loading tender details…</p>
+        <p className="text-sm text-[#6B7A8D]">
+          {isEditMode ? 'Loading application…' : 'Loading tender details…'}
+        </p>
       </div>
     )
   }
 
   // ── Error / not found state ──────────────────────────────────────────────
-  if (tenderError || !tender) {
+  if (tenderError || (!isEditMode && !tender)) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
-        <p className="font-bold text-[#0A2240] mb-2 text-lg">Tender not found.</p>
+        <p className="font-bold text-[#0A2240] mb-2 text-lg">
+          {isEditMode ? 'Application not found.' : 'Tender not found.'}
+        </p>
         <p className="text-sm text-[#6B7A8D] mb-4">
           {tenderError || 'The tender you are looking for does not exist.'}
         </p>
@@ -789,7 +817,7 @@ export default function ApplyTenderForm() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#FFE5BF]">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/apply-tenders')}
+            onClick={() => navigate(backButtonPath)}
             className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -797,19 +825,28 @@ export default function ApplyTenderForm() {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-extrabold text-[#0A2240]">Apply Tender</h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5 line-clamp-1">{tender.projectName || tender.title}</p>
+            <h1 className="text-xl font-extrabold text-[#0A2240]">
+              {isEditMode ? 'Edit Application' : 'Apply Tender'}
+            </h1>
+            <p className="text-xs text-[#6B7A8D] mt-0.5 line-clamp-1">
+              {tender?.projectName || tender?.title}
+            </p>
           </div>
         </div>
 
         {/* Status pills */}
         <div className="flex items-center gap-2 flex-wrap">
-          {isClosed && (
+          {isEditMode && (
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#E9F1FF] text-[#1A4A8C] border border-[#FFE5BF]">
+              Application ID: {applicationId}
+            </span>
+          )}
+          {!isEditMode && isClosed && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
               Application Closed
             </span>
           )}
-          {!isClosed && (
+          {!isEditMode && !isClosed && tender?.applicationDeadline && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF]">
               Deadline: {new Date(tender.applicationDeadline).toLocaleDateString('en-IN', {
                 day: '2-digit', month: 'short', year: 'numeric',
@@ -819,8 +856,8 @@ export default function ApplyTenderForm() {
         </div>
       </div>
 
-      {/* ── Closed warning ─────────────────────────────────────────────── */}
-      {isClosed && (
+      {/* ── Closed warning (apply mode only) ───────────────────────────── */}
+      {!isEditMode && isClosed && (
         <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
           <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -995,10 +1032,6 @@ export default function ApplyTenderForm() {
       </Section>
 
       {/* ── Section 3: Documents ───────────────────────────────────────── */}
-      {/* Each box opens the device file picker; on phones/tablets the OS
-          also offers "Take Photo" alongside the gallery thanks to the
-          `capture` attribute on the underlying <input type="file">. Click
-          the eye icon to VIEW the actual stored document inline. */}
       <Section title="Documents" icon={
         <svg {...iconProps}>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -1039,28 +1072,28 @@ export default function ApplyTenderForm() {
                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       }>
-        <Field label="Accept Terms & Conditions" required error={errors.acceptTerms} full>
-          <label className={['flex items-start gap-3', isClosed ? 'cursor-not-allowed' : 'cursor-pointer'].join(' ')}>
-            <input
-              type="checkbox"
-              checked={form.acceptTerms}
-              onChange={(e) => !isClosed && set('acceptTerms', e.target.checked)}
-              disabled={isClosed}
-              className="mt-0.5 w-4 h-4 accent-[#0A2240]"
-            />
-            <span className="text-xs text-[#6B7A8D] leading-relaxed">
-              I hereby declare that all information provided is true and correct to the best of my knowledge.
-              I accept all terms and conditions of this tender application and agree to abide by the rules.
-            </span>
-          </label>
-          {errors.acceptTerms && (
-            <p className="text-[10px] text-[#F62440] mt-1">{errors.acceptTerms}</p>
-          )}
-        </Field>
-        {/* Digital Signature — a JPEG/PNG/PDF upload (e.g. a scanned/photo
-            of a handwritten signature) instead of a free-text field. Uses
-            `capture="user"` so on phones/tablets the front camera is offered
-            for a quick selfie-style signature capture, alongside the gallery. */}
+        {/* Terms checkbox only re-shown in apply mode — already accepted at
+            original submission time, so edit mode skips re-asking. */}
+        {!isEditMode && (
+          <Field label="Accept Terms & Conditions" required error={errors.acceptTerms} full>
+            <label className={['flex items-start gap-3', isClosed ? 'cursor-not-allowed' : 'cursor-pointer'].join(' ')}>
+              <input
+                type="checkbox"
+                checked={form.acceptTerms}
+                onChange={(e) => !isClosed && set('acceptTerms', e.target.checked)}
+                disabled={isClosed}
+                className="mt-0.5 w-4 h-4 accent-[#0A2240]"
+              />
+              <span className="text-xs text-[#6B7A8D] leading-relaxed">
+                I hereby declare that all information provided is true and correct to the best of my knowledge.
+                I accept all terms and conditions of this tender application and agree to abide by the rules.
+              </span>
+            </label>
+            {errors.acceptTerms && (
+              <p className="text-[10px] text-[#F62440] mt-1">{errors.acceptTerms}</p>
+            )}
+          </Field>
+        )}
         <Field label="Digital Signature">
           <ImageUploadBox
             label="Digital Signature"
@@ -1095,15 +1128,16 @@ export default function ApplyTenderForm() {
       <div className="mt-8 bg-white border border-[#FFE5BF] rounded-2xl shadow-sm px-4 py-3 lg:px-6">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
 
-          {/* Left — form completion hint */}
+          {/* Left — form completion hint (apply mode only — edit mode has no
+              gated "Next" step to hint about) */}
           <div className="flex items-center gap-2">
-            {!isFormComplete && !isClosed && (
+            {!isEditMode && !isFormComplete && !isClosed && (
               <p className="text-xs text-[#6B7A8D]">
                 Fill all required fields to enable{' '}
                 <span className="font-semibold text-[#F62440]">Next</span>.
               </p>
             )}
-            {isFormComplete && !isClosed && (
+            {!isEditMode && isFormComplete && !isClosed && (
               <p className="text-xs text-emerald-600 font-medium flex items-center gap-1">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1111,14 +1145,19 @@ export default function ApplyTenderForm() {
                 All required fields filled. Ready to proceed.
               </p>
             )}
+            {isEditMode && (
+              <p className="text-xs text-[#6B7A8D]">
+                Editing a submitted application. Save your changes below.
+              </p>
+            )}
           </div>
 
-          {/* Right — action buttons */}
+          {/* Right — action buttons: EDIT MODE shows Cancel + Save only */}
           <div className="flex items-center gap-2 w-auto">
 
             {/* Cancel */}
             <button
-              onClick={() => navigate('/apply-tenders')}
+              onClick={() => navigate(cancelPath)}
               className="px-5 py-2 rounded-xl text-sm font-semibold border border-[#FFE5BF] text-[#0A2240] bg-white hover:bg-[#FFF2DB] transition-colors"
             >
               Cancel
@@ -1141,35 +1180,38 @@ export default function ApplyTenderForm() {
               ) : 'Save'}
             </button>
 
-            {/* Next → submit into bidderlists, then back to /apply-tenders */}
-            <button
-              onClick={handleNext}
-              disabled={!isFormComplete || isClosed || saving}
-              title={!isFormComplete ? 'Fill all required fields to continue' : 'Submit application'}
-              className={[
-                'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all',
-                !isFormComplete || isClosed
-                  ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
-                  : 'bg-[#F62440] text-white hover:bg-red-600',
-              ].join(' ')}
-            >
-              {saving ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Processing...
-                </>
-              ) : (
-                <>
-                  Next
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </>
-              )}
-            </button>
+            {/* Next → only in APPLY MODE. Submits into bidderlists, then back
+                to /apply-tenders. Never shown in edit mode. */}
+            {!isEditMode && (
+              <button
+                onClick={handleNext}
+                disabled={!isFormComplete || isClosed || saving}
+                title={!isFormComplete ? 'Fill all required fields to continue' : 'Submit application'}
+                className={[
+                  'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all',
+                  !isFormComplete || isClosed
+                    ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60'
+                    : 'bg-[#F62440] text-white hover:bg-red-600',
+                ].join(' ')}
+              >
+                {saving ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    Next
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

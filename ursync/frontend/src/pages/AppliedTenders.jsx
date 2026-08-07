@@ -1,14 +1,14 @@
 // src/pages/AppliedTenders.jsx
-// Frontend-only page — no backend calls. Uses local mock data
-// (MOCK_APPLIED_TENDERS / MOCK_COMPLETED_APPLIED) exactly like before,
-// but now follows the same structure/style as ApplyTenders.jsx and
-// renders each tender with the shared TenderCard component instead of
-// TenderCardGrid.
+// Now backed by the real API (GET /api/applied-tenders?tab=applied|completed)
+// instead of local mock data. Structure/style is unchanged from before —
+// only data-fetching, loading, and error states were added, and Edit now
+// navigates into ApplyTenderForm.jsx's EDIT MODE (isEdit + applicationId),
+// not the original "apply to a new tender" flow.
 
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import TenderCard from '../components/TenderCard'
-import { tenders } from '../data/tenders'
+import { useApi } from '../api/client'
 import { FileText, Edit, Eye, CheckCircle2, Clock, Search, X } from 'lucide-react'
 
 const PAGE_SIZE = 6
@@ -18,104 +18,7 @@ const TABS = [
   { id: 'completed', label: 'Completed Tenders', icon: CheckCircle2 },
 ]
 
-// ── Mock applied tenders dataset combining tenders with applicant data ──────
-const MOCK_APPLIED_TENDERS = [
-  {
-    ...tenders.ongoing[0],
-    applicationId: 'APP-2026-001',
-    appliedDate: '2026-02-10',
-    applicantName: 'HariRam Constructions',
-    companyName: 'HariRam Constructions Pvt Ltd',
-    companyRegNo: 'TN-REG-88291',
-    gstNumber: '33AAAAA0000A1Z5',
-    panNumber: 'ABCDE1234F',
-    email: 'hari.constructions@gmail.com',
-    mobile: '9876543210',
-    address: '12, Anna Salai, Guindy',
-    district: 'Chennai',
-    pinCode: '600032',
-    bidAmount: '4500000',
-    declarationDate: '2026-02-10',
-    status: 'Ongoing',
-  },
-  {
-    ...tenders.ongoing[1],
-    applicationId: 'APP-2026-002',
-    appliedDate: '2026-02-14',
-    applicantName: 'HariRam Constructions',
-    companyName: 'HariRam Constructions Pvt Ltd',
-    companyRegNo: 'TN-REG-88291',
-    gstNumber: '33AAAAA0000A1Z5',
-    panNumber: 'ABCDE1234F',
-    email: 'hari.constructions@gmail.com',
-    mobile: '9876543210',
-    address: '12, Anna Salai, Guindy',
-    district: 'Chennai',
-    pinCode: '600032',
-    bidAmount: '12000000',
-    declarationDate: '2026-02-14',
-    status: 'Ongoing',
-  },
-  {
-    ...tenders.upcoming[0],
-    applicationId: 'APP-2026-003',
-    appliedDate: '2026-02-18',
-    applicantName: 'HariRam Constructions',
-    companyName: 'HariRam Constructions Pvt Ltd',
-    companyRegNo: 'TN-REG-88291',
-    gstNumber: '33AAAAA0000A1Z5',
-    panNumber: 'ABCDE1234F',
-    email: 'hari.constructions@gmail.com',
-    mobile: '9876543210',
-    address: '12, Anna Salai, Guindy',
-    district: 'Chennai',
-    pinCode: '600032',
-    bidAmount: '8500000',
-    declarationDate: '2026-02-18',
-    status: 'Upcoming',
-  },
-]
-
-const MOCK_COMPLETED_APPLIED = [
-  {
-    ...tenders.completed[0],
-    applicationId: 'APP-2025-089',
-    appliedDate: '2025-11-05',
-    applicantName: 'HariRam Constructions',
-    companyName: 'HariRam Constructions Pvt Ltd',
-    companyRegNo: 'TN-REG-88291',
-    gstNumber: '33AAAAA0000A1Z5',
-    panNumber: 'ABCDE1234F',
-    email: 'hari.constructions@gmail.com',
-    mobile: '9876543210',
-    address: '12, Anna Salai, Guindy',
-    district: 'Chennai',
-    pinCode: '600032',
-    bidAmount: '3200000',
-    declarationDate: '2025-11-05',
-    status: 'Completed',
-  },
-  {
-    ...tenders.completed[1],
-    applicationId: 'APP-2025-094',
-    appliedDate: '2025-12-01',
-    applicantName: 'HariRam Constructions',
-    companyName: 'HariRam Constructions Pvt Ltd',
-    companyRegNo: 'TN-REG-88291',
-    gstNumber: '33AAAAA0000A1Z5',
-    panNumber: 'ABCDE1234F',
-    email: 'hari.constructions@gmail.com',
-    mobile: '9876543210',
-    address: '12, Anna Salai, Guindy',
-    district: 'Chennai',
-    pinCode: '600032',
-    bidAmount: '6700000',
-    declarationDate: '2025-12-01',
-    status: 'Completed',
-  },
-]
-
-// ── Local Pagination (same look as ApplyTenders.jsx) ────────────────────────
+// ── Local Pagination (unchanged) ─────────────────────────────────────────────
 function Pagination({ currentPage, totalPages, onPageChange }) {
   if (totalPages <= 1) return null
   return (
@@ -162,21 +65,48 @@ export default function AppliedTenders() {
   const navigate = useNavigate()
   const location = useLocation()
   const rootPath = location.state?.fromPath || location.pathname
+  const { apiFetch } = useApi()
 
   const [activeTab,   setActiveTab]   = useState('applied') // 'applied' | 'completed'
   const [currentPage, setCurrentPage] = useState(1)
   const [animating,   setAnimating]   = useState(false)
   const [search,      setSearch]      = useState('')
 
-  // Choose list based on tab
-  const rawList = activeTab === 'applied' ? MOCK_APPLIED_TENDERS : MOCK_COMPLETED_APPLIED
+  // ── Data from the backend, one list per tab, fetched lazily and cached
+  // in state so switching tabs back and forth doesn't re-fetch every time.
+  const [listsByTab, setListsByTab] = useState({ applied: null, completed: null })
+  const [loading,    setLoading]    = useState(true)
+  const [loadError,  setLoadError]  = useState(null)
 
-  const tabCounts = {
-    applied:   MOCK_APPLIED_TENDERS.length,
-    completed: MOCK_COMPLETED_APPLIED.length,
+  async function loadTab(tab) {
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const res = await apiFetch(`/applied-tenders?tab=${tab}`)
+      setListsByTab((prev) => ({ ...prev, [tab]: res.data || [] }))
+    } catch (err) {
+      setLoadError(err.message || 'Failed to load applied tenders.')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // ── Live client-side search over the active tab's mock data ─────────────
+  // Fetch the active tab's data the first time it's opened.
+  useEffect(() => {
+    if (listsByTab[activeTab] === null) {
+      loadTab(activeTab)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  const rawList = listsByTab[activeTab] || []
+
+  const tabCounts = {
+    applied:   listsByTab.applied?.length   ?? 0,
+    completed: listsByTab.completed?.length ?? 0,
+  }
+
+  // ── Live client-side search over the active tab's fetched data ──────────
   const filtered = useMemo(() => {
     if (!search.trim()) return rawList
     const q = search.trim().toLowerCase()
@@ -210,9 +140,15 @@ export default function AppliedTenders() {
     })
   }
 
+  // Edit now routes into ApplyTenderForm.jsx's EDIT MODE: it needs the
+  // application's applicationId (not a tenderCode) so the form can fetch
+  // the permanent bidderlists record via GET /api/applied-tenders/:id and
+  // save changes back with PUT /api/applied-tenders/:id. isEdit=true tells
+  // the form to render only Cancel + Save (no "Next"/submit step, since
+  // this application was already submitted).
   const handleEdit = (tender) => {
     navigate('/apply-tenders/apply', {
-      state: { editData: tender, isEdit: true, fromPath: rootPath },
+      state: { isEdit: true, applicationId: tender.applicationId, fromPath: rootPath },
     })
   }
 
@@ -316,84 +252,110 @@ export default function AppliedTenders() {
         </div>
       </div>
 
-      {/* ── Cards Grid ────────────────────────────────────────────────── */}
-      <div className={[
-        'transition-opacity duration-150',
-        animating ? 'opacity-0' : 'opacity-100',
-      ].join(' ')}>
-        {paginated.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-[#FFE5BF] border-dashed">
-            <div className="w-14 h-14 rounded-full bg-[#FFF2DB] flex items-center justify-center mb-4 border border-[#FFE5BF]">
-              <FileText className="w-6 h-6 text-[#6B7A8D]" />
-            </div>
-            <p className="font-bold text-[#0A2240] mb-1">No {activeTab} tenders found</p>
-            <p className="text-sm text-[#6B7A8D] max-w-xs text-center mb-4">
-              {search
-                ? `No results match "${search}".`
-                : activeTab === 'applied'
-                ? 'You have not submitted any active tender applications.'
-                : 'No completed tender applications in your history.'}
-            </p>
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-[#0A2240] text-white hover:bg-[#1A4A8C] transition-colors"
-              >
-                Clear Search
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
-            {paginated.map((tender) => (
-              <div key={tender.applicationId} className="flex flex-col">
-                <TenderCard
-                  tender={tender}
-                  viewMode="grid"
-                  className="flex-1"
-                  onClick={() => handleView(tender)}
-                  footer={
-                    <div className="flex gap-2 mt-2 pt-2 border-t border-[#FFE5BF]">
-                      {/* View Button — present on both Applied and Completed tabs */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleView(tender)
-                        }}
-                        className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-[#0A2240] bg-[#FFFAF3] border border-[#FFE5BF] hover:bg-[#FFE5BF]/40 transition-all duration-200"
-                      >
-                        <Eye className="w-4 h-4 text-[#1A4A8C]" />
-                        View Details
-                      </button>
+      {/* ── Loading state ─────────────────────────────────────────────── */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-[#FFE5BF] border-dashed">
+          <div className="w-8 h-8 border-4 border-[#FFE5BF] border-t-[#1A4A8C] rounded-full animate-spin mb-3" />
+          <p className="text-sm text-[#6B7A8D]">Loading your tenders…</p>
+        </div>
+      )}
 
-                      {/* Edit Button — only present on Applied tab */}
-                      {activeTab === 'applied' && (
+      {/* ── Error state ───────────────────────────────────────────────── */}
+      {!loading && loadError && (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-red-200 border-dashed">
+          <p className="font-bold text-red-600 mb-1">Could not load tenders</p>
+          <p className="text-sm text-[#6B7A8D] mb-4">{loadError}</p>
+          <button
+            onClick={() => loadTab(activeTab)}
+            className="px-4 py-2 text-xs font-semibold rounded-xl bg-[#0A2240] text-white hover:bg-[#1A4A8C] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* ── Cards Grid ────────────────────────────────────────────────── */}
+      {!loading && !loadError && (
+        <div className={[
+          'transition-opacity duration-150',
+          animating ? 'opacity-0' : 'opacity-100',
+        ].join(' ')}>
+          {paginated.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-[#FFE5BF] border-dashed">
+              <div className="w-14 h-14 rounded-full bg-[#FFF2DB] flex items-center justify-center mb-4 border border-[#FFE5BF]">
+                <FileText className="w-6 h-6 text-[#6B7A8D]" />
+              </div>
+              <p className="font-bold text-[#0A2240] mb-1">No {activeTab} tenders found</p>
+              <p className="text-sm text-[#6B7A8D] max-w-xs text-center mb-4">
+                {search
+                  ? `No results match "${search}".`
+                  : activeTab === 'applied'
+                  ? 'You have not submitted any active tender applications.'
+                  : 'No completed tender applications in your history.'}
+              </p>
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-[#0A2240] text-white hover:bg-[#1A4A8C] transition-colors"
+                >
+                  Clear Search
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
+              {paginated.map((tender) => (
+                <div key={tender.applicationId} className="flex flex-col">
+                  <TenderCard
+                    tender={tender}
+                    viewMode="grid"
+                    className="flex-1"
+                    onClick={() => handleView(tender)}
+                    footer={
+                      <div className="flex gap-2 mt-2 pt-2 border-t border-[#FFE5BF]">
+                        {/* View Button — present on both Applied and Completed tabs */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleEdit(tender)
+                            handleView(tender)
                           }}
-                          className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-white bg-[#1A4A8C] hover:bg-[#0A2240] shadow-sm hover:shadow-md transition-all duration-200"
+                          className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-[#0A2240] bg-[#FFFAF3] border border-[#FFE5BF] hover:bg-[#FFE5BF]/40 transition-all duration-200"
                         >
-                          <Edit className="w-4 h-4" />
-                          Edit Tender
+                          <Eye className="w-4 h-4 text-[#1A4A8C]" />
+                          View Details
                         </button>
-                      )}
-                    </div>
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+
+                        {/* Edit Button — only present on Applied tab */}
+                        {activeTab === 'applied' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleEdit(tender)
+                            }}
+                            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-white bg-[#1A4A8C] hover:bg-[#0A2240] shadow-sm hover:shadow-md transition-all duration-200"
+                          >
+                            <Edit className="w-4 h-4" />
+                            Edit Tender
+                          </button>
+                        )}
+                      </div>
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Pagination ────────────────────────────────────────────────── */}
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-      />
+      {!loading && !loadError && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
+      )}
     </div>
   )
 }

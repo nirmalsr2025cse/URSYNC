@@ -14,6 +14,7 @@ const publicTenderRoutes = require('./routes/publicTenderRoutes') // NEW
 const applyTenderRoutes = require('./routes/applyTenderRoutes') // NEW
 const tempBidderApplicationRoutes = require('./routes/tempBidderApplicationRoutes')
 const paymentRoutes = require('./routes/paymentRoutes')
+const appliedTenderRoutes = require('./routes/appliedTenderRoutes')
 
 const app = express()
 app.use(
@@ -52,6 +53,7 @@ app.use('/api/public-tenders', publicTenderRoutes) // NEW — Public Tenders pag
 app.use('/api/apply-tenders', applyTenderRoutes) // NEW — Apply Tenders page
 app.use('/api/temp-applications', tempBidderApplicationRoutes)
 app.use('/api/payments', paymentRoutes)
+app.use('/api/applied-tenders', appliedTenderRoutes) // NEW — Applied Tenders page
 
 
 // 404 handler
