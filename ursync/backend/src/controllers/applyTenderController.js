@@ -9,9 +9,16 @@
 // "Open" tab -> application: 'Open'. "Upcoming" tab -> application:
 // 'Upcoming'. Completed is intentionally not exposed here — this page is
 // for tenders a bidder can currently or soon apply to.
+//
+// Once a bidder finishes ApplyTenderForm.jsx (clicks "Next"), a row is
+// created for them in `bidderlists` (see
+// tempBidderApplicationController.submitApplication). From that point on,
+// listApplyTenders excludes that tender from THAT user's results — other
+// users still see it normally.
 
 const Tender = require('../models/Tender')
 const User = require('../models/User')
+const BiddersList = require('../models/BiddersList')
 const formatCurrency = require('../utils/formatCurrency')
 
 const APPLICATION_STATES = ['Open', 'Upcoming']
@@ -116,6 +123,16 @@ async function listApplyTenders(req, res) {
 
     const stages = buildJoinStages()
     stages.push({ $match: { application } })
+
+    // Once this user has submitted an application for a tender (a
+    // bidderlists entry exists for tenderId+this user), that tender should
+    // no longer show up in THEIR Apply Tenders list — it's what
+    // ApplyTenderForm.jsx's "Next" button finalizes into bidderlists.
+    // Other users still see the tender normally.
+    const appliedTenderIds = await BiddersList.find({ userId: me._id }).distinct('tenderId')
+    if (appliedTenderIds.length) {
+      stages.push({ $match: { _id: { $nin: appliedTenderIds } } })
+    }
 
     if (category && category !== 'All') {
       stages.push({ $match: { 'categoryDoc.name': category } })

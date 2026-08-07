@@ -1,10 +1,19 @@
 // src/controllers/tempBidderApplicationController.js
-const fs = require('fs')
-const path = require('path')
+const mongoose = require('mongoose')
 const TempBidderApplication = require('../models/TempBidderApplication')
 const Tender = require('../models/Tender')
+const BiddersList = require('../models/BiddersList')
+const { getBucket, uploadBufferToGridFS, deleteGridFSFileSafe } = require('../config/gridfs')
+
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf']
 
 // ── Save (create-or-update) the current user's in-progress application ────
+// IMPORTANT: files are written to GridFS ONLY inside this handler — i.e.
+// only when the user actually clicks "Save" (or "Next", which also calls
+// this same persist flow). Nothing is uploaded to MongoDB on page load or
+// while the user is just typing/picking files client-side; the browser
+// holds those in memory until this endpoint is hit.
+//
 // Expects multipart/form-data:
 //   - field "formData": JSON string of the text fields
 //   - files: one per document label (field name = the label) + "signature"
@@ -25,26 +34,6 @@ exports.saveApplication = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid formData JSON.' })
     }
 
-    // req.files is an object keyed by fieldname when using multer.fields()
-    const files = req.files || {}
-    const newDocuments = []
-    let newSignaturePath = null
-
-    Object.keys(files).forEach((fieldName) => {
-      const fileArr = files[fieldName]
-      if (!fileArr || !fileArr[0]) return
-      const uploaded = fileArr[0]
-      if (fieldName === 'signature') {
-        newSignaturePath = uploaded.path
-      } else {
-        newDocuments.push({
-          label: fieldName,
-          filePath: uploaded.path,
-          originalName: uploaded.originalname,
-        })
-      }
-    })
-
     let tempDoc = await TempBidderApplication.findOne({ tenderId })
     if (!tempDoc) {
       tempDoc = new TempBidderApplication({
@@ -58,6 +47,63 @@ exports.saveApplication = async (req, res) => {
       (a) => String(a.userId) === String(userId)
     )
 
+    // The id that maps this bidder's documents/signature to this exact
+    // tender application — generated once and then reused for every
+    // subsequent Save/Next, and later carried over unchanged into the
+    // bidderlists collection when the application is submitted.
+    const applicationId = existingEntry ? existingEntry.applicationId : new mongoose.Types.ObjectId()
+
+    // req.files is an object keyed by fieldname when using multer.fields()
+    // with memoryStorage — each entry has a .buffer, nothing touches disk.
+    const files = req.files || {}
+    const newDocuments = []
+    let newSignature = null
+
+    for (const fieldName of Object.keys(files)) {
+      const uploaded = files[fieldName] && files[fieldName][0]
+      if (!uploaded) continue
+
+      if (!ALLOWED_MIME_TYPES.includes(uploaded.mimetype)) {
+        return res.status(400).json({
+          success: false,
+          message: `Unsupported file type for "${fieldName}". Only JPG, PNG, or PDF allowed.`,
+        })
+      }
+
+      const fileId = await uploadBufferToGridFS(
+        uploaded.buffer,
+        `${fieldName}-${userId}-${Date.now()}`,
+        uploaded.mimetype,
+        {
+          // Full mapping stored directly on the GridFS file document
+          // (bidderDocuments.files.metadata) — traceable to the bidder,
+          // the tender, AND the specific application it was uploaded for,
+          // without a second lookup. Visible directly in Compass/Atlas.
+          userId: String(userId),
+          tenderId: String(tenderId),
+          applicationId: String(applicationId),
+          label: fieldName,
+          originalName: uploaded.originalname,
+        }
+      )
+
+      if (fieldName === 'signature') {
+        newSignature = {
+          fileId,
+          contentType: uploaded.mimetype,
+          originalName: uploaded.originalname,
+        }
+      } else {
+        newDocuments.push({
+          label: fieldName,
+          fileId,
+          originalName: uploaded.originalname,
+          contentType: uploaded.mimetype,
+          size: uploaded.size,
+        })
+      }
+    }
+
     const now = new Date()
     const applicationDate = now.toISOString().slice(0, 10)
 
@@ -66,31 +112,37 @@ exports.saveApplication = async (req, res) => {
       existingEntry.formData = { ...existingEntry.formData, ...formData }
 
       // Replace any document whose label was re-uploaded this time, deleting
-      // the old file from disk first; keep the rest untouched.
+      // the OLD GridFS file first; keep the rest untouched.
       newDocuments.forEach((doc) => {
         const idx = existingEntry.documents.findIndex((d) => d.label === doc.label)
         if (idx >= 0) {
-          deleteFileSafe(existingEntry.documents[idx].filePath)
+          deleteGridFSFileSafe(existingEntry.documents[idx].fileId)
           existingEntry.documents[idx] = doc
         } else {
           existingEntry.documents.push(doc)
         }
       })
 
-      if (newSignaturePath) {
-        deleteFileSafe(existingEntry.signatureFilePath)
-        existingEntry.signatureFilePath = newSignaturePath
+      if (newSignature) {
+        deleteGridFSFileSafe(existingEntry.signatureFileId)
+        existingEntry.signatureFileId = newSignature.fileId
+        existingEntry.signatureContentType = newSignature.contentType
+        existingEntry.signatureOriginalName = newSignature.originalName
       }
 
       existingEntry.applicationTime = now
       existingEntry.applicationDate = applicationDate
     } else {
       tempDoc.applications.push({
+        applicationId,
         userId,
         formData,
         documents: newDocuments,
-        signatureFilePath: newSignaturePath,
+        signatureFileId: newSignature?.fileId || null,
+        signatureContentType: newSignature?.contentType || null,
+        signatureOriginalName: newSignature?.originalName || null,
         isPaid: false,
+        paymentId: null,
         applicationDate,
         applicationTime: now,
       })
@@ -105,6 +157,11 @@ exports.saveApplication = async (req, res) => {
 }
 
 // ── Load the current user's saved (unpaid) application for this tender ────
+// Called when the user enters/reopens the page — READ ONLY, never writes.
+// Documents are returned as streaming URLs (/temp-applications/file/:fileId)
+// that the frontend can drop straight into <img src> or an <a href> — the
+// actual bytes are fetched on demand from GridFS by getFile below, not
+// embedded here, so this response stays small even with several PDFs.
 exports.getApplication = async (req, res) => {
   try {
     const { tenderId } = req.params
@@ -121,17 +178,32 @@ exports.getApplication = async (req, res) => {
 
     const entry = tempDoc.applications[0]
 
-    // Convert absolute disk paths to URLs the frontend can preview/download.
-    const toUrl = (p) => (p ? '/temp-uploads/' + path.basename(path.dirname(p)) + '/' + path.basename(p) : null)
+    // NOTE: no leading "/api" here — the frontend's apiFetch/API_BASE
+    // already includes that prefix (same pattern as
+    // apiFetch('/temp-applications/...') elsewhere). Returning "/api/..."
+    // here doubled the prefix and 404'd once auth was fixed.
+    const toFileMeta = (d) => ({
+      label: d.label,
+      originalName: d.originalName,
+      contentType: d.contentType,
+      size: d.size,
+      url: `/temp-applications/file/${d.fileId}`,
+    })
 
     return res.status(200).json({
       success: true,
       data: {
+        applicationId: entry.applicationId,
         formData: entry.formData || {},
-        documents: (entry.documents || []).map((d) => ({ label: d.label, url: toUrl(d.filePath), originalName: d.originalName })),
-        signatureUrl: toUrl(entry.signatureFilePath),
+        documents: (entry.documents || []).map(toFileMeta),
+        signatureUrl: entry.signatureFileId
+          ? `/temp-applications/file/${entry.signatureFileId}`
+          : null,
+        signatureContentType: entry.signatureContentType || null,
         isPaid: entry.isPaid,
+        paymentId: entry.paymentId,
         applicationDate: entry.applicationDate,
+        applicationSubmissionDateTime: entry.applicationSubmissionDateTime,
       },
     })
   } catch (err) {
@@ -139,31 +211,169 @@ exports.getApplication = async (req, res) => {
   }
 }
 
-// ── Mark an application as paid (call this from your payment-success flow) ─
-// NOTE: this only flips the flag so the cleanup job skips it. Wire your
-// actual "copy into permanent applications collection" step wherever your
-// payment webhook/confirmation handler lives, then optionally remove this
-// temp entry once the permanent record is safely created.
-exports.markPaid = async (req, res) => {
+// ── Stream a single stored file back — used when the user CLICKS a
+// document/signature thumbnail to view/open it. Nothing is loaded fully
+// into memory; it's piped straight from GridFS to the response.
+exports.getFile = async (req, res) => {
+  try {
+    const { fileId } = req.params
+    if (!mongoose.Types.ObjectId.isValid(fileId)) {
+      return res.status(400).json({ success: false, message: 'Invalid file id.' })
+    }
+    const _id = new mongoose.Types.ObjectId(fileId)
+
+    const filesColl = mongoose.connection.db.collection('bidderDocuments.files')
+    const fileDoc = await filesColl.findOne({ _id })
+    if (!fileDoc) {
+      return res.status(404).json({ success: false, message: 'File not found.' })
+    }
+
+    // Ownership check using the metadata saved at upload time (userId,
+    // tenderId, applicationId, label — see uploadBufferToGridFS call in
+    // saveApplication). Only the bidder who uploaded it, or department/
+    // admin staff, may view it. Adjust the role check to match your actual
+    // role field/values.
+    const requesterId = String(req.user._id)
+    const ownerId = fileDoc.metadata?.userId
+    const isOwner = ownerId && ownerId === requesterId
+    const isStaff = ['Admin', 'DepartmentStaff', 'SuperAdmin'].includes(req.user.role)
+
+    if (!isOwner && !isStaff) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this file.' })
+    }
+
+    // Fall back to application/pdf (not application/octet-stream) — this
+    // endpoint only ever serves jpeg/png/pdf, and octet-stream is exactly
+    // what makes browsers force a download instead of rendering inline.
+    // If you're hitting the download issue, check this in DevTools →
+    // Network → this request's response headers: if Content-Type came
+    // back as application/octet-stream, fileDoc.contentType was empty,
+    // meaning the file was uploaded before contentType was being set
+    // correctly and needs to be re-uploaded.
+    const contentType = fileDoc.contentType || 'application/pdf'
+    res.set('Content-Type', contentType)
+
+    // "inline" lets images render and PDFs open in-browser instead of
+    // forcing a download prompt — matches "show the document on click".
+    // A bare `inline` with no filename is unreliable in some browsers;
+    // always include one.
+    const rawName = fileDoc.filename || fileDoc.metadata?.originalName || 'document'
+    const safeFilename = String(rawName).replace(/["\\;]/g, '_')
+    res.set('Content-Disposition', `inline; filename="${safeFilename}"`)
+
+    // Make sure nothing upstream (proxy/helmet/CDN) sniffs a different
+    // type and rewrites this into an attachment.
+    res.set('X-Content-Type-Options', 'nosniff')
+
+    const downloadStream = getBucket().openDownloadStream(_id)
+    downloadStream.on('error', () => {
+      if (!res.headersSent) res.status(404).json({ success: false, message: 'File not found.' })
+    })
+    downloadStream.pipe(res)
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch file', error: err.message })
+  }
+}
+
+// ── Finalize the application into `bidderlists` and remove it from the
+// temp collection — called the moment the bidder clicks "Next" on
+// ApplyTenderForm.jsx. Unlike markPaid, this does NOT require a paymentId;
+// it exists so a submitted application immediately disappears from that
+// user's Apply Tenders list, independent of any payment step. Reuses the
+// exact same fileId references (and the same applicationId) already
+// sitting in bidderDocuments.files/.chunks — nothing is re-uploaded.
+exports.submitApplication = async (req, res) => {
   try {
     const { tenderId } = req.params
     const userId = req.user._id
 
     const tempDoc = await TempBidderApplication.findOne({ tenderId, 'applications.userId': userId })
     if (!tempDoc) {
-      return res.status(404).json({ success: false, message: 'Application not found.' })
+      return res.status(404).json({ success: false, message: 'Application not found. Please save your application first.' })
     }
     const entry = tempDoc.applications.find((a) => String(a.userId) === String(userId))
-    entry.isPaid = true
-    await tempDoc.save()
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Application not found. Please save your application first.' })
+    }
+
+    const now = new Date()
+
+    const bidderEntry = await BiddersList.findOneAndUpdate(
+      { tenderId, userId },
+      {
+        applicationId: entry.applicationId,
+        tenderId,
+        departmentId: tempDoc.departmentId,
+        userId,
+        formData: entry.formData || {},
+        documents: entry.documents || [],
+        signatureFileId: entry.signatureFileId || null,
+        signatureContentType: entry.signatureContentType || null,
+        signatureOriginalName: entry.signatureOriginalName || null,
+        status: 'Submitted',
+        applicationDate: entry.applicationDate,
+        applicationSubmissionDateTime: now,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
+
+    // Remove this bidder's entry from the temp collection now that it's
+    // permanently recorded in bidderlists — the GridFS files are untouched
+    // (bidderlists now references the exact same fileIds).
+    tempDoc.applications = tempDoc.applications.filter(
+      (a) => String(a.userId) !== String(userId)
+    )
+    if (tempDoc.applications.length === 0) {
+      await TempBidderApplication.deleteOne({ _id: tempDoc._id })
+    } else {
+      await tempDoc.save()
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Application submitted successfully.',
+      data: { applicationId: bidderEntry.applicationId },
+    })
+  } catch (err) {
+    // Duplicate key on { tenderId, userId } means this user already has a
+    // bidderlists entry for this tender (e.g. double-click on Next) — treat
+    // as success rather than a hard failure, since the end state is correct.
+    if (err.code === 11000) {
+      return res.status(200).json({ success: true, message: 'Application already submitted.' })
+    }
+    return res.status(500).json({ success: false, message: 'Failed to submit application', error: err.message })
+  }
+}
+
+// ── Mark an application as paid (optional follow-up step) ─────────────────
+// Call this from a payment-success flow (QR paid / mobile-app payment) if
+// you wire one up later. Updates the existing bidderlists row created by
+// submitApplication() in place — same applicationId, same files, just adds
+// payment fields and flips status to 'Paid'. Safe to call any time after
+// submission; does NOT touch tempbidderapplications (that entry is already
+// gone by the time this runs).
+exports.markPaid = async (req, res) => {
+  try {
+    const { tenderId } = req.params
+    const userId = req.user._id
+    const { paymentId } = req.body
+
+    if (!paymentId) {
+      return res.status(400).json({ success: false, message: 'paymentId is required.' })
+    }
+
+    const updated = await BiddersList.findOneAndUpdate(
+      { tenderId, userId },
+      { status: 'Paid', paymentId, paidAt: new Date() },
+      { new: true }
+    )
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Submitted application not found for this tender.' })
+    }
 
     return res.status(200).json({ success: true, message: 'Application marked as paid.' })
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to mark application paid', error: err.message })
   }
-}
-
-function deleteFileSafe(filePath) {
-  if (!filePath) return
-  fs.unlink(filePath, () => {}) // ignore errors (file may already be gone)
 }

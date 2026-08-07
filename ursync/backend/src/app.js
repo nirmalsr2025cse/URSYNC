@@ -1,6 +1,7 @@
 //src/app.js
 const express = require('express')
 const cors = require('cors')
+const path = require('path')
 const tenderRoutes = require('./routes/tenderRoutes')
 const authRoutes = require('./routes/authRoutes')
 const locationRoutes = require('./routes/locationRoutes')
@@ -11,8 +12,8 @@ const approvementRoutes = require('./routes/approvementRoutes') // NEW
 const createTenderApprovalRoutes = require('./routes/createTenderApprovalRoutes') // NEW
 const publicTenderRoutes = require('./routes/publicTenderRoutes') // NEW 
 const applyTenderRoutes = require('./routes/applyTenderRoutes') // NEW
-const path = require('path')
 const tempBidderApplicationRoutes = require('./routes/tempBidderApplicationRoutes')
+const paymentRoutes = require('./routes/paymentRoutes')
 
 const app = express()
 app.use(
@@ -20,6 +21,16 @@ app.use(
     origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   })
 )
+
+app.use(
+  '/api/payments/webhook',
+  express.raw({ type: 'application/json' }),
+  (req, res, next) => {
+    req.rawBody = req.body // Buffer, needed for signature verification
+    next()
+  }
+)
+
 app.use(express.json())
 
 app.use(
@@ -40,6 +51,7 @@ app.use('/api/create-tender-approval', createTenderApprovalRoutes) // NEW — Cr
 app.use('/api/public-tenders', publicTenderRoutes) // NEW — Public Tenders page
 app.use('/api/apply-tenders', applyTenderRoutes) // NEW — Apply Tenders page
 app.use('/api/temp-applications', tempBidderApplicationRoutes)
+app.use('/api/payments', paymentRoutes)
 
 
 // 404 handler

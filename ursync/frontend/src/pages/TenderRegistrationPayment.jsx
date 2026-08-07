@@ -1,6 +1,29 @@
 // src/pages/TenderRegistrationPayment.jsx
-import React, { useState, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+//
+// Hardened version — frontend-side edge cases covered:
+//   - QR creation failure → explicit error state + "Try Again" button
+//     (not left creating forever, #1/#9)
+//   - QR expiry → explicit "QR Expired" state + button to generate a new
+//     one, instead of polling a dead QR silently forever (#5)
+//   - Amount mismatch flagged by the backend → distinct message, not
+//     shown as either "paid" or "failed" (#10)
+//   - Polling has a max duration (10 minutes) — after that we stop and
+//     show "still waiting" with a manual refresh option, rather than
+//     polling forever on an abandoned tab (#9 spinner forever)
+//   - Tab visibility: polling pauses while the tab is hidden and resumes
+//     (with an immediate check) when it becomes visible again, so a phone
+//     lock / app switch during payment doesn't miss the result once the
+//     user comes back (#9 mobile lock / incoming call / app switch)
+//   - Backend-validated access via :appId in the URL (unchanged from
+//     before) — blocked/expired/already-paid states rendered in place
+//     without navigating away
+//
+// Out of scope here (see paymentController.js comment for the full list of
+// what's backend-covered vs genuinely out of code's reach).
+
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useApi } from '../api/client'
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ toast }) {
@@ -23,7 +46,7 @@ function Toast({ toast }) {
   )
 }
 
-// ── Section Wrapper (matches ApplyTenderForm) ─────────────────────────────────
+// ── Section Wrapper ───────────────────────────────────────────────────────────
 function Section({ title, icon, children }) {
   return (
     <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden">
@@ -47,84 +70,269 @@ const iconProps = {
 
 const PAYMENT_APPS = ['Google Pay', 'PhonePe', 'Paytm', 'Navi', 'BHIM UPI', 'Amazon Pay', 'Other UPI Apps']
 
+const POLL_INTERVAL_MS = 3000
+const MAX_POLL_DURATION_MS = 10 * 60 * 1000 // stop auto-polling after 10 minutes
+const SUCCESS_REDIRECT_DELAY_MS = 2500
+
 export default function TenderRegistrationPayment() {
   const navigate = useNavigate()
-  const location = useLocation()
+  const { appId: appIdParam } = useParams()
+  const { apiFetch } = useApi()
 
-  // ── Route guard ──────────────────────────────────────────────────────────
-  // This page must only be reachable by navigating forward from
-  // ApplyTenderForm.jsx's handleNext(), which passes tenderCode/formData via
-  // router state. (Previously this checked location.state?.tenderId, but
-  // ApplyTenderForm.jsx now sends tenderCode — that mismatch meant
-  // hasValidState was ALWAYS false, even right after a normal, successful
-  // navigation from the form. Fixed below.)
-  //
-  // If a user types this URL directly, refreshes, opens it in a new tab, or
-  // lands here after a client-side rehydration, location.state will be
-  // null — instead of stranding them here or dumping them on the tender
-  // list, send them back into the exact ApplyTenderForm page they were on,
-  // using the tenderCode saved to sessionStorage the moment they clicked
-  // Next there. Only fall back to the tender list if there's truly no
-  // prior tender context at all (e.g. first-ever visit, cleared storage).
-  const hasValidState = Boolean(location.state?.tenderCode)
+  const appId = appIdParam ? decodeURIComponent(appIdParam) : null
 
-  useEffect(() => {
-    if (!hasValidState) {
-      const lastTenderCode = sessionStorage.getItem('lastTenderCode')
-      if (lastTenderCode) {
-        navigate('/apply-tenders/apply/' + encodeURIComponent(lastTenderCode), { replace: true })
-      } else {
-        navigate('/apply-tenders', { replace: true })
-      }
-    }
-  }, [hasValidState, navigate])
+  // ── Page-level validation state ───────────────────────────────────────────
+  // 'loading' | 'blocked' | 'ready'
+  const [pageState, setPageState] = useState('loading')
+  const [blockReason, setBlockReason] = useState('')
+  const [appInfo, setAppInfo] = useState(null)
 
-  const tenderCode = location.state?.tenderCode || 'N/A'
-  const tenderName = location.state?.formData?.tenderName || location.state?.tenderName || 'N/A'
-  const REGISTRATION_FEE = 500
-
-  const [mobile, setMobile]   = useState('')
-  const [error, setError]     = useState('')
-  const [toast, setToast]     = useState(null)
-
+  const [toast, setToast] = useState(null)
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
+
+  const loadSummary = useCallback(() => {
+    if (!appId) {
+      setBlockReason('No application specified.')
+      setPageState('blocked')
+      return
+    }
+    setPageState('loading')
+    apiFetch('/payments/application/' + encodeURIComponent(appId))
+      .then((res) => {
+        setAppInfo(res.data)
+        setPageState('ready')
+      })
+      .catch((err) => {
+        setBlockReason(err.message || 'This application cannot be accessed.')
+        setPageState('blocked')
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appId])
+
+  useEffect(() => { loadSummary() }, [loadSummary])
+
+  // ── QR + payment status ────────────────────────────────────────────────────
+  // 'idle' | 'creating' | 'pending' | 'paid' | 'expired' | 'amount_mismatch'
+  // | 'create_error' | 'timed_out'
+  const [qrState, setQrState] = useState('idle')
+  const [qr, setQr] = useState(null)
+  const [paymentId, setPaymentId] = useState(null)
+  const [mismatchMessage, setMismatchMessage] = useState('')
+
+  const pollRef = useRef(null)
+  const pollStartedAtRef = useRef(null)
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
+  const createQr = useCallback(() => {
+    if (!appId) return
+    setQrState('creating')
+    apiFetch('/payments/qr/' + encodeURIComponent(appId), { method: 'POST' })
+      .then((res) => {
+        setQr(res.data)
+        setQrState('pending')
+        pollStartedAtRef.current = Date.now()
+      })
+      .catch((err) => {
+        setQrState('create_error')
+        showToast(err.message || 'Failed to generate payment QR.', 'error')
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appId])
+
+  useEffect(() => {
+    if (pageState === 'ready') createQr()
+  }, [pageState, createQr])
+
+  const pollOnce = useCallback(() => {
+    if (!appId) return
+    apiFetch('/payments/qr/' + encodeURIComponent(appId) + '/status')
+      .then((res) => {
+        const { status, paymentId: pid, message } = res.data
+        if (status === 'paid') {
+          setPaymentId(pid)
+          setQrState('paid')
+          stopPolling()
+        } else if (status === 'expired') {
+          setQrState('expired')
+          stopPolling()
+        } else if (status === 'amount_mismatch') {
+          setMismatchMessage(message || 'Payment amount did not match the required fee.')
+          setQrState('amount_mismatch')
+          stopPolling()
+        }
+        // 'pending' / 'no_qr' → keep polling, nothing to change
+      })
+      .catch(() => {
+        // Transient network error while polling — not fatal, try again
+        // next tick rather than surfacing an error mid-payment.
+      })
+  }, [appId, stopPolling])
+
+  // Poll while pending, pause when the tab is hidden, resume + immediately
+  // re-check when it becomes visible again (covers phone lock / app switch
+  // / incoming call during the payment).
+  useEffect(() => {
+    if (qrState !== 'pending') return
+
+    function tick() {
+      // Stop auto-polling after MAX_POLL_DURATION_MS so an abandoned tab
+      // doesn't poll forever — surface a "still waiting" state instead.
+      if (Date.now() - (pollStartedAtRef.current || Date.now()) > MAX_POLL_DURATION_MS) {
+        setQrState('timed_out')
+        stopPolling()
+        return
+      }
+      pollOnce()
+    }
+
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') {
+        pollOnce() // immediate check on return, don't wait for the next tick
+        if (!pollRef.current) pollRef.current = setInterval(tick, POLL_INTERVAL_MS)
+      } else {
+        stopPolling()
+      }
+    }
+
+    pollRef.current = setInterval(tick, POLL_INTERVAL_MS)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      stopPolling()
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [qrState, pollOnce, stopPolling])
+
+  useEffect(() => {
+    if (qrState !== 'paid') return
+    const t = setTimeout(() => navigate('/apply-tenders', { replace: true }), SUCCESS_REDIRECT_DELAY_MS)
+    return () => clearTimeout(t)
+  }, [qrState, navigate])
+
+  useEffect(() => stopPolling, [stopPolling])
+
+  function handleRetryQr() {
+    setQr(null)
+    setMismatchMessage('')
+    createQr()
+  }
+
+  function handleManualRefresh() {
+    pollStartedAtRef.current = Date.now()
+    setQrState('pending')
+    pollOnce()
+  }
+
+  // ── Mobile number (pay-via-mobile — wiring done tomorrow) ─────────────────
+  const [mobile, setMobile] = useState('')
+  const [mobileError, setMobileError] = useState('')
+  const isMobileValid = /^\d{10}$/.test(mobile)
 
   function handleMobileChange(e) {
     const val = e.target.value.replace(/[^\d]/g, '').slice(0, 10)
     setMobile(val)
-    if (error) setError('')
+    if (mobileError) setMobileError('')
   }
 
-  const isMobileValid = /^\d{10}$/.test(mobile)
-
-  function handleNext() {
+  function handleMobileNext() {
     if (!mobile.trim()) {
-      setError('Mobile number is required.')
+      setMobileError('Mobile number is required.')
       showToast('Please enter your mobile number.', 'error')
       return
     }
     if (!isMobileValid) {
-      setError('Enter a valid 10-digit mobile number.')
+      setMobileError('Enter a valid 10-digit mobile number.')
       showToast('Invalid mobile number.', 'error')
       return
     }
-    navigate('/apply-tenders/payment/choose-platform', {
-      state: {
-        tenderCode,
-        tenderName,
-        registrationFee: REGISTRATION_FEE,
-        mobile,
-      },
+    navigate('/apply-tenders/payment/choose-platform/' + encodeURIComponent(appId), {
+      state: { mobile },
     })
   }
 
-  // Don't render the payment UI at all while the redirect is in flight —
-  // avoids a flash of fake "N/A" data before useEffect kicks the user out.
-  if (!hasValidState) {
-    return null
+  // ── Render: loading ────────────────────────────────────────────────────────
+  if (pageState === 'loading') {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="w-10 h-10 border-4 border-[#FFE5BF] border-t-[#1A4A8C] rounded-full animate-spin mb-4" />
+        <p className="text-sm text-[#6B7A8D]">Loading your application…</p>
+      </div>
+    )
+  }
+
+  // ── Render: blocked ─────────────────────────────────────────────────────────
+  if (pageState === 'blocked') {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4 border border-red-200">
+          <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <p className="font-bold text-[#0A2240] mb-2 text-lg">This page isn't accessible.</p>
+        <p className="text-sm text-[#6B7A8D] mb-4 max-w-sm">{blockReason}</p>
+        <button
+          onClick={() => navigate('/apply-tenders')}
+          className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#0A2240] text-white hover:bg-[#1A4A8C] transition-colors"
+        >
+          Back to Apply Tenders
+        </button>
+      </div>
+    )
+  }
+
+  // ── Render: paid / success ──────────────────────────────────────────────────
+  if (qrState === 'paid') {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mb-4 border border-emerald-200">
+          <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <p className="font-bold text-[#0A2240] mb-1 text-lg">Payment Successful!</p>
+        <p className="text-sm text-[#6B7A8D] mb-1">
+          Your registration fee for <span className="font-semibold text-[#0A2240]">{appInfo?.tenderName}</span> has been received.
+        </p>
+        {paymentId && <p className="text-xs text-[#6B7A8D] mb-4">Payment ID: {paymentId}</p>}
+        <p className="text-xs text-[#6B7A8D]">Redirecting you to Apply Tenders…</p>
+      </div>
+    )
+  }
+
+  // ── Render: amount mismatch ──────────────────────────────────────────────────
+  if (qrState === 'amount_mismatch') {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mb-4 border border-amber-200">
+          <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <p className="font-bold text-[#0A2240] mb-2 text-lg">We received a payment, but it needs review.</p>
+        <p className="text-sm text-[#6B7A8D] mb-4 max-w-sm">{mismatchMessage}</p>
+        <p className="text-xs text-[#6B7A8D] mb-4 max-w-sm">
+          Your money is safe — don't pay again. Our team will verify and confirm your application shortly.
+        </p>
+        <button
+          onClick={() => navigate('/apply-tenders')}
+          className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#0A2240] text-white hover:bg-[#1A4A8C] transition-colors"
+        >
+          Back to Apply Tenders
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -134,7 +342,7 @@ export default function TenderRegistrationPayment() {
       {/* ── Page Header ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 pb-4 border-b border-[#FFE5BF]">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/apply-tenders')}
           className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -159,11 +367,11 @@ export default function TenderRegistrationPayment() {
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div>
             <dt className="text-xs font-semibold text-[#6B7A8D] mb-1">Tender Name</dt>
-            <dd className="font-bold text-[#0A2240]">{tenderName}</dd>
+            <dd className="font-bold text-[#0A2240]">{appInfo?.tenderName || 'N/A'}</dd>
           </div>
           <div>
             <dt className="text-xs font-semibold text-[#6B7A8D] mb-1">Tender ID</dt>
-            <dd className="font-bold text-[#0A2240]">{tenderCode}</dd>
+            <dd className="font-bold text-[#0A2240]">{appInfo?.tenderCode || 'N/A'}</dd>
           </div>
           <div>
             <dt className="text-xs font-semibold text-[#6B7A8D] mb-1">Registration Fee</dt>
@@ -171,7 +379,9 @@ export default function TenderRegistrationPayment() {
           </div>
           <div>
             <dt className="text-xs font-semibold text-[#6B7A8D] mb-1">Amount</dt>
-            <dd className="font-bold text-[#F62440]">₹{REGISTRATION_FEE.toLocaleString('en-IN')} (Fixed)</dd>
+            <dd className="font-bold text-[#F62440]">
+              ₹{((appInfo?.amount || 0) / 100).toLocaleString('en-IN')} (Fixed)
+            </dd>
           </div>
           <div className="sm:col-span-2">
             <dt className="text-xs font-semibold text-[#6B7A8D] mb-1">Payment Status</dt>
@@ -194,24 +404,75 @@ export default function TenderRegistrationPayment() {
       }>
         <div className="flex flex-col items-center gap-3 py-2 max-w-md mx-auto">
           <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-2xl border border-[#FFE5BF] bg-[#FFFAF3] flex items-center justify-center p-4">
-            {/* Placeholder QR image */}
-            <svg viewBox="0 0 100 100" className="w-full h-full text-[#0A2240]">
-              <rect x="0" y="0" width="100" height="100" fill="white" />
-              {Array.from({ length: 10 }).map((_, r) =>
-                Array.from({ length: 10 }).map((_, c) => (
-                  ((r + c) % 3 === 0 || (r * c) % 7 === 0) && (
-                    <rect key={`${r}-${c}`} x={c * 10} y={r * 10} width="10" height="10" fill="currentColor" />
-                  )
-                ))
-              )}
-              <rect x="0" y="0" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="4" />
-              <rect x="70" y="0" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="4" />
-              <rect x="0" y="70" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="4" />
-            </svg>
+            {qrState === 'creating' && (
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-8 h-8 border-4 border-[#FFE5BF] border-t-[#1A4A8C] rounded-full animate-spin" />
+                <p className="text-xs text-[#6B7A8D]">Generating QR code…</p>
+              </div>
+            )}
+
+            {qrState === 'create_error' && (
+              <div className="flex flex-col items-center gap-3 px-4 text-center">
+                <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <p className="text-xs text-red-500">Couldn't generate the QR code.</p>
+                <button
+                  onClick={handleRetryQr}
+                  className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+
+            {qrState === 'expired' && (
+              <div className="flex flex-col items-center gap-3 px-4 text-center">
+                <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-xs text-amber-600 font-semibold">This QR code has expired.</p>
+                <p className="text-[11px] text-[#6B7A8D]">If you already paid, don't worry — contact support with your UPI reference. Otherwise, generate a new QR below.</p>
+                <button
+                  onClick={handleRetryQr}
+                  className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+                >
+                  Generate New QR
+                </button>
+              </div>
+            )}
+
+            {qrState === 'timed_out' && (
+              <div className="flex flex-col items-center gap-3 px-4 text-center">
+                <svg className="w-6 h-6 text-[#6B7A8D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-xs text-[#0A2240] font-semibold">Still waiting for payment.</p>
+                <p className="text-[11px] text-[#6B7A8D]">If you already paid, tap below to check again.</p>
+                <button
+                  onClick={handleManualRefresh}
+                  className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+                >
+                  Check Again
+                </button>
+              </div>
+            )}
+
+            {qrState === 'pending' && qr?.imageUrl && (
+              <img src={qr.imageUrl} alt="Scan to pay" className="w-full h-full object-contain" />
+            )}
           </div>
-          <p className="text-xs text-[#6B7A8D] text-center max-w-xs">
-            Scan this QR Code using any supported UPI application.
-          </p>
+
+          {qrState === 'pending' && (
+            <p className="text-xs text-[#6B7A8D] text-center max-w-xs flex items-center gap-1.5">
+              <svg className="w-3 h-3 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Scan using any UPI app. This updates automatically once payment is received. QR expires in {appInfo?.qrTtlMinutes || 15} minutes.
+            </p>
+          )}
         </div>
       </Section>
 
@@ -232,30 +493,26 @@ export default function TenderRegistrationPayment() {
           placeholder="Enter 10-digit mobile number"
           className={[
             'w-full sm:w-96 px-4 py-2.5 text-sm rounded-xl border transition-all',
-            error
+            mobileError
               ? 'border-[#F62440] bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#F62440]/30'
               : 'border-[#FFE5BF] bg-white text-[#0A2240] placeholder-[#6B7A8D] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C]',
           ].join(' ')}
         />
-        {error && (
+        {mobileError && (
           <p className="text-[10px] text-[#F62440] mt-1 flex items-center gap-1">
             <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            {error}
+            {mobileError}
           </p>
         )}
 
-        {/* Accepted Platforms */}
         <div className="mt-5">
           <p className="text-xs font-semibold text-[#0A2240] mb-2">Accepted Payment Platforms</p>
           <div className="flex flex-wrap gap-2">
             {PAYMENT_APPS.map((app) => (
-              <span
-                key={app}
-                className="text-xs font-medium px-3 py-1.5 rounded-full bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF]"
-              >
+              <span key={app} className="text-xs font-medium px-3 py-1.5 rounded-full bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF]">
                 {app}
               </span>
             ))}
@@ -273,7 +530,7 @@ export default function TenderRegistrationPayment() {
             ← Back
           </button>
           <button
-            onClick={handleNext}
+            onClick={handleMobileNext}
             disabled={!isMobileValid}
             title={!isMobileValid ? 'Enter a valid mobile number to continue' : 'Proceed'}
             className={[

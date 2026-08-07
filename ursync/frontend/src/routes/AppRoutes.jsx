@@ -54,6 +54,7 @@ import SearchResourcePage from '../pages/SearchResourcepage'
 import ResourceSharing from '../pages/ResourceSharing'
 import GetResourcePage from '../pages/GetResourcePage'
 import ResourceDetailPage from '../pages/ResourceDetailPage'
+import AppliedTenders from '../pages/AppliedTenders'
 
 
 export default function AppRoutes() {
@@ -143,8 +144,8 @@ export default function AppRoutes() {
         <Route path="/pending" element={<Pending />} />
         <Route path="/finalbidder" element={<FinalBidder />} />
         <Route path="/completed" element={<Completed />} />
-        <Route path="/apply-tenders/payment" element={<TenderRegistrationPayment />} />
-        <Route path="/apply-tenders/payment/choose-platform" element={<ChoosePaymentPlatform />} />
+        <Route path="/apply-tenders/payment/:appId" element={<TenderRegistrationPayment />} />
+        <Route path="/apply-tenders/payment/choose-platform/:appId" element={<ChoosePaymentPlatform />} />
         <Route path="/financial-changes" element={<TenderFinancialChangesPage />} />
         <Route path="/financial-changes/details" element={<TenderFinancialChangeDetailsPage />} />
         <Route path="/bidder-list" element={<AdminBidderView />} />
@@ -156,6 +157,7 @@ export default function AppRoutes() {
         <Route path="/search-resource/get-resource" element={<GetResourcePage />} />
         <Route path="/search-resource/details" element={<ResourceDetailPage />} />
         <Route path="/resource-sharing" element={<ResourceSharing />} />
+        <Route path="/applied-tenders" element={<AppliedTenders />} />
       </Route>
 
       {/* Wildcard MUST stay last. It was previously listed first — with

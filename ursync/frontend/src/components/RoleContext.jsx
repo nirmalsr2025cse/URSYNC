@@ -100,6 +100,7 @@ export const NAV_CONFIG = {
   [ROLES.TENDER_PERSON]: [
     { label: 'Home',               path: '/home',                icon: 'home'         },
     { label: 'Apply Tenders',      path: '/apply-tenders',       icon: 'apply'        },
+    { label: 'Applied Tenders',    path: '/applied-tenders',     icon: 'savedtenders' },
     { label: 'Tender by Department',path: '/tenders-by-dept',    icon: 'building'     },
     { label: 'Tender by Location', path: '/tenders-by-location', icon: 'mappin'       },
     { label: 'Tender by Organization',path: '/tenders-by-org',   icon: 'org'          },

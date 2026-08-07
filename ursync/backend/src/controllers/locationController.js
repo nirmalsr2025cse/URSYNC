@@ -58,7 +58,14 @@ async function autocomplete(req, res) {
     return res.json({ predictions })
   } catch (err) {
     console.error('locationController.autocomplete error:', err.message)
-    return res.status(502).json({ message: 'Failed to fetch location suggestions' })
+    // TEMP DEBUG: surface the real Google error to the client so it shows
+    // up in the browser Network tab response body, not just server logs.
+    // Revert to a generic message once the key issue is resolved.
+    return res.status(502).json({
+      message: 'Failed to fetch location suggestions',
+      debug: err.message,
+      googleStatus: err.googleStatus || null,
+    })
   }
 }
 

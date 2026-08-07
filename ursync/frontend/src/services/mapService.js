@@ -1,20 +1,21 @@
 /**
  * Utility helpers for Google Maps integration.
  */
-import { Loader } from '@googlemaps/js-api-loader'
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 
 const GOOGLE_MAPS_JS_KEY = import.meta.env.VITE_GOOGLE_MAPS_JS_KEY
 
 let loaderPromise = null
+let optionsSet = false
 
 /**
- * Returns a promise that resolves once the Google Maps SDK is ready.
- * Loads the SDK on demand via @googlemaps/js-api-loader, pulling the key
- * from VITE_GOOGLE_MAPS_JS_KEY (frontend .env) — nothing hardcoded in
- * index.html, no global 'google-maps-ready' event needed anymore.
+ * Returns a promise that resolves to the `maps` library namespace once the
+ * Google Maps SDK is ready. We resolve with the object importLibrary()
+ * gives us directly, rather than trusting window.google.maps to be
+ * populated — that's what was causing "Map is not a constructor".
  */
 export function waitForGoogleMaps() {
-  if (window.google?.maps) { // Already loaded (e.g. hot-reload) — skip re-loading
+  if (window.google?.maps?.Map) { // Already loaded (e.g. hot-reload) — skip re-loading
     return Promise.resolve(window.google.maps)
   }
 
@@ -23,12 +24,21 @@ export function waitForGoogleMaps() {
   }
 
   if (!loaderPromise) {
-    loaderPromise = new Loader({
-      apiKey: GOOGLE_MAPS_JS_KEY,
-      version: 'weekly',
-    })
-      .importLibrary('maps')
-      .then(() => window.google.maps)
+    if (!optionsSet) {
+      setOptions({
+        key: GOOGLE_MAPS_JS_KEY,
+        v: 'weekly',
+      })
+      optionsSet = true
+    }
+
+    // Load both the 'maps' library (Map, InfoWindow, SymbolPath) and the
+    // 'marker' library (Marker) up front — createMap/addMarkers need both.
+    loaderPromise = Promise.all([
+      importLibrary('maps'),
+      importLibrary('marker'),
+    ])
+      .then(([mapsLib]) => mapsLib) // mapsLib === window.google.maps, returned directly
       .catch((err) => {
         loaderPromise = null // allow retry on next call if it failed
         throw new Error('Google Maps failed to load: ' + err.message)
@@ -42,7 +52,7 @@ export function waitForGoogleMaps() {
  * Creates a styled Google Map centred on the given coordinates.
  */
 export function createMap(container, center, zoom = 12) {
-  return new window.google.maps.Map(container, { //Creates a Map , Conatiner --> place to load <div> , center --> place to start , zoom - default zoom value
+  return new window.google.maps.Map(container, {
     center,
     zoom,
     mapTypeControl: false,
@@ -59,7 +69,7 @@ export function createMap(container, center, zoom = 12) {
 /**
  * Adds markers to the map and returns the marker array.
  */
-export function addMarkers(map, places, onMarkerClick) { //map --> Gmap Object Created, places --> Places JSON Object , onMarkerClick --> Use to point markers in map
+export function addMarkers(map, places, onMarkerClick) {
   return places.map((place, idx) => {
     const marker = new window.google.maps.Marker({
       position: { lat: place.lat, lng: place.lng },
@@ -81,7 +91,7 @@ export function addMarkers(map, places, onMarkerClick) { //map --> Gmap Object C
       },
     })
 
-    const infoWindow = new window.google.maps.InfoWindow({ //popup when click on marked place
+    const infoWindow = new window.google.maps.InfoWindow({
       content: `<div style="font-family:Inter,sans-serif;padding:4px 8px;font-size:13px;font-weight:600;color:#0A2240">${place.name}</div>`,
     })
 

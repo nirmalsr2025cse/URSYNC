@@ -12,6 +12,8 @@ connectDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`)
     startApplicationStatusCron()
-    cron.schedule('0 * * * *', cleanupTempApplications)
+    cron.schedule('0 * * * *', () => {
+      cleanupExpiredTempApplications().catch(console.error)
+    })
   })
 })

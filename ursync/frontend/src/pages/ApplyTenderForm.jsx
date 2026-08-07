@@ -3,6 +3,11 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useApi } from '../api/client'
 
+// Single source of truth for the backend base URL, shared by persistDraft
+// AND the authenticated file-view fetch in ImageUploadBox — previously this
+// was only declared inline inside persistDraft, so nothing else could reuse it.
+const API_BASE = (import.meta.env?.VITE_API_BASE_URL) || 'http://localhost:5000/api'
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function isDeadlinePassed(deadline) {
   return new Date(deadline) < new Date()
@@ -17,6 +22,13 @@ function todayLocalISODate() {
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd}`
+}
+
+// PDFs can't be shown with <img>; everything else (jpeg/png) can.
+function isPdf(contentType, file) {
+  if (contentType) return contentType === 'application/pdf'
+  if (file) return file.type === 'application/pdf'
+  return false
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -85,39 +97,90 @@ const iconProps = {
   viewBox: '0 0 24 24',
 }
 
-// ── JPEG Image Upload box (supports camera capture on mobile/tablet) ─────────
-// A single reusable control: tap/click opens the device's file picker, and on
-// touch devices with `capture` set, the OS offers the camera directly as an
-// option (front/back depending on `capture` value) alongside the gallery.
-function ImageUploadBox({ label, file, existingUrl, existingName, disabled, onChange, capture = 'environment' }) {
+// ── JPEG/PNG/PDF Upload box (supports camera capture on mobile/tablet) ───────
+// A single reusable control. Two distinct interactions once a file exists:
+//   1. Clicking the "View" button/icon opens the actual stored file INLINE,
+//      in a full-page overlay panel on this same page (no new tab). For a
+//      file the user just picked locally (not saved yet) this reuses its
+//      plain blob: object URL. For a file that's already SAVED on the
+//      backend, this does an authenticated fetch() (with the Bearer token
+//      attached) to pull the bytes first, then renders a blob URL made
+//      from that response inside the panel — a bare <img>/<iframe> pointed
+//      straight at existingUrl can't attach an Authorization header, so it
+//      would hit authMiddleware with no token and silently fail (broken
+//      image / blank frame).
+//   2. Clicking anywhere else on the box (or the "Replace" label) opens the
+//      device file picker to pick a NEW file — this only takes effect once
+//      Save/Next is clicked, at which point the backend deletes the old
+//      GridFS file and stores the new one in its place.
+function ImageUploadBox({ label, file, existingUrl, existingName, existingContentType, disabled, onChange, capture = 'environment' }) {
   const inputRef = useRef(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [fileError, setFileError] = useState('')
+  const [viewLoading, setViewLoading] = useState(false)
+
+  // Inline viewer ("big div" overlay) state — separate from `previewUrl`
+  // above, which only feeds the small 12x12 thumbnail in the box itself.
+  const [viewerOpen, setViewerOpen] = useState(false)
+  const [viewerSrc, setViewerSrc] = useState(null)
+  const [viewerType, setViewerType] = useState(null)
+  const [viewerIsBlobUrl, setViewerIsBlobUrl] = useState(false)
 
   useEffect(() => {
     if (!file) {
       // No newly-picked file this session — fall back to whatever was
       // already saved for this document from a previous visit, if any.
-      setPreviewUrl(existingUrl || null)
+      setPreviewUrl(null)
+      return
+    }
+    if (isPdf(null, file)) {
+      // Don't create an object URL just to feed an <img> — PDFs get the
+      // filename+size treatment below instead of a thumbnail.
+      setPreviewUrl(null)
       return
     }
     const url = URL.createObjectURL(file)
     setPreviewUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [file, existingUrl])
+  }, [file])
+
+  // Close the viewer on Escape while it's open.
+  useEffect(() => {
+    if (!viewerOpen) return
+    function onKeyDown(e) {
+      if (e.key === 'Escape') closeViewer()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewerOpen])
+
+  // Release the fetched blob: URL if the component unmounts while the
+  // viewer is still open (object URLs are never garbage-collected on
+  // their own) — locally-picked-file URLs are owned/cleaned up by the
+  // `previewUrl` effect above, so only revoke here when it's a fetched one.
+  useEffect(() => {
+    return () => {
+      if (viewerIsBlobUrl && viewerSrc) URL.revokeObjectURL(viewerSrc)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const hasStoredFile = Boolean(file || existingUrl)
+  const pdfSelected = isPdf(existingContentType, file)
 
   function handleFiles(fileList) {
     const picked = fileList && fileList[0]
     if (!picked) return
 
-    const isJpeg = picked.type === 'image/jpeg' || picked.type === 'image/jpg'
-    if (!isJpeg) {
-      setFileError('Only JPEG images are allowed.')
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf']
+    if (!allowed.includes(picked.type)) {
+      setFileError('Only JPEG, PNG, or PDF files are allowed.')
       onChange(null)
       return
     }
-    if (picked.size > 5 * 1024 * 1024) {
-      setFileError('File must be under 5MB.')
+    if (picked.size > 10 * 1024 * 1024) {
+      setFileError('File must be under 10MB.')
       onChange(null)
       return
     }
@@ -132,12 +195,69 @@ function ImageUploadBox({ label, file, existingUrl, existingName, disabled, onCh
     if (inputRef.current) inputRef.current.value = ''
   }
 
+  function closeViewer() {
+    setViewerOpen(false)
+    if (viewerIsBlobUrl && viewerSrc) URL.revokeObjectURL(viewerSrc)
+    setViewerSrc(null)
+    setViewerType(null)
+    setViewerIsBlobUrl(false)
+  }
+
+  // Opens the actual stored file INLINE (in the overlay panel below) so the
+  // user can confirm which document was uploaded, without leaving the page.
+  // Stops propagation so it doesn't also open the file picker.
+  async function handleView(e) {
+    e.stopPropagation()
+
+    // A locally-picked file (not saved yet) never needs auth — it's just
+    // sitting in browser memory. Reuse/create its object URL directly.
+    if (file) {
+      const url = previewUrl || URL.createObjectURL(file)
+      setViewerSrc(url)
+      setViewerType(file.type)
+      setViewerIsBlobUrl(false) // owned by the thumbnail effect above; don't revoke here
+      setViewerOpen(true)
+      return
+    }
+
+    // A previously-saved file lives behind authMiddleware on the backend,
+    // so it must be fetched with the token attached before it can be
+    // rendered — plain <img>/<iframe src={existingUrl}> can't attach an
+    // Authorization header, so it would hit authMiddleware with no token
+    // and silently fail (broken image / blank frame).
+    if (!existingUrl) return
+
+    setViewLoading(true)
+    setFileError('')
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API_BASE}${existingUrl}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        throw new Error(res.status === 403
+          ? 'You do not have access to this file.'
+          : 'Could not load the file.')
+      }
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      setViewerSrc(blobUrl)
+      setViewerType(existingContentType || blob.type)
+      setViewerIsBlobUrl(true)
+      setViewerOpen(true)
+    } catch (err) {
+      setFileError(err.message || 'Could not open the file.')
+    } finally {
+      setViewLoading(false)
+    }
+  }
+
   return (
     <div>
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/jpg"
+        accept="image/jpeg,image/jpg,image/png,application/pdf"
         capture={capture}
         disabled={disabled}
         onChange={(e) => handleFiles(e.target.files)}
@@ -153,21 +273,69 @@ function ImageUploadBox({ label, file, existingUrl, existingName, disabled, onCh
             : 'bg-white cursor-pointer hover:bg-[#FFF2DB]',
         ].join(' ')}
       >
-        {previewUrl ? (
+        {hasStoredFile ? (
           <div className="flex items-center gap-3 px-3 py-2">
-            <img src={previewUrl} alt={label} className="w-12 h-12 object-cover rounded-lg border border-[#FFE5BF] flex-shrink-0" />
+            {/* Thumbnail: image preview, or a generic PDF icon */}
+            {!pdfSelected && previewUrl ? (
+              <img src={previewUrl} alt={label} className="w-12 h-12 object-cover rounded-lg border border-[#FFE5BF] flex-shrink-0" />
+            ) : !pdfSelected && !file && existingUrl && !existingContentType?.includes('pdf') ? (
+              <div className="w-12 h-12 flex-shrink-0 rounded-lg border border-[#FFE5BF] bg-[#FFF2DB] flex items-center justify-center">
+                <svg className="w-5 h-5 text-[#1A4A8C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 8h.01M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z" />
+                </svg>
+              </div>
+            ) : (
+              <div className="w-12 h-12 flex-shrink-0 rounded-lg border border-[#FFE5BF] bg-[#FFF2DB] flex items-center justify-center">
+                <svg className="w-5 h-5 text-[#1A4A8C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+            )}
+
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-[#0A2240] truncate">
                 {file ? file.name : (existingName || 'Previously uploaded')}
               </p>
               <p className="text-[10px] text-[#6B7A8D]">
-                {file ? `${(file.size / 1024).toFixed(0)} KB — tap to replace` : 'Saved earlier — tap to replace'}
+                {file ? `${(file.size / 1024).toFixed(0)} KB — tap box to replace` : 'Saved earlier — tap box to replace'}
               </p>
             </div>
+
+            {/* View — opens the actual stored file inline in the overlay
+                panel below so the user can confirm which document was
+                uploaded. Stops propagation so it doesn't also open the
+                file picker. */}
+            {(file || existingUrl) && (
+              <button
+                type="button"
+                onClick={handleView}
+                disabled={viewLoading}
+                title="View uploaded file"
+                className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-[#E9F1FF] text-[#1A4A8C] hover:bg-[#d7e6ff] disabled:opacity-50"
+              >
+                {viewLoading ? (
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                )}
+              </button>
+            )}
+
             {!disabled && (
               <button
                 type="button"
                 onClick={handleRemove}
+                title="Remove"
                 className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full bg-red-50 text-red-500 hover:bg-red-100"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,12 +351,51 @@ function ImageUploadBox({ label, file, existingUrl, existingName, disabled, onCh
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-8-8l4-4m0 0l4 4m-4-4v12" />
             </svg>
             <span className="text-[#6B7A8D] text-xs">
-              {disabled ? 'No file uploaded' : 'Tap to upload or take a photo (JPEG)'}
+              {disabled ? 'No file uploaded' : 'Tap to upload or take a photo (JPEG, PNG, or PDF)'}
             </span>
           </div>
         )}
       </div>
       {fileError && <p className="text-[10px] text-[#F62440] mt-1">{fileError}</p>}
+
+      {/* Inline viewer — a full-page overlay ("big div") that shows the
+          actual stored file on THIS page, instead of opening a new browser
+          tab. Images render directly via <img>; PDFs render via <iframe>
+          (the browser's native PDF viewer renders inside the frame). */}
+      {viewerOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={closeViewer}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#FFE5BF] flex-shrink-0">
+              <p className="text-sm font-semibold text-[#0A2240] truncate pr-4">
+                {file ? file.name : (existingName || label)}
+              </p>
+              <button
+                type="button"
+                onClick={closeViewer}
+                title="Close"
+                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-[#FFF2DB] text-[#0A2240] hover:bg-[#FFE5BF]"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-[#FFFAF3] flex items-center justify-center p-2">
+              {viewerType === 'application/pdf' ? (
+                <iframe src={viewerSrc} title={label} className="w-full h-full rounded-lg border-0" />
+              ) : (
+                <img src={viewerSrc} alt={label} className="max-w-full max-h-full object-contain rounded-lg" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -232,11 +439,11 @@ export default function ApplyTenderForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenderCode])
 
-  // ── Persist the current tenderCode so downstream pages (e.g. the payment
-  // flow) can recover and route the user back into THIS exact form if they
-  // land there without proper router state (manual URL entry, refresh,
-  // bookmark, etc.) — without forcing a full page reload or dumping them
-  // back to the generic tenders list.
+  // ── Persist the current tenderCode so downstream pages can recover and
+  // route the user back into THIS exact form if they land there without
+  // proper router state (manual URL entry, refresh, bookmark, etc.) —
+  // without forcing a full page reload or dumping them back to the generic
+  // tenders list.
   useEffect(() => {
     if (tenderCode) {
       sessionStorage.setItem('lastTenderCode', tenderCode)
@@ -258,13 +465,14 @@ export default function ApplyTenderForm() {
   ]
   const [districts] = useState(FALLBACK_TN_DISTRICTS)
 
-  // ── Load any previously-saved (unpaid) draft for this tender ──────────────
+  // ── Load any previously-saved (unsubmitted) draft for this tender ────────
   // NOTE: temp-applications are referenced by the tender's Mongo `_id`
   // (stable DB reference), never by `tenderCode` (human-readable routing
   // key). `tenderCode` is only used for navigation/URLs in this component.
   const [draftLoaded, setDraftLoaded] = useState(false)
-  const [savedDocuments, setSavedDocuments] = useState([]) // [{label, url, originalName}]
+  const [savedDocuments, setSavedDocuments] = useState([]) // [{label, url, originalName, contentType}]
   const [savedSignatureUrl, setSavedSignatureUrl] = useState(null)
+  const [savedSignatureContentType, setSavedSignatureContentType] = useState(null)
 
   useEffect(() => {
     if (!tender?._id) return
@@ -274,6 +482,7 @@ export default function ApplyTenderForm() {
           setForm((p) => ({ ...p, ...res.data.formData }))
           setSavedDocuments(res.data.documents || [])
           setSavedSignatureUrl(res.data.signatureUrl || null)
+          setSavedSignatureContentType(res.data.signatureContentType || null)
         }
       })
       .catch(() => {
@@ -321,10 +530,10 @@ export default function ApplyTenderForm() {
     remarks:            '',
   })
 
-  // ── Uploaded JPEG files ────────────────────────────────────────────────────
+  // ── Uploaded files (JPEG, PNG, or PDF) ─────────────────────────────────────
   // Documents section files, keyed by document label.
   const [documentFiles, setDocumentFiles] = useState({})
-  // Digital Signature is now an uploaded JPEG image instead of free text.
+  // Digital Signature is now an uploaded image/PDF instead of free text.
   const [signatureFile, setSignatureFile] = useState(null)
 
   function setDocumentFile(label, file) {
@@ -405,6 +614,11 @@ export default function ApplyTenderForm() {
   // NOT `tenderCode`. `tenderCode` is only for routing/URLs elsewhere in
   // this component — sending it here would 500 on the backend, since
   // `Tender.findById` expects a real ObjectId.
+  //
+  // This is the ONLY place files leave the browser. The backend only writes
+  // to GridFS inside this same request — so a document/signature is only
+  // ever stored (or REPLACED, if a label already had a file) at the moment
+  // Save or Next is clicked, never before.
   async function persistDraft() {
     const token = localStorage.getItem('token')
     const idForDraft = tender._id
@@ -417,7 +631,7 @@ export default function ApplyTenderForm() {
     if (signatureFile) body.append('signature', signatureFile)
 
     const res = await fetch(
-      `${(import.meta.env?.VITE_API_BASE_URL) || 'http://localhost:5000/api'}/temp-applications/${encodeURIComponent(idForDraft)}`,
+      `${API_BASE}/temp-applications/${encodeURIComponent(idForDraft)}`,
       {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -432,6 +646,28 @@ export default function ApplyTenderForm() {
     return res.json()
   }
 
+  // ── Submit the finalized application to bidderlists ───────────────────────
+  // Calls POST /temp-applications/:tenderId/submit — this copies the
+  // current draft (same fileIds already in GridFS, same applicationId)
+  // into the permanent `bidderlists` collection and removes it from
+  // tempbidderapplications. Must be called AFTER persistDraft() so any
+  // last-second edits/files are saved first.
+  async function submitDraft() {
+    const token = localStorage.getItem('token')
+    const res = await fetch(
+      `${API_BASE}/temp-applications/${encodeURIComponent(tender._id)}/submit`,
+      {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.message || `Submit failed: ${res.status}`)
+    }
+    return res.json()
+  }
+
   // ── Save ──────────────────────────────────────────────────────────────────
   async function handleSave() {
     const e = validate()
@@ -442,8 +678,27 @@ export default function ApplyTenderForm() {
     }
     setSaving(true)
     try {
-      await persistDraft()
+      const result = await persistDraft()
       showToast('Application Saved Successfully!')
+
+      // Re-fetch so any replaced document now shows the NEW file's URL
+      // (the old GridFS file was deleted server-side and a new fileId
+      // issued — the stale blob: preview must be swapped for the real one).
+      if (tender?._id) {
+        apiFetch('/temp-applications/' + encodeURIComponent(tender._id))
+          .then((res) => {
+            if (res.data) {
+              setSavedDocuments(res.data.documents || [])
+              setSavedSignatureUrl(res.data.signatureUrl || null)
+              setSavedSignatureContentType(res.data.signatureContentType || null)
+              // Clear locally-picked files now that they're confirmed saved,
+              // so the box falls back to showing the freshly saved version.
+              setDocumentFiles({})
+              setSignatureFile(null)
+            }
+          })
+          .catch(() => {})
+      }
     } catch (err) {
       showToast(err.message || 'Failed to save application.', 'error')
     } finally {
@@ -451,10 +706,13 @@ export default function ApplyTenderForm() {
     }
   }
 
-  // ── Next → save draft, then navigate to payment page ──────────────────────
-  // Navigation/state passed forward uses `tenderCode` (the human-readable
-  // routing key) — `_id` is only used internally for the temp-application
-  // persistence call above.
+  // ── Next → save draft, finalize it into bidderlists, then go back to the
+  // Apply Tenders list. Once submitted, this tender's row moves into the
+  // `bidderlists` collection (same GridFS files, same applicationId — no
+  // re-upload) and is removed from tempbidderapplications. The backend
+  // then excludes this tender from THIS user's Apply Tenders results (see
+  // applyTenderController.listApplyTenders), so the applied card
+  // disappears only for them — other users still see it normally.
   async function handleNext() {
     const e = validate()
     if (Object.keys(e).length) {
@@ -463,18 +721,23 @@ export default function ApplyTenderForm() {
       return
     }
     setSaving(true)
-    await new Promise((r) => setTimeout(r, 600))
-    setSaving(false)
+    try {
+      // 1. Persist any last-minute text/file changes as a draft.
+      await persistDraft()
 
-    const code = tender.tenderCode || tender.id
-    sessionStorage.setItem('lastTenderCode', code)   // ← ADD THIS LINE
+      // 2. Finalize the draft into bidderlists.
+      await submitDraft()
 
-    navigate('/apply-tenders/payment', {
-      state: {
-        tenderCode: code,
-        formData: form,
-      },
-    })
+      // The lastTenderCode fast-path is no longer needed once submitted.
+      sessionStorage.removeItem('lastTenderCode')
+
+      showToast('Application submitted successfully!')
+      navigate('/apply-tenders')
+    } catch (err) {
+      showToast(err.message || 'Failed to submit application.', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ── Input class ───────────────────────────────────────────────────────────
@@ -734,7 +997,8 @@ export default function ApplyTenderForm() {
       {/* ── Section 3: Documents ───────────────────────────────────────── */}
       {/* Each box opens the device file picker; on phones/tablets the OS
           also offers "Take Photo" alongside the gallery thanks to the
-          `capture` attribute on the underlying <input type="file">. */}
+          `capture` attribute on the underlying <input type="file">. Click
+          the eye icon to VIEW the actual stored document inline. */}
       <Section title="Documents" icon={
         <svg {...iconProps}>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -750,18 +1014,22 @@ export default function ApplyTenderForm() {
           'Technical Proposal',
           'Commercial Proposal',
           'Additional Documents',
-        ].map((doc) => (
-          <Field key={doc} label={doc}>
-            <ImageUploadBox
-              label={doc}
-              file={documentFiles[doc] || null}
-              existingUrl={savedDocuments.find((d) => d.label === doc)?.url}
-              existingName={savedDocuments.find((d) => d.label === doc)?.originalName}
-              onChange={(file) => setDocumentFile(doc, file)}
-              disabled={isClosed}
-            />
-          </Field>
-        ))}
+        ].map((doc) => {
+          const saved = savedDocuments.find((d) => d.label === doc)
+          return (
+            <Field key={doc} label={doc}>
+              <ImageUploadBox
+                label={doc}
+                file={documentFiles[doc] || null}
+                existingUrl={saved?.url}
+                existingName={saved?.originalName}
+                existingContentType={saved?.contentType}
+                onChange={(file) => setDocumentFile(doc, file)}
+                disabled={isClosed}
+              />
+            </Field>
+          )
+        })}
       </Section>
 
       {/* ── Section 4: Declaration ─────────────────────────────────────── */}
@@ -789,7 +1057,7 @@ export default function ApplyTenderForm() {
             <p className="text-[10px] text-[#F62440] mt-1">{errors.acceptTerms}</p>
           )}
         </Field>
-        {/* Digital Signature — now a JPEG image upload (e.g. a scanned/photo
+        {/* Digital Signature — a JPEG/PNG/PDF upload (e.g. a scanned/photo
             of a handwritten signature) instead of a free-text field. Uses
             `capture="user"` so on phones/tablets the front camera is offered
             for a quick selfie-style signature capture, alongside the gallery. */}
@@ -798,6 +1066,7 @@ export default function ApplyTenderForm() {
             label="Digital Signature"
             file={signatureFile}
             existingUrl={savedSignatureUrl}
+            existingContentType={savedSignatureContentType}
             onChange={setSignatureFile}
             disabled={isClosed}
             capture="user"
@@ -872,11 +1141,11 @@ export default function ApplyTenderForm() {
               ) : 'Save'}
             </button>
 
-            {/* Next → apply-tenders/payment */}
+            {/* Next → submit into bidderlists, then back to /apply-tenders */}
             <button
               onClick={handleNext}
               disabled={!isFormComplete || isClosed || saving}
-              title={!isFormComplete ? 'Fill all required fields to continue' : 'Proceed to payment'}
+              title={!isFormComplete ? 'Fill all required fields to continue' : 'Submit application'}
               className={[
                 'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all',
                 !isFormComplete || isClosed
