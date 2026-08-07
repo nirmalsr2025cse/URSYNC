@@ -32,6 +32,10 @@ const upload = multer({
 // GET /api/applied-tenders?tab=applied|completed
 router.get('/', authMiddleware, ctrl.listAppliedTenders)
 
+// Authenticated file stream for an uploaded document/signature.
+// GET /api/applied-tenders/file/:fileId
+router.get('/file/:fileId', authMiddleware, ctrl.streamAppliedTenderFile)
+
 // Fetch one application (pre-fill for the Edit form).
 // GET /api/applied-tenders/:applicationId
 router.get('/:applicationId', authMiddleware, ctrl.getAppliedTenderForEdit)
@@ -39,9 +43,5 @@ router.get('/:applicationId', authMiddleware, ctrl.getAppliedTenderForEdit)
 // Save edits (multipart/form-data: formData + optional document/signature files).
 // PUT /api/applied-tenders/:applicationId
 router.put('/:applicationId', authMiddleware, upload.any(), ctrl.updateAppliedTender)
-
-// Authenticated file stream for an uploaded document/signature.
-// GET /api/applied-tenders/file/:fileId
-router.get('/file/:fileId', authMiddleware, ctrl.streamAppliedTenderFile)
 
 module.exports = router

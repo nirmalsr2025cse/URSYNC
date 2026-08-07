@@ -106,8 +106,10 @@ export default function Sidebar({ open, onClose }) {
         {/* Nav */}
         <nav className="overflow-y-auto py-1 px-2" style={{ flex: '1 1 0', minHeight: 0 }}>
           {navItems.map(({ label, path, icon }) => {
-            // Active if: current path matches, OR the root of the navigation chain matches
+            // Active if: the root of the navigation chain matches (prioritized),
+            // OR the current path matches (when no explicit chain is set)
             const isChainActive = activeSidebarPath === path
+            const shouldUseChainOnly = activeSidebarPath !== null
 
             return (
               <NavLink
@@ -115,7 +117,10 @@ export default function Sidebar({ open, onClose }) {
                 to={path}
                 onClick={onClose}
                 className={({ isActive }) =>
-                  ['sidebar-link', isActive || isChainActive ? 'active' : ''].join(' ')
+                  [
+                    'sidebar-link',
+                    shouldUseChainOnly ? (isChainActive ? 'active' : '') : (isActive ? 'active' : ''),
+                  ].join(' ')
                 }
               >
                 <Icon name={icon} className="w-4 h-4 flex-shrink-0" />

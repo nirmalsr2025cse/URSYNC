@@ -129,7 +129,7 @@ async function listApplyTenders(req, res) {
     // no longer show up in THEIR Apply Tenders list — it's what
     // ApplyTenderForm.jsx's "Next" button finalizes into bidderlists.
     // Other users still see the tender normally.
-    const appliedTenderIds = await BiddersList.find({ userId: me._id }).distinct('tenderId')
+    const appliedTenderIds = await BiddersList.find({ 'applications.userId': me._id }).distinct('tenderId')
     if (appliedTenderIds.length) {
       stages.push({ $match: { _id: { $nin: appliedTenderIds } } })
     }

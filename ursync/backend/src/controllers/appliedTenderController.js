@@ -76,46 +76,100 @@ function bucketFor(tenderStatus) {
   return tenderStatus === 'Completed' ? 'completed' : 'applied'
 }
 
+function resolveApplicantEntry(record, userId, applicationId) {
+  const applications = Array.isArray(record?.applications) ? record.applications : []
+  if (applicationId) {
+    const byAppId = applications.find((entry) => String(entry.applicationId) === String(applicationId))
+    if (byAppId) return byAppId
+  }
+  const byUser = applications.find((entry) => String(entry.userId) === String(userId))
+  if (byUser) return byUser
+
+  if (applicationId && String(record?.applicationId) === String(applicationId)) {
+    return {
+      applicationId: record.applicationId,
+      userId: record.userId,
+      formData: record.formData || {},
+      documents: record.documents || [],
+      signatureFileId: record.signatureFileId || null,
+      signatureContentType: record.signatureContentType || null,
+      signatureOriginalName: record.signatureOriginalName || null,
+      isPaid: Boolean(record.isPaid),
+      paymentId: record.paymentId || null,
+      paidAt: record.paidAt || null,
+      applicationDate: record.applicationDate,
+      applicationTime: record.applicationTime,
+      applicationSubmissionDateTime: record.applicationSubmissionDateTime,
+    }
+  }
+
+  if (record?.userId && String(record.userId) === String(userId)) {
+    return {
+      applicationId: record.applicationId,
+      userId: record.userId,
+      formData: record.formData || {},
+      documents: record.documents || [],
+      signatureFileId: record.signatureFileId || null,
+      signatureContentType: record.signatureContentType || null,
+      signatureOriginalName: record.signatureOriginalName || null,
+      isPaid: Boolean(record.isPaid),
+      paymentId: record.paymentId || null,
+      paidAt: record.paidAt || null,
+      applicationDate: record.applicationDate,
+      applicationTime: record.applicationTime,
+      applicationSubmissionDateTime: record.applicationSubmissionDateTime,
+    }
+  }
+
+  return null
+}
+
+function toApplicationCardShape(record, userId, applicationId) {
+  const entry = resolveApplicantEntry(record, userId, applicationId)
+  if (!entry) return null
+
+  const tenderSummary = shapeTenderSummary(record.tenderId, record.departmentId?.name)
+  return {
+    ...tenderSummary,
+    applicationId: entry.applicationId,
+    groupId: record._id,
+    appliedDate: toYMD(entry.applicationSubmissionDateTime || entry.applicationTime || record.applicationSubmissionDateTime),
+    applicantName: entry.formData?.applicantName || '',
+    companyName: entry.formData?.companyName || '',
+    companyRegNo: entry.formData?.companyRegNo || '',
+    gstNumber: entry.formData?.gstNumber || '',
+    panNumber: entry.formData?.panNumber || '',
+    email: entry.formData?.email || '',
+    mobile: entry.formData?.mobile || '',
+    address: entry.formData?.address || '',
+    district: entry.formData?.district || '',
+    pinCode: entry.formData?.pinCode || '',
+    bidAmount: entry.formData?.bidAmount || '',
+    declarationDate: entry.formData?.declarationDate || '',
+    applicationStatus: entry.isPaid ? 'Paid' : 'Submitted',
+    tenderStatus: record.tenderId?.status,
+  }
+}
+
 // ── GET /api/applied-tenders?tab=applied|completed ─────────────────────────
 // Lists the current user's submitted applications for the AppliedTenders.jsx
-// grid. Joins BiddersList -> Tender -> Department in one aggregation so the
-// frontend gets card-ready objects, same shape as MOCK_APPLIED_TENDERS /
-// MOCK_COMPLETED_APPLIED did before.
+// grid. Each tender document can contain many applications, so we resolve
+// the current user's entry inside that array instead of assuming a one-row-per-user model.
 exports.listAppliedTenders = async (req, res) => {
   try {
     const userId = req.user.id
     const tab = req.query.tab === 'completed' ? 'completed' : 'applied'
 
-    const records = await BiddersList.find({ userId })
+    const records = await BiddersList.find({ 'applications.userId': userId })
       .populate('tenderId')
       .populate('departmentId', 'name')
-      .sort({ applicationSubmissionDateTime: -1 })
+      .sort({ updatedAt: -1 })
       .lean()
 
     const shaped = records
-      .filter((r) => r.tenderId) // tender may have been hard-deleted; skip orphans defensively
-      .map((r) => {
-        const tenderSummary = shapeTenderSummary(r.tenderId, r.departmentId?.name)
-        return {
-          ...tenderSummary,
-          applicationId: r.applicationId,
-          appliedDate: toYMD(r.applicationSubmissionDateTime),
-          applicantName: r.formData?.applicantName || '',
-          companyName: r.formData?.companyName || '',
-          companyRegNo: r.formData?.companyRegNo || '',
-          gstNumber: r.formData?.gstNumber || '',
-          panNumber: r.formData?.panNumber || '',
-          email: r.formData?.email || '',
-          mobile: r.formData?.mobile || '',
-          address: r.formData?.address || '',
-          district: r.formData?.district || '',
-          pinCode: r.formData?.pinCode || '',
-          bidAmount: r.formData?.bidAmount || '',
-          declarationDate: r.formData?.declarationDate || '',
-          applicationStatus: r.status, // Submitted / Paid
-          tenderStatus: r.tenderId.status,
-        }
-      })
+      .filter((r) => r.tenderId)
+      .map((r) => toApplicationCardShape(r, userId))
+      .filter(Boolean)
       .filter((r) => bucketFor(r.tenderStatus) === tab)
 
     res.json({ data: shaped })
@@ -136,7 +190,7 @@ exports.getAppliedTenderForEdit = async (req, res) => {
     const userId = req.user.id
     const { applicationId } = req.params
 
-    const record = await BiddersList.findOne({ applicationId, userId })
+    const record = await BiddersList.findOne({ 'applications.applicationId': applicationId })
       .populate('tenderId')
       .populate('departmentId', 'name')
       .lean()
@@ -145,7 +199,12 @@ exports.getAppliedTenderForEdit = async (req, res) => {
       return res.status(404).json({ message: 'Application not found.' })
     }
 
-    const documents = (record.documents || []).map((d) => ({
+    const entry = resolveApplicantEntry(record, userId, applicationId)
+    if (!entry) {
+      return res.status(404).json({ message: 'Application not found.' })
+    }
+
+    const documents = (entry.documents || []).map((d) => ({
       label: d.label,
       url: `/applied-tenders/file/${d.fileId}`,
       originalName: d.originalName,
@@ -154,16 +213,16 @@ exports.getAppliedTenderForEdit = async (req, res) => {
 
     res.json({
       data: {
-        applicationId: record.applicationId,
-        formData: record.formData || {},
+        applicationId: entry.applicationId,
+        formData: entry.formData || {},
         documents,
-        signatureUrl: record.signatureFileId
-          ? `/applied-tenders/file/${record.signatureFileId}`
+        signatureUrl: entry.signatureFileId
+          ? `/applied-tenders/file/${entry.signatureFileId}`
           : null,
-        signatureContentType: record.signatureContentType || null,
-        signatureOriginalName: record.signatureOriginalName || null,
+        signatureContentType: entry.signatureContentType || null,
+        signatureOriginalName: entry.signatureOriginalName || null,
         tender: shapeTenderSummary(record.tenderId, record.departmentId?.name),
-        applicationStatus: record.status,
+        applicationStatus: entry.isPaid ? 'Paid' : 'Submitted',
       },
     })
   } catch (err) {
@@ -184,8 +243,13 @@ exports.updateAppliedTender = async (req, res) => {
     const userId = req.user.id
     const { applicationId } = req.params
 
-    const record = await BiddersList.findOne({ applicationId, userId })
+    const record = await BiddersList.findOne({ 'applications.applicationId': applicationId })
     if (!record) {
+      return res.status(404).json({ message: 'Application not found.' })
+    }
+
+    const entry = resolveApplicantEntry(record, userId, applicationId)
+    if (!entry) {
       return res.status(404).json({ message: 'Application not found.' })
     }
 
@@ -193,7 +257,7 @@ exports.updateAppliedTender = async (req, res) => {
     if (req.body.formData) {
       try {
         const parsed = JSON.parse(req.body.formData)
-        record.formData = { ...record.formData, ...parsed }
+        entry.formData = { ...(entry.formData || {}), ...parsed }
       } catch (e) {
         return res.status(400).json({ message: 'Invalid formData payload.' })
       }
@@ -205,12 +269,12 @@ exports.updateAppliedTender = async (req, res) => {
       if (file.fieldname === 'signature') continue
 
       const label = file.fieldname
-      const existingIdx = (record.documents || []).findIndex((d) => d.label === label)
-      const oldFileId = existingIdx !== -1 ? record.documents[existingIdx].fileId : null
+      const existingIdx = (entry.documents || []).findIndex((d) => d.label === label)
+      const oldFileId = existingIdx !== -1 ? entry.documents[existingIdx].fileId : null
 
       const uploadStream = gfsBucket.openUploadStream(file.originalname, {
         contentType: file.mimetype,
-        metadata: { userId, tenderId: record.tenderId, applicationId, label },
+        metadata: { userId, tenderId: record.tenderId, applicationId: entry.applicationId, label },
       })
       uploadStream.end(file.buffer)
       const newFileId = uploadStream.id
@@ -228,9 +292,9 @@ exports.updateAppliedTender = async (req, res) => {
         size: file.size,
       }
       if (existingIdx !== -1) {
-        record.documents[existingIdx] = newDoc
+        entry.documents[existingIdx] = newDoc
       } else {
-        record.documents.push(newDoc)
+        entry.documents.push(newDoc)
       }
 
       if (oldFileId) {
@@ -243,11 +307,11 @@ exports.updateAppliedTender = async (req, res) => {
     // ── 3. Replace signature, if a new one was uploaded ─────────────────
     const signatureFile = files.find((f) => f.fieldname === 'signature')
     if (signatureFile) {
-      const oldSignatureId = record.signatureFileId
+      const oldSignatureId = entry.signatureFileId
 
       const uploadStream = gfsBucket.openUploadStream(signatureFile.originalname, {
         contentType: signatureFile.mimetype,
-        metadata: { userId, tenderId: record.tenderId, applicationId, label: 'signature' },
+        metadata: { userId, tenderId: record.tenderId, applicationId: entry.applicationId, label: 'signature' },
       })
       uploadStream.end(signatureFile.buffer)
       await new Promise((resolve, reject) => {
@@ -255,18 +319,19 @@ exports.updateAppliedTender = async (req, res) => {
         uploadStream.on('error', reject)
       })
 
-      record.signatureFileId = uploadStream.id
-      record.signatureContentType = signatureFile.mimetype
-      record.signatureOriginalName = signatureFile.originalname
+      entry.signatureFileId = uploadStream.id
+      entry.signatureContentType = signatureFile.mimetype
+      entry.signatureOriginalName = signatureFile.originalname
 
       if (oldSignatureId) {
         gfsBucket.delete(oldSignatureId).catch(() => {})
       }
     }
 
+    record.markModified('applications')
     await record.save()
 
-    res.json({ message: 'Application updated successfully.', data: { applicationId: record.applicationId } })
+    res.json({ message: 'Application updated successfully.', data: { applicationId: entry.applicationId } })
   } catch (err) {
     console.error('updateAppliedTender error:', err)
     res.status(500).json({ message: 'Failed to update application.' })

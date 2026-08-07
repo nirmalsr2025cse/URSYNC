@@ -135,8 +135,13 @@ export default function AppliedTenders() {
   }
 
   const handleView = (tender) => {
-    navigate('/tender-details-view/' + encodeURIComponent(tender.id), {
-      state: { tender, fromPath: rootPath },
+    navigate('/apply-tenders/apply', {
+      state: {
+        isView: true,
+        applicationId: tender.applicationId,
+        tenderCode: tender.id,
+        fromPath: rootPath,
+      },
     })
   }
 
@@ -148,7 +153,12 @@ export default function AppliedTenders() {
   // this application was already submitted).
   const handleEdit = (tender) => {
     navigate('/apply-tenders/apply', {
-      state: { isEdit: true, applicationId: tender.applicationId, fromPath: rootPath },
+      state: {
+        isEdit: true,
+        applicationId: tender.applicationId,
+        tenderCode: tender.id,
+        fromPath: rootPath,
+      },
     })
   }
 

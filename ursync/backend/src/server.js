@@ -4,7 +4,7 @@ const app = require('./app')
 const connectDB = require('./config/db')
 const startApplicationStatusCron = require('./jobs/applicationStatusCron')
 const cron = require('node-cron')
-const cleanupTempApplications = require('./jobs/cleanupTempApplications')
+const { cleanupExpiredTempApplications } = require('./jobs/cleanupTempApplications')
 
 const PORT = process.env.PORT || 5000
 

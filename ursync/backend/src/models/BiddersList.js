@@ -36,42 +36,46 @@ const documentSchema = new Schema(
   { _id: false }
 )
 
-const biddersListSchema = new Schema(
+const applicationEntrySchema = new Schema(
   {
-    // Same id that was on the TempBidderApplication entry — carried over
-    // unchanged so GridFS metadata (userId, tenderId, applicationId) still
-    // matches this permanent record without touching the files themselves.
-    applicationId: { type: Schema.Types.ObjectId, required: true, unique: true, index: true },
-
-    tenderId:     { type: Schema.Types.ObjectId, ref: 'Tender', required: true, index: true },
-    departmentId: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
-    userId:       { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-
-    // Same shape as ApplyTenderForm's `form` state.
+    applicationId: { type: Schema.Types.ObjectId, required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     formData: { type: Schema.Types.Mixed, default: {} },
-
     documents: { type: [documentSchema], default: [] },
     signatureFileId: { type: Schema.Types.ObjectId, default: null },
     signatureContentType: { type: String, default: null },
     signatureOriginalName: { type: String, default: null },
-
-    // Draft -> Submitted -> Paid. Submitted the moment "Next" is clicked;
-    // a later payment step (if/when wired up) can update this to 'Paid'
-    // and set paymentId/paidAt without touching applicationId or documents.
-    status: { type: String, default: 'Submitted' },
-
-    applicationDate: { type: String }, // yyyy-mm-dd
-    applicationSubmissionDateTime: { type: Date, default: Date.now },
-
-    // ── Payment details — optional; not required at submission time ──────
+    isPaid: { type: Boolean, default: false },
     paymentId: { type: String, default: null },
-    paidAt:    { type: Date, default: null },
+    paidAt: { type: Date, default: null },
+    applicationDate: { type: String },
+    applicationTime: { type: Date },
+    applicationSubmissionDateTime: { type: Date, default: Date.now },
   },
   { timestamps: true }
 )
 
-// Guarantees a user only ever has ONE entry per tender — this is the index
-// applyTenderController.listApplyTenders relies on to hide applied tenders.
-biddersListSchema.index({ tenderId: 1, userId: 1 }, { unique: true })
+const biddersListSchema = new Schema(
+  {
+    tenderId: { type: Schema.Types.ObjectId, ref: 'Tender', required: true },
+    departmentId: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
+
+    applications: { type: [applicationEntrySchema], default: [] },
+
+    // Draft -> Submitted -> Paid. This document stays at the tender level;
+    // each child application entry can still track its own status/payment.
+    status: { type: String, default: 'Submitted' },
+    applicationDate: { type: String },
+    applicationSubmissionDateTime: { type: Date, default: Date.now },
+
+    // ── Payment details — optional; not required at submission time ──────
+    paymentId: { type: String, default: null },
+    paidAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+)
+
+biddersListSchema.index({ tenderId: 1 })
+biddersListSchema.index({ 'applications.userId': 1 })
 
 module.exports = mongoose.model('BiddersList', biddersListSchema, 'bidderlists')

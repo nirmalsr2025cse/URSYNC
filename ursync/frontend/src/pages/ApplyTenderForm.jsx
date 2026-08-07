@@ -1,21 +1,27 @@
 // src/pages/ApplyTenderForm.jsx
 //
-// This form now has TWO modes:
+// This form now has THREE modes:
 //
 //   1. APPLY MODE (unchanged behavior) — reached via /apply-tenders/apply/:tenderCode
 //      or with location.state.tenderCode. Loads a Tender, lets the bidder
 //      fill it out, and Save/Next persist a draft + finally submit into
 //      bidderlists (temp-applications backend, untouched).
 //
-//   2. EDIT MODE (new) — reached from AppliedTenders.jsx's "Edit Tender"
+//   2. EDIT MODE — reached from AppliedTenders.jsx's "Edit Tender"
 //      button, via location.state = { isEdit: true, applicationId }. Loads
 //      the already-submitted permanent record straight from bidderlists
 //      (GET /api/applied-tenders/:applicationId) and only shows
 //      Cancel + Save (no Next/submit step, since the application already
 //      exists) — Save does PUT /api/applied-tenders/:applicationId.
 //
+//   3. VIEW MODE — reached from AppliedTenders.jsx's "View" button via
+//      location.state = { isView: true, applicationId }. Loads the same
+//      permanent bidderlists record but renders every field as read-only
+//      and hides the Save/Next actions so the user can review the
+//      submitted details.
+//
 // Everything else (sections, validation, ImageUploadBox, etc.) is shared
-// between both modes.
+// between all modes.
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
@@ -383,7 +389,9 @@ export default function ApplyTenderForm() {
 
   // ── Mode detection ────────────────────────────────────────────────────
   // EDIT MODE: came from AppliedTenders.jsx's "Edit Tender" button.
+  // VIEW MODE: came from AppliedTenders.jsx's "View" button.
   const isEditMode = Boolean(location.state?.isEdit)
+  const isViewMode = Boolean(location.state?.isView)
   const applicationId = location.state?.applicationId
 
   // APPLY MODE: URL param is the source of truth (works on refresh/bookmark/
@@ -398,8 +406,9 @@ export default function ApplyTenderForm() {
 
   // In edit mode the underlying tender may already be Completed — that's
   // fine, editing a submitted application isn't the same as applying to a
-  // new one, so isClosed never disables edit-mode fields.
-  const isClosed = !isEditMode && tender ? isDeadlinePassed(tender.applicationDeadline) : false
+  // new one, so isClosed never disables edit-mode fields. In view mode we
+  // also block the form completely so the user can review the record.
+  const isClosed = isViewMode || (!isEditMode && tender ? isDeadlinePassed(tender.applicationDeadline) : false)
 
   const [saving,  setSaving]  = useState(false)
   const [toast,   setToast]   = useState(null)
@@ -407,7 +416,7 @@ export default function ApplyTenderForm() {
 
   // ── APPLY MODE: fetch the real tender from the backend by tenderCode ────
   useEffect(() => {
-    if (isEditMode) return // edit mode loads its own record below
+    if (isEditMode || isViewMode) return // edit/view modes load their own record below
     if (!tenderCode) {
       setTenderLoading(false)
       setTenderError('No tender specified.')
@@ -424,7 +433,7 @@ export default function ApplyTenderForm() {
 
   // ── EDIT MODE: fetch the permanent bidderlists record ────────────────────
   useEffect(() => {
-    if (!isEditMode) return
+    if (!isEditMode && !isViewMode) return
     if (!applicationId) {
       setTenderLoading(false)
       setTenderError('No application specified.')
@@ -481,7 +490,7 @@ export default function ApplyTenderForm() {
   const [savedSignatureContentType, setSavedSignatureContentType] = useState(null)
 
   useEffect(() => {
-    if (isEditMode) return // edit mode's own effect above handles loading
+    if (isEditMode || isViewMode) return // edit/view modes use the dedicated effect above
     if (!tender?._id) return
     apiFetch('/temp-applications/' + encodeURIComponent(tender._id))
       .then((res) => {
@@ -590,9 +599,9 @@ export default function ApplyTenderForm() {
     if (form.bidAmount && parseFloat(form.bidAmount.toString().replace(/,/g, '')) <= 0) {
       e.bidAmount = 'Bid amount must be greater than zero.'
     }
-    if (!isEditMode && !form.acceptTerms) {
+    if (!isEditMode && !isViewMode && !form.acceptTerms) {
       // Terms were already accepted at original submission time — edit
-      // mode doesn't re-ask for it.
+      // and view modes don't re-ask for it.
       e.acceptTerms = 'You must accept the terms and conditions.'
     }
     return e
@@ -601,7 +610,7 @@ export default function ApplyTenderForm() {
   // ── All required fields filled? (for enabling Next button, apply mode only)
   const isFormComplete = REQUIRED.every((key) =>
     form[key] && form[key].toString().trim() !== ''
-  ) && (isEditMode || form.acceptTerms)
+  ) && (isEditMode || isViewMode || form.acceptTerms)
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
@@ -759,10 +768,10 @@ export default function ApplyTenderForm() {
     }
   }
 
-  // Where Cancel goes back to — Applied Tenders in edit mode, Apply Tenders
-  // list otherwise (matches original behavior).
-  const cancelPath = isEditMode ? '/apply-tenders' : '/apply-tenders'
-  const backButtonPath = isEditMode ? '/apply-tenders' : '/apply-tenders'
+  // Where Cancel goes back to — the page the user came from in edit mode,
+  // or the Apply Tenders list otherwise.
+  const cancelPath = location.state?.fromPath || (isEditMode || isViewMode ? '/applied-tenders' : '/apply-tenders')
+  const backButtonPath = cancelPath
 
   // ── Input class ───────────────────────────────────────────────────────────
   function inputCls(errKey, readOnly = false) {
@@ -783,18 +792,18 @@ export default function ApplyTenderForm() {
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
         <div className="w-10 h-10 border-4 border-[#FFE5BF] border-t-[#1A4A8C] rounded-full animate-spin mb-4" />
         <p className="text-sm text-[#6B7A8D]">
-          {isEditMode ? 'Loading application…' : 'Loading tender details…'}
+          {isEditMode || isViewMode ? 'Loading application…' : 'Loading tender details…'}
         </p>
       </div>
     )
   }
 
   // ── Error / not found state ──────────────────────────────────────────────
-  if (tenderError || (!isEditMode && !tender)) {
+  if (tenderError || (!isEditMode && !isViewMode && !tender)) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
         <p className="font-bold text-[#0A2240] mb-2 text-lg">
-          {isEditMode ? 'Application not found.' : 'Tender not found.'}
+          {isEditMode || isViewMode ? 'Application not found.' : 'Tender not found.'}
         </p>
         <p className="text-sm text-[#6B7A8D] mb-4">
           {tenderError || 'The tender you are looking for does not exist.'}
@@ -826,7 +835,7 @@ export default function ApplyTenderForm() {
           </button>
           <div>
             <h1 className="text-xl font-extrabold text-[#0A2240]">
-              {isEditMode ? 'Edit Application' : 'Apply Tender'}
+              {isViewMode ? 'View Application' : isEditMode ? 'Edit Application' : 'Apply Tender'}
             </h1>
             <p className="text-xs text-[#6B7A8D] mt-0.5 line-clamp-1">
               {tender?.projectName || tender?.title}
@@ -836,17 +845,17 @@ export default function ApplyTenderForm() {
 
         {/* Status pills */}
         <div className="flex items-center gap-2 flex-wrap">
-          {isEditMode && (
+          {(isEditMode || isViewMode) && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#E9F1FF] text-[#1A4A8C] border border-[#FFE5BF]">
               Application ID: {applicationId}
             </span>
           )}
-          {!isEditMode && isClosed && (
+          {!isEditMode && !isViewMode && isClosed && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
               Application Closed
             </span>
           )}
-          {!isEditMode && !isClosed && tender?.applicationDeadline && (
+          {!isEditMode && !isViewMode && !isClosed && tender?.applicationDeadline && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF]">
               Deadline: {new Date(tender.applicationDeadline).toLocaleDateString('en-IN', {
                 day: '2-digit', month: 'short', year: 'numeric',
@@ -857,7 +866,7 @@ export default function ApplyTenderForm() {
       </div>
 
       {/* ── Closed warning (apply mode only) ───────────────────────────── */}
-      {!isEditMode && isClosed && (
+      {!isEditMode && !isViewMode && isClosed && (
         <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
           <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -1073,8 +1082,8 @@ export default function ApplyTenderForm() {
         </svg>
       }>
         {/* Terms checkbox only re-shown in apply mode — already accepted at
-            original submission time, so edit mode skips re-asking. */}
-        {!isEditMode && (
+            original submission time, so edit and view modes skip re-asking. */}
+        {!isEditMode && !isViewMode && (
           <Field label="Accept Terms & Conditions" required error={errors.acceptTerms} full>
             <label className={['flex items-start gap-3', isClosed ? 'cursor-not-allowed' : 'cursor-pointer'].join(' ')}>
               <input
@@ -1128,16 +1137,16 @@ export default function ApplyTenderForm() {
       <div className="mt-8 bg-white border border-[#FFE5BF] rounded-2xl shadow-sm px-4 py-3 lg:px-6">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
 
-          {/* Left — form completion hint (apply mode only — edit mode has no
-              gated "Next" step to hint about) */}
+          {/* Left — form completion hint (apply mode only — edit/view modes
+              have no gated "Next" step to hint about) */}
           <div className="flex items-center gap-2">
-            {!isEditMode && !isFormComplete && !isClosed && (
+            {!isEditMode && !isViewMode && !isFormComplete && !isClosed && (
               <p className="text-xs text-[#6B7A8D]">
                 Fill all required fields to enable{' '}
                 <span className="font-semibold text-[#F62440]">Next</span>.
               </p>
             )}
-            {!isEditMode && isFormComplete && !isClosed && (
+            {!isEditMode && !isViewMode && isFormComplete && !isClosed && (
               <p className="text-xs text-emerald-600 font-medium flex items-center gap-1">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1148,6 +1157,11 @@ export default function ApplyTenderForm() {
             {isEditMode && (
               <p className="text-xs text-[#6B7A8D]">
                 Editing a submitted application. Save your changes below.
+              </p>
+            )}
+            {isViewMode && (
+              <p className="text-xs text-[#6B7A8D]">
+                Viewing the submitted application details in read-only mode.
               </p>
             )}
           </div>
@@ -1163,26 +1177,28 @@ export default function ApplyTenderForm() {
               Cancel
             </button>
 
-            {/* Save */}
-            <button
-              onClick={handleSave}
-              disabled={isClosed || saving}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-8 py-2.5 rounded-xl text-sm font-semibold bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {saving ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Saving...
-                </>
-              ) : 'Save'}
-            </button>
+            {/* Save — hidden in view mode. */}
+            {!isViewMode && (
+              <button
+                onClick={handleSave}
+                disabled={isClosed || saving}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-8 py-2.5 rounded-xl text-sm font-semibold bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {saving ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Saving...
+                  </>
+                ) : 'Save'}
+              </button>
+            )}
 
             {/* Next → only in APPLY MODE. Submits into bidderlists, then back
-                to /apply-tenders. Never shown in edit mode. */}
-            {!isEditMode && (
+                to /apply-tenders. Never shown in edit or view mode. */}
+            {!isEditMode && !isViewMode && (
               <button
                 onClick={handleNext}
                 disabled={!isFormComplete || isClosed || saving}

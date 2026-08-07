@@ -195,7 +195,10 @@ export default function ApplyTenders() {
       // Still pass state as a fast-path so ApplyTenderForm.jsx can render
       // immediately without waiting on a fetch, if it chooses to use it —
       // but the URL param is now the source of truth it should read first.
-      state: { tenderCode: tender.tenderCode },
+      state: {
+        tenderCode: tender.tenderCode,
+        fromPath: '/apply-tenders',
+      },
     })
   }
 

@@ -297,25 +297,68 @@ exports.submitApplication = async (req, res) => {
     }
 
     const now = new Date()
+    const bidderEntryPayload = {
+      applicationId: entry.applicationId,
+      userId,
+      formData: entry.formData || {},
+      documents: entry.documents || [],
+      signatureFileId: entry.signatureFileId || null,
+      signatureContentType: entry.signatureContentType || null,
+      signatureOriginalName: entry.signatureOriginalName || null,
+      isPaid: false,
+      paymentId: null,
+      applicationDate: entry.applicationDate,
+      applicationTime: entry.applicationTime,
+      applicationSubmissionDateTime: now,
+    }
 
-    const bidderEntry = await BiddersList.findOneAndUpdate(
-      { tenderId, userId },
-      {
-        applicationId: entry.applicationId,
+    let bidderDoc = await BiddersList.findOne({ tenderId })
+    if (!bidderDoc) {
+      bidderDoc = new BiddersList({
         tenderId,
         departmentId: tempDoc.departmentId,
-        userId,
-        formData: entry.formData || {},
-        documents: entry.documents || [],
-        signatureFileId: entry.signatureFileId || null,
-        signatureContentType: entry.signatureContentType || null,
-        signatureOriginalName: entry.signatureOriginalName || null,
+        applications: [],
         status: 'Submitted',
         applicationDate: entry.applicationDate,
         applicationSubmissionDateTime: now,
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      })
+    } else if (!Array.isArray(bidderDoc.applications) || bidderDoc.applications.length === 0) {
+      bidderDoc.applications = []
+      if (bidderDoc.applicationId || bidderDoc.userId) {
+        bidderDoc.applications.push({
+          applicationId: bidderDoc.applicationId,
+          userId: bidderDoc.userId,
+          formData: bidderDoc.formData || {},
+          documents: bidderDoc.documents || [],
+          signatureFileId: bidderDoc.signatureFileId || null,
+          signatureContentType: bidderDoc.signatureContentType || null,
+          signatureOriginalName: bidderDoc.signatureOriginalName || null,
+          isPaid: Boolean(bidderDoc.isPaid),
+          paymentId: bidderDoc.paymentId || null,
+          paidAt: bidderDoc.paidAt || null,
+          applicationDate: bidderDoc.applicationDate,
+          applicationSubmissionDateTime: bidderDoc.applicationSubmissionDateTime || now,
+        })
+      }
+    }
+
+    const existingIndex = bidderDoc.applications.findIndex(
+      (item) => String(item.userId) === String(userId)
     )
+
+    if (existingIndex >= 0) {
+      bidderDoc.applications[existingIndex] = {
+        ...bidderDoc.applications[existingIndex].toObject?.() ,
+        ...bidderEntryPayload,
+      }
+    } else {
+      bidderDoc.applications.push(bidderEntryPayload)
+    }
+
+    bidderDoc.status = 'Submitted'
+    bidderDoc.applicationDate = entry.applicationDate || bidderDoc.applicationDate
+    bidderDoc.applicationSubmissionDateTime = now
+    await bidderDoc.save()
 
     // Remove this bidder's entry from the temp collection now that it's
     // permanently recorded in bidderlists — the GridFS files are untouched
@@ -332,15 +375,9 @@ exports.submitApplication = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Application submitted successfully.',
-      data: { applicationId: bidderEntry.applicationId },
+      data: { applicationId: bidderEntryPayload.applicationId },
     })
   } catch (err) {
-    // Duplicate key on { tenderId, userId } means this user already has a
-    // bidderlists entry for this tender (e.g. double-click on Next) — treat
-    // as success rather than a hard failure, since the end state is correct.
-    if (err.code === 11000) {
-      return res.status(200).json({ success: true, message: 'Application already submitted.' })
-    }
     return res.status(500).json({ success: false, message: 'Failed to submit application', error: err.message })
   }
 }
