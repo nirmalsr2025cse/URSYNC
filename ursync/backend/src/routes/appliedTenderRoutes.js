@@ -13,6 +13,11 @@
 // and API_BASE = http://localhost:5000/api. If your API_BASE does NOT
 // include /api, drop the '/api' prefix below and mount everything under
 // plain '/applied-tenders' instead — see inline note.)
+//
+// IMPORTANT — route order: '/file/:fileId' MUST be registered before
+// '/:applicationId'. Express matches routes top-down, and ':applicationId'
+// is a wildcard segment that would otherwise swallow "/file" as its own
+// value, making the file-stream route unreachable.
 
 const express = require('express')
 const multer = require('multer')
@@ -34,9 +39,10 @@ router.get('/', authMiddleware, ctrl.listAppliedTenders)
 
 // Authenticated file stream for an uploaded document/signature.
 // GET /api/applied-tenders/file/:fileId
+// (Registered BEFORE '/:applicationId' — see note above.)
 router.get('/file/:fileId', authMiddleware, ctrl.streamAppliedTenderFile)
 
-// Fetch one application (pre-fill for the Edit form).
+// Fetch one application (pre-fill for the Edit/View form).
 // GET /api/applied-tenders/:applicationId
 router.get('/:applicationId', authMiddleware, ctrl.getAppliedTenderForEdit)
 

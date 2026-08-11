@@ -99,18 +99,6 @@ export default function Announcements() {
             The eTender related announcements are published below.
           </p>
         </div>
-
-        {/* Back button */}
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold
-                     bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors flex-shrink-0"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
       </div>
 
       {/* ── Announcements Count ───────────────────────────────────────── */}

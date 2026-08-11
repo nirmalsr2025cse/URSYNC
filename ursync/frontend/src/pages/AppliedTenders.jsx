@@ -1,9 +1,9 @@
 // src/pages/AppliedTenders.jsx
 // Now backed by the real API (GET /api/applied-tenders?tab=applied|completed)
-// instead of local mock data. Structure/style is unchanged from before —
-// only data-fetching, loading, and error states were added, and Edit now
-// navigates into ApplyTenderForm.jsx's EDIT MODE (isEdit + applicationId),
-// not the original "apply to a new tender" flow.
+// instead of local mock data. Tab placement is date-driven on the backend:
+// once a tender's application window (applicationEndDate / applicationDeadline)
+// has passed, its card always comes back under tab=completed, where only
+// View is shown (never Edit) — see appliedTenderController.bucketFor().
 
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -134,6 +134,7 @@ export default function AppliedTenders() {
     setTimeout(() => { setActiveTab(id); setAnimating(false) }, 150)
   }
 
+  // View is always available, on both tabs.
   const handleView = (tender) => {
     navigate('/apply-tenders/apply', {
       state: {
@@ -145,12 +146,10 @@ export default function AppliedTenders() {
     })
   }
 
-  // Edit now routes into ApplyTenderForm.jsx's EDIT MODE: it needs the
-  // application's applicationId (not a tenderCode) so the form can fetch
-  // the permanent bidderlists record via GET /api/applied-tenders/:id and
-  // save changes back with PUT /api/applied-tenders/:id. isEdit=true tells
-  // the form to render only Cancel + Save (no "Next"/submit step, since
-  // this application was already submitted).
+  // Edit is only ever reachable from the Applied tab (the button itself is
+  // only rendered there — see activeTab === 'applied' below). The backend
+  // additionally rejects PUTs for tenders whose application window has
+  // closed, as a server-side backstop.
   const handleEdit = (tender) => {
     navigate('/apply-tenders/apply', {
       state: {
@@ -323,7 +322,7 @@ export default function AppliedTenders() {
                     onClick={() => handleView(tender)}
                     footer={
                       <div className="flex gap-2 mt-2 pt-2 border-t border-[#FFE5BF]">
-                        {/* View Button — present on both Applied and Completed tabs */}
+                        {/* View Button — present on BOTH tabs */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -335,7 +334,11 @@ export default function AppliedTenders() {
                           View Details
                         </button>
 
-                        {/* Edit Button — only present on Applied tab */}
+                        {/* Edit Button — ONLY on the Applied tab. Once a
+                            tender's application window closes, the backend
+                            moves its card to the Completed tab, so this
+                            button simply stops rendering for it — no extra
+                            per-card date check needed here. */}
                         {activeTab === 'applied' && (
                           <button
                             onClick={(e) => {

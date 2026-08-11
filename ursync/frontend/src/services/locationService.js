@@ -1,58 +1,46 @@
-import axios from 'axios'
+// ─────────────────────────────────────────────────────────────────────────
+// ADD THESE to your existing src/services/locationService.js
+// (keeps the same { data, error } return contract as getAutocomplete /
+// getTendersByPlaceId already in that file — swap the fetch base URL below
+// for whatever axios instance / API_BASE constant the rest of the file
+// already uses).
+// ─────────────────────────────────────────────────────────────────────────
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
+const API_BASE = '/api/location'
 
-const api = axios.create({
-  baseURL: API_BASE,
-  timeout: 10000,
-  headers: { 'Content-Type': 'application/json' },
-})
-
-/**
- * Get autocomplete suggestions for a partial location string.
- * GET /api/location/autocomplete?query=<value>
- *
- * Expected response:
- * { predictions: [{ placeId: string, description: string }] }
- */
-export async function getAutocomplete(query) {
+export async function getDistricts() {
   try {
-    const { data } = await api.get('/location/autocomplete', {
-      params: { query },
-    })
-    return { data: data.predictions, error: null }
+    const res = await fetch(`${API_BASE}/districts`)
+    const json = await res.json()
+    if (!res.ok) return { data: null, error: json.message || 'Failed to fetch districts' }
+    return { data: json.districts, error: null }
   } catch (err) {
-    const message =
-      err.response?.data?.message ||
-      err.message ||
-      'Failed to fetch suggestions. Please try again.'
-    return { data: [], error: message }
+    return { data: null, error: 'Failed to fetch districts' }
   }
 }
 
-/**
- * Resolve a selected placeId to matched tenders + map data.
- * GET /api/location/tenders?placeId=<value>
- *
- * Expected response:
- * {
- *   center: { lat, lng },
- *   nearbyPlaces: [{ name, placeId, address, lat, lng }],
- *   markers: [{ lat, lng, title }],
- *   tenders: [...]
- * }
- */
-export async function getTendersByPlaceId(placeId) {
+export async function getTaluks(districtId) {
   try {
-    const { data } = await api.get('/location/tenders', {
-      params: { placeId },
-    })
-    return { data, error: null }
+    const res = await fetch(`${API_BASE}/taluks?districtId=${encodeURIComponent(districtId)}`)
+    const json = await res.json()
+    if (!res.ok) return { data: null, error: json.message || 'Failed to fetch taluks' }
+    return { data: json.taluks, error: null }
   } catch (err) {
-    const message =
-      err.response?.data?.message ||
-      err.message ||
-      'Failed to fetch tenders for this location. Please try again.'
-    return { data: null, error: message }
+    return { data: null, error: 'Failed to fetch taluks' }
+  }
+}
+
+export async function getTendersByDistrict(districtName, taluk) {
+  try {
+    const params = new URLSearchParams({ districtName })
+    if (taluk) params.set('taluk', taluk)
+    const res = await fetch(`${API_BASE}/tenders-by-district?${params.toString()}`, {
+      cache: 'no-store',              // ← ADD THIS
+    })
+    const json = await res.json()
+    if (!res.ok) return { data: null, error: json.message || 'Failed to fetch tenders' }
+    return { data: json, error: null }
+  } catch (err) {
+    return { data: null, error: 'Failed to fetch tenders' }
   }
 }

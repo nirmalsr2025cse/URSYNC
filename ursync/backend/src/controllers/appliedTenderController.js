@@ -57,6 +57,7 @@ function shapeTenderSummary(tender, departmentName) {
     projectDuration: tender.duration,
     estimatedValue: tender.estimatedValue,
     applicationDeadline: tender.applicationDeadline,
+    applicationEndDate: tender.applicationEndDate,
     closingDate: tender.closingDate,
     startDate: tender.startDate,
     status: tender.status,
@@ -66,14 +67,25 @@ function shapeTenderSummary(tender, departmentName) {
   }
 }
 
-// Applied-Tenders-page status bucketing:
-//   'applied'   -> tender.status is Ongoing/Upcoming (still active/in-progress)
-//   'completed' -> tender.status is Completed
-// (Independent of BiddersList.status, which just tracks
-// Submitted/Paid — an applied tender stays "applied" until the underlying
-// tender itself completes.)
-function bucketFor(tenderStatus) {
-  return tenderStatus === 'Completed' ? 'completed' : 'applied'
+// ── Applied-Tenders-page tab bucketing ──────────────────────────────────
+// Purely date-driven now, per product requirement: once a tender's
+// application window has closed, every applicant's card for it moves to
+// the "Completed" tab (View only) — regardless of what Tender.status /
+// Tender.application currently say (those drive OTHER pages, e.g. the
+// public tender listing, and can lag behind via the cron sync job).
+//   - applicationEndDate is the Tender Authority-entered end-of-window date
+//     (see Tender model) and is preferred when present.
+//   - applicationDeadline is the fallback if applicationEndDate isn't set.
+//   - If neither is set, the tender is treated as still open ('applied').
+function isApplicationWindowClosed(tender) {
+  if (!tender) return false
+  const endDate = tender.applicationEndDate || tender.applicationDeadline
+  if (!endDate) return false
+  return new Date(endDate) < new Date()
+}
+
+function bucketFor(tender) {
+  return isApplicationWindowClosed(tender) ? 'completed' : 'applied'
 }
 
 function resolveApplicantEntry(record, userId, applicationId) {
@@ -148,6 +160,10 @@ function toApplicationCardShape(record, userId, applicationId) {
     declarationDate: entry.formData?.declarationDate || '',
     applicationStatus: entry.isPaid ? 'Paid' : 'Submitted',
     tenderStatus: record.tenderId?.status,
+    // Tab this card belongs to, computed straight from the application
+    // window dates — the frontend also relies on this for the Edit-button
+    // visibility rule (only 'applied' tenders may be edited).
+    tabBucket: bucketFor(record.tenderId),
   }
 }
 
@@ -155,6 +171,10 @@ function toApplicationCardShape(record, userId, applicationId) {
 // Lists the current user's submitted applications for the AppliedTenders.jsx
 // grid. Each tender document can contain many applications, so we resolve
 // the current user's entry inside that array instead of assuming a one-row-per-user model.
+//
+// Tab placement is date-driven (see bucketFor/isApplicationWindowClosed
+// above): once a tender's application window has closed, its card always
+// lands in "completed", where the frontend shows View only (no Edit).
 exports.listAppliedTenders = async (req, res) => {
   try {
     const userId = req.user.id
@@ -170,7 +190,7 @@ exports.listAppliedTenders = async (req, res) => {
       .filter((r) => r.tenderId)
       .map((r) => toApplicationCardShape(r, userId))
       .filter(Boolean)
-      .filter((r) => bucketFor(r.tenderStatus) === tab)
+      .filter((r) => r.tabBucket === tab)
 
     res.json({ data: shaped })
   } catch (err) {
@@ -185,6 +205,13 @@ exports.listAppliedTenders = async (req, res) => {
 // bidderlists collection instead. Document/signature URLs point at the
 // authenticated file-stream route below (same pattern the form already uses
 // for existingUrl / ImageUploadBox).
+//
+// NOTE: editing a Completed-tab (application window closed) application is
+// rejected here too, as a server-side backstop to the frontend only
+// rendering the Edit button on the Applied tab — this endpoint doubles as
+// the data source for both the Edit form AND the read-only "View Details"
+// screen, so isEditable is returned for the frontend to gate the Save
+// button / show Cancel+Save vs. read-only.
 exports.getAppliedTenderForEdit = async (req, res) => {
   try {
     const userId = req.user.id
@@ -223,6 +250,8 @@ exports.getAppliedTenderForEdit = async (req, res) => {
         signatureOriginalName: entry.signatureOriginalName || null,
         tender: shapeTenderSummary(record.tenderId, record.departmentId?.name),
         applicationStatus: entry.isPaid ? 'Paid' : 'Submitted',
+        tabBucket: bucketFor(record.tenderId),
+        isEditable: bucketFor(record.tenderId) === 'applied',
       },
     })
   } catch (err) {
@@ -244,8 +273,16 @@ exports.updateAppliedTender = async (req, res) => {
     const { applicationId } = req.params
 
     const record = await BiddersList.findOne({ 'applications.applicationId': applicationId })
+      .populate('tenderId')
     if (!record) {
       return res.status(404).json({ message: 'Application not found.' })
+    }
+
+    // Server-side backstop: once the application window has closed, the
+    // tender only belongs on the Completed tab (View only) — reject edits
+    // even if someone hits this endpoint directly.
+    if (bucketFor(record.tenderId) === 'completed') {
+      return res.status(403).json({ message: 'This application can no longer be edited — the application window has closed.' })
     }
 
     const entry = resolveApplicantEntry(record, userId, applicationId)

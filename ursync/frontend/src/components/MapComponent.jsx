@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { waitForGoogleMaps, createMap, addMarkers, highlightMarker } from '../services/mapService'
+import { waitForGoogleMaps, createMap, addMarkers, fitMapToMarkers, highlightMarker } from '../services/mapService'
 
 /**
  * Google Maps component.
  *
  * Props:
  *   center        — { lat, lng }
- *   places        — [{ name, lat, lng }]
+ *   places        — [{ name/title, lat, lng, color }]
  *   activeIndex   — index of the currently highlighted place
  *   onMarkerClick — (index) => void
  *   loading       — boolean
@@ -35,14 +35,17 @@ export default function MapComponent({ center, places = [], activeIndex, onMarke
     mapRef.current = createMap(containerRef.current, defaultCenter, 11)
   }, [mapReady, center])
 
-  /* Re-center when location changes */
+  /* Re-center when location changes (only matters before markers exist —
+     once there are markers, fitMapToMarkers below takes over framing) */
   useEffect(() => {
-    if (!mapRef.current || !center) return
+    if (!mapRef.current || !center || places.length) return
     mapRef.current.setCenter(center)
     mapRef.current.setZoom(12)
-  }, [center])
+  }, [center]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Redraw markers when places change */
+  /* Redraw markers when places change, then fit the viewport so every
+     marker is actually visible instead of staying at the original
+     center/zoom (that was the cause of only one marker ever showing) */
   useEffect(() => {
     if (!mapRef.current) return
 
@@ -53,14 +56,15 @@ export default function MapComponent({ center, places = [], activeIndex, onMarke
     if (!places.length) return
 
     markersRef.current = addMarkers(mapRef.current, places, onMarkerClick)
+    fitMapToMarkers(mapRef.current, places)
   }, [places]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Highlight active marker */
   useEffect(() => {
     if (!markersRef.current.length) return
     if (activeIndex == null) return
-    highlightMarker(markersRef.current, activeIndex)
-  }, [activeIndex])
+    highlightMarker(markersRef.current, activeIndex, places)
+  }, [activeIndex]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (mapsError) {
     return (

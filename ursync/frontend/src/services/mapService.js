@@ -67,14 +67,19 @@ export function createMap(container, center, zoom = 12) {
 }
 
 /**
- * Adds markers to the map and returns the marker array.
+ * Adds markers to the map and returns the marker array. Accepts an
+ * optional per-place `color` (falls back to navy) and reads `title`
+ * with `name` as a fallback so callers using either key work.
  */
 export function addMarkers(map, places, onMarkerClick) {
   return places.map((place, idx) => {
+    const label = place.title || place.name || ''
+    const color = place.color || '#1A4A8C'
+
     const marker = new window.google.maps.Marker({
       position: { lat: place.lat, lng: place.lng },
       map,
-      title: place.name,
+      title: label,
       label: {
         text: String(idx + 1),
         color: '#fff',
@@ -83,7 +88,7 @@ export function addMarkers(map, places, onMarkerClick) {
       },
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
-        fillColor: '#1A4A8C',
+        fillColor: color,
         fillOpacity: 1,
         strokeColor: '#fff',
         strokeWeight: 2,
@@ -92,7 +97,7 @@ export function addMarkers(map, places, onMarkerClick) {
     })
 
     const infoWindow = new window.google.maps.InfoWindow({
-      content: `<div style="font-family:Inter,sans-serif;padding:4px 8px;font-size:13px;font-weight:600;color:#0A2240">${place.name}</div>`,
+      content: `<div style="font-family:Inter,sans-serif;padding:4px 8px;font-size:13px;font-weight:600;color:#0A2240">${label}</div>`,
     })
 
     marker.addListener('click', () => {
@@ -105,14 +110,36 @@ export function addMarkers(map, places, onMarkerClick) {
 }
 
 /**
- * Highlights a specific marker (enlarges it, dims others).
+ * Fits the map viewport so every marker is visible. Call this after
+ * addMarkers() whenever there's more than one point — otherwise the map
+ * stays at its original center/zoom and markers outside that view are
+ * never seen even though they were created correctly.
  */
-export function highlightMarker(markers, activeIdx) {
+export function fitMapToMarkers(map, places) {
+  if (!places.length) return
+
+  if (places.length === 1) {
+    map.setCenter({ lat: places[0].lat, lng: places[0].lng })
+    map.setZoom(14)
+    return
+  }
+
+  const bounds = new window.google.maps.LatLngBounds()
+  places.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }))
+  map.fitBounds(bounds, 48) // 48px padding so edge markers aren't clipped
+}
+
+/**
+ * Highlights a specific marker (enlarges it, dims others). Preserves each
+ * marker's own status color instead of overwriting it with a single blue.
+ */
+export function highlightMarker(markers, activeIdx, places = []) {
   markers.forEach((m, i) => {
     const isActive = i === activeIdx
+    const baseColor = places[i]?.color || '#1A4A8C'
     m.setIcon({
       path: window.google.maps.SymbolPath.CIRCLE,
-      fillColor: isActive ? '#D4A017' : '#1A4A8C',
+      fillColor: isActive ? '#D4A017' : baseColor,
       fillOpacity: 1,
       strokeColor: '#fff',
       strokeWeight: isActive ? 3 : 2,
