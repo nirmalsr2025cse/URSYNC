@@ -1,5 +1,5 @@
 // src/pages/Approvement.jsx
-// TENDERS are now wired to the real backend:
+// TENDERS are wired to the real backend:
 //   GET   /api/approvement/tenders
 //   PATCH /api/approvement/tenders/:id/approve
 //   PATCH /api/approvement/tenders/:id/reject
@@ -7,7 +7,20 @@
 // administrator sees only tenders 'Sent to Administrator' addressed to
 // them — both enforced server-side (see approvementController.js).
 //
-// BIDDERS are intentionally left untouched on mock data, per requirements.
+// BIDDERS are now ALSO wired to the real backend:
+//   GET   /api/approvement/bidders
+// This lists tenders ready for bidder finalization — isDocumentVerified
+// true, isFinalizedBidders false, applicationDeadline still in the
+// future — enforced server-side (see getBidderFinalizationTenders in
+// approvementController.js). Once a tender's isFinalizedBidders flips to
+// true, it stops coming back from this endpoint and disappears from this
+// page on the next fetch/refresh.
+//
+// NOTE: "Bidders" cards on this page are tender-shaped (not individual
+// bidder-company records) — Approve/Reject actions were intentionally
+// dropped for this tab since finalizing bidders isn't a binary
+// approve/reject action. Use "View" / "Finalize Bidders" to open the
+// tender's bidder finalization flow at /finalbidder/:id.
 
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -15,14 +28,11 @@ import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
 import { useRole, ROLES } from "../components/RoleContext";
 import { useApi } from '../api/client'
 import {
-  APPROVAL_BIDDERS,
   TENDER_APPROVAL_STATUS_CONFIG,
-  BIDDER_APPROVAL_STATUS_CONFIG,
   PRIORITY_CONFIG,
   APPROVAL_TENDER_CATEGORIES,
-  APPROVAL_BIDDER_STATUSES,
   APPROVAL_TENDER_STATUSES,
-} from '../data/approvementMockData';
+} from '../constants/approvementConstants';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(d) {
@@ -169,61 +179,48 @@ function TenderApprovementCard({ tender, role, onView, onEdit, onConfirmApprove,
 }
 
 // ── Bidder Card ───────────────────────────────────────────────────────────────
-// No delete icon for bidders, for any role.
-function BidderApprovementCard({ bidder, role , onView, onEdit, onConfirmApprove, onConfirmReject }) {
+// Renders tenders that are ready for bidder finalization (real backend
+// data — see GET /api/approvement/bidders). No delete icon, no
+// Approve/Reject here: finalizing bidders isn't a binary approve/reject
+// action, it opens the finalization flow via "Finalize Bidders".
+function BidderApprovementCard({ bidder, onView, onEdit }) {
   return (
     <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col h-full">
       <div className="h-48 overflow-hidden bg-[#FFF2DB]">
-        <img src={bidder.image} alt={bidder.companyName} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+        <img src={bidder.image} alt={bidder.projectName} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
       </div>
-      <div className={['h-1 w-full', BIDDER_APPROVAL_STATUS_CONFIG[bidder.status]?.dot || 'bg-gray-400'].join(' ')} />
+      <div className="h-1 w-full bg-[#1A4A8C]" />
       <div className="p-4 flex flex-col flex-1 gap-3">
         <div className="flex items-start justify-between gap-2">
-          <StatusBadge status={bidder.status} config={BIDDER_APPROVAL_STATUS_CONFIG} />
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
-            {bidder.category}
+          <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+            Ready for Bidder Finalization
           </span>
         </div>
         <p className="text-[10px] font-mono text-[#6B7A8D] uppercase tracking-wide">{bidder.id}</p>
-        <h3 className="text-sm font-bold text-[#0A2240] leading-snug line-clamp-2">{bidder.companyName}</h3>
+        <h3 className="text-sm font-bold text-[#0A2240] leading-snug line-clamp-2">{bidder.projectName}</h3>
         <p className="text-xs text-[#6B7A8D] line-clamp-2 leading-relaxed">{bidder.description}</p>
         <div className="space-y-1.5 text-xs text-[#6B7A8D] pt-2 border-t border-[#FFE5BF]">
-          <MetaRow icon="tag"      label={'Tender: ' + bidder.tenderName} />
-          <MetaRow icon="exp"      label={'Experience: ' + bidder.experience} />
+          <MetaRow icon="building" label={bidder.department} />
+          <MetaRow icon="tag" label={bidder.category} />
           <MetaRow icon="location" label={bidder.district} />
-          <MetaRow icon="calendar" label={'Submitted: ' + formatDate(bidder.submissionDate)} />
+          <MetaRow icon="calendar" label={'Deadline: ' + formatDate(bidder.applicationDeadline)} />
+          <MetaRow icon="exp" label={'Approved applicants: ' + (bidder.approvedApplicationCount ?? 0)} />
         </div>
         <div className="flex items-center justify-between pt-1 border-t border-[#FFE5BF]">
-          <p className="text-sm font-extrabold text-[#0A2240]">₹ {bidder.bidAmount}</p>
+          <p className="text-sm font-extrabold text-[#0A2240]">₹ {bidder.amount}</p>
           <p className="text-[10px] text-[#6B7A8D]">Updated {formatDate(bidder.lastUpdated)}</p>
         </div>
         {/* ── Action row: pinned to bottom via mt-auto so buttons line up ── */}
         <div className="flex items-center gap-2 pt-1 mt-auto">
-          <button onClick={() => onConfirmReject(bidder)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-sky text-white border border-tn-sky hover:bg-tn-sky transition-colors">
-            <RejectIcon /> Reject
-          </button>
-
           <button onClick={() => onView(bidder)}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors">
-            <EyeIcon /> View
+            <ApproveIcon /> Approve
           </button>
 
-          {role === ROLES.ADMINISTRATOR ? (
-            <button
-              onClick={() => onConfirmApprove(bidder)}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-tn-blue text-white transition-colors"
-            >
-              <ApproveIcon /> Approve
-            </button>
-          ) : (
-            <button
-              onClick={() => onEdit(bidder)}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
-            >
-              <EditIcon /> Edit
-            </button>
-          )}
+          <button onClick={() => onEdit(bidder)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors">
+            <EditIcon /> Finalize Bidders
+          </button>
         </div>
       </div>
     </div>
@@ -271,11 +268,15 @@ export default function Approvement() {
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [currentPage,    setCurrentPage]    = useState(1)
 
-  // Tenders: real backend data. Bidders: unchanged mock data.
+  // Tenders: real backend data (CreateTender / approval workflow).
   const [approvalTenders, setApprovalTenders] = useState([]);
   const [tendersLoading,  setTendersLoading]  = useState(true);
   const [tendersError,    setTendersError]    = useState(null);
-  const [approvalBidders, setApprovalBidders] = useState(APPROVAL_BIDDERS);
+
+  // Bidders: real backend data (Tender model — ready for bidder finalization).
+  const [approvalBidders, setApprovalBidders] = useState([]);
+  const [biddersLoading,  setBiddersLoading]  = useState(true);
+  const [biddersError,    setBiddersError]    = useState(null);
 
   const [approveModal, setApproveModal] = useState(null);
   const [rejectModal, setRejectModal] = useState(null);
@@ -305,18 +306,39 @@ export default function Approvement() {
       })
   }
 
+  // ── Fetch tenders ready for bidder finalization ───────────────────────────
+  // Backend scopes this already (isDocumentVerified: true,
+  // isFinalizedBidders: false, applicationDeadline in the future), so the
+  // frontend just renders whatever comes back. Once a tender's
+  // isFinalizedBidders flips to true server-side, it stops being returned
+  // here — refetch (e.g. after returning from the finalize flow) to drop
+  // it from the list.
+  function fetchBidderFinalizationTenders() {
+    setBiddersLoading(true)
+    setBiddersError(null)
+    apiFetch('/approvement/bidders')
+      .then((res) => {
+        setApprovalBidders(res.data || [])
+      })
+      .catch((err) => {
+        setBiddersError(err.message || 'Failed to load bidder finalization queue.')
+      })
+      .finally(() => {
+        setBiddersLoading(false)
+      })
+  }
+
   useEffect(() => {
     fetchApprovementTenders()
+    fetchBidderFinalizationTenders()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const categoryOptions = activeTab === 'tenders'
     ? ['All', ...APPROVAL_TENDER_CATEGORIES]
-    : ['All', ...new Set(approvalBidders.map(b => b.category))]
+    : ['All', ...new Set(approvalBidders.map(b => b.category).filter(Boolean))]
 
-  const statusOptions = activeTab === 'tenders'
-    ? APPROVAL_TENDER_STATUSES
-    : APPROVAL_BIDDER_STATUSES
+  const statusOptions = APPROVAL_TENDER_STATUSES
 
   function switchTab(id) {
     if (id === activeTab) return
@@ -337,31 +359,21 @@ export default function Approvement() {
   const filtered = useMemo(() => {
     let data = activeTab === "tenders" ? approvalTenders : approvalBidders;
 
-    // Tenders are already correctly scoped by the backend (only the
-    // relevant "Sent to Head" / "Sent to Administrator" tenders addressed
-    // to this exact user come back) — no extra status filter needed here.
-    // Bidders remain on the old mock-data status filter.
-    if (activeTab === "bidders") {
-        data = data.filter(bidder => bidder.status === "Pending");
-    }
+    // Both tabs are already correctly scoped server-side:
+    //   tenders  -> "Sent to Head" / "Sent to Administrator" addressed to
+    //               this exact user.
+    //   bidders  -> isDocumentVerified true, isFinalizedBidders false,
+    //               applicationDeadline still in the future.
+    // No extra client-side status filter needed for either tab.
 
     return data.filter((item) => {
         const q = search.trim().toLowerCase();
 
         const matchesSearch = !q || (
-        activeTab === "tenders"
-            ? (
-                (item.id || '').toLowerCase().includes(q) ||
-                (item.projectName || '').toLowerCase().includes(q) ||
-                (item.department || '').toLowerCase().includes(q) ||
-                (item.district || '').toLowerCase().includes(q)
-            )
-            : (
-                item.id.toLowerCase().includes(q) ||
-                item.companyName.toLowerCase().includes(q) ||
-                item.tenderName.toLowerCase().includes(q) ||
-                item.district.toLowerCase().includes(q)
-            )
+            (item.id || '').toLowerCase().includes(q) ||
+            (item.projectName || '').toLowerCase().includes(q) ||
+            (item.department || '').toLowerCase().includes(q) ||
+            (item.district || '').toLowerCase().includes(q)
         );
 
         const matchesCategory =
@@ -387,10 +399,18 @@ export default function Approvement() {
 
   // Tenders go to /tender-view with the tender data + role + fromPath so
   // TenderView's Edit button (and the Sidebar's fromPath chain) keep working.
-  // Bidders still go to /finalbidder, unchanged.
+  //
+  // Bidders tab "View" -> FinalBidder page in read-only "view" mode
+  // (shows every application for the tender, no Approve button).
+  // Bidders tab card's `id` is the tender's human-readable code
+  // (t.tenderCode — see formatBidderFinalizationTender in
+  // approvementController.js), which is what the FinalBidder route +
+  // backend lookup (/api/finalbidders/by-tender/:tenderCode) expect.
   function handleView(item) {
     if (activeTab === 'bidders') {
-      navigate('/finalbidder', { state: { fromPath: rootPath, readOnly: true } })
+      navigate('/finalbidder/' + encodeURIComponent(item.id), {
+        state: { tender: item, fromPath: rootPath, initialView: 'main' },
+      })
       return
     }
     navigate('/tender-view/'+ encodeURIComponent(item.id), { state: { tender: item, role, fromPath: rootPath } })
@@ -398,8 +418,10 @@ export default function Approvement() {
 
   function handleEdit(item) {
     if (activeTab === 'bidders') {
-        navigate('/finalbidder', { state: { fromPath: rootPath } })
-        return
+      navigate('/finalbidder/' + encodeURIComponent(item.id), {
+        state: { tender: item, fromPath: rootPath, initialView: 'final' },
+      })
+      return
     }
     // CreateTender.jsx's edit form expects `id` to be the real Mongo _id
     // (it becomes tenderRecordId, used directly in PUT/PATCH URLs). The
@@ -418,13 +440,8 @@ export default function Approvement() {
     }
 
     function handleApprove() {
-    if (activeTab === 'bidders') {
-      // Bidders remain mock-only for now, per requirements.
-      showToast(`Bidder "${approveModal.id}" approved successfully.`, "success");
-      setApproveModal(null);
-      return
-    }
-
+    // Approve is only wired for the Tenders tab — Bidders has no
+    // approve/reject action (see BidderApprovementCard).
     const target = approveModal
     setApproveModal(null)
 
@@ -446,12 +463,8 @@ export default function Approvement() {
     }
 
     function handleReject() {
-        if (activeTab === 'bidders') {
-          showToast(`Bidder "${rejectModal.id}" rejected successfully.`, "error");
-          setRejectModal(null);
-          return
-        }
-
+        // Reject is only wired for the Tenders tab — Bidders has no
+        // approve/reject action (see BidderApprovementCard).
         const reason = rejectReason.trim()
         if (!reason) {
           showToast('Please enter a reason for rejection.', 'error')
@@ -489,19 +502,15 @@ export default function Approvement() {
     }
 
     function handleDelete() {
-    if (activeTab === "tenders") {
-        // NOTE: no delete endpoint was requested for the Approvement queue —
-        // this still only updates local state, matching the previous
-        // mock-data behavior. Wire this to a real DELETE/soft-delete
-        // endpoint if department heads should be able to delete from here.
-        setApprovalTenders(prev =>
-        prev.filter(t => t.recordId !== deleteModal.recordId)
-        );
-    } else {
-        setApprovalBidders(prev =>
-        prev.filter(b => b.id !== deleteModal.id)
-        );
-    }
+    // NOTE: no delete endpoint was requested for the Approvement queue —
+    // this still only updates local state. Wire this to a real
+    // DELETE/soft-delete endpoint if department heads should be able to
+    // delete from here. Delete is Tenders-tab only (see
+    // TenderApprovementCard — DEPARTMENT_HEAD only); Bidders has no
+    // delete icon at all.
+    setApprovalTenders(prev =>
+      prev.filter(t => t.recordId !== deleteModal.recordId)
+    );
 
     setDeleteModal(null);
     showToast("Deleted successfully.", "error");
@@ -523,7 +532,7 @@ export default function Approvement() {
         </div>
       )}
 
-      {/* ── Delete Modal ───────────────────────────────────────────────── */}
+      {/* ── Delete Modal (Tenders tab only) ───────────────────────────── */}
       {deleteModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fade-in">
@@ -532,7 +541,7 @@ export default function Approvement() {
             </div>
             <h3 className="text-base font-bold text-[#0A2240] text-center mb-2">Delete Item</h3>
             <p className="text-sm text-[#6B7A8D] text-center mb-6">
-              Are you sure you want to delete <span className="font-semibold text-[#0A2240]">"{deleteModal.projectName || deleteModal.companyName}"</span>? This action cannot be undone.
+              Are you sure you want to delete <span className="font-semibold text-[#0A2240]">"{deleteModal.projectName}"</span>? This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setDeleteModal(null)}
@@ -668,7 +677,7 @@ export default function Approvement() {
         <div>
           <h1 className="text-xl font-extrabold text-[#0A2240]">Approvement</h1>
           <p className="text-sm text-[#6B7A8D] mt-0.5">
-            Review and approve tenders and bidder selection requests.
+            Review and approve tenders and bidder finalization requests.
           </p>
         </div>
         <nav className="flex items-center gap-1.5 text-xs text-[#6B7A8D]">
@@ -726,7 +735,7 @@ export default function Approvement() {
             onChange={e => setSearch(e.target.value)}
             placeholder={activeTab === 'tenders'
               ? 'Search by Tender ID, Project Name, Department or District...'
-              : 'Search by Bidder ID, Company Name, Tender or District...'
+              : 'Search by Tender ID, Project Name, Department or District...'
             }
             className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-[#6B7A8D] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
           />
@@ -771,10 +780,24 @@ export default function Approvement() {
         </div>
       )}
 
+      {/* ── Bidders error state ────────────────────────────────────────── */}
+      {activeTab === 'bidders' && biddersError && (
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-red-200 border-dashed">
+          <p className="font-bold text-red-600 mb-1">Couldn't load bidder finalization queue.</p>
+          <p className="text-sm text-[#6B7A8D] mb-4">{biddersError}</p>
+          <button
+            onClick={fetchBidderFinalizationTenders}
+            className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ── Cards Grid ──────────────────────────────────────────────────── */}
-      {!(activeTab === 'tenders' && tendersError) && (
+      {!((activeTab === 'tenders' && tendersError) || (activeTab === 'bidders' && biddersError)) && (
       <div className={['transition-opacity duration-150', animating ? 'opacity-0' : 'opacity-100'].join(' ')}>
-        {loading || (activeTab === 'tenders' && tendersLoading) ? (
+        {loading || (activeTab === 'tenders' ? tendersLoading : biddersLoading) ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map(i => <CardSkeleton key={i} />)}
           </div>
@@ -813,13 +836,10 @@ export default function Approvement() {
                 ))
               : paginated.map(bidder => (
                   <BidderApprovementCard
-                        key={bidder.id}
+                        key={bidder.recordId}
                         bidder={bidder}
-                        role={role}
                         onView={handleView}
                         onEdit={handleEdit}
-                        onConfirmApprove={confirmApprove}
-                        onConfirmReject={confirmReject}
                     />
                 ))
             }
@@ -829,7 +849,7 @@ export default function Approvement() {
       )}
 
       {/* ── Pagination ──────────────────────────────────────────────────── */}
-      {!loading && !(activeTab === 'tenders' && tendersLoading) && filtered.length > 0 && (
+      {!loading && !(activeTab === 'tenders' ? tendersLoading : biddersLoading) && filtered.length > 0 && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}

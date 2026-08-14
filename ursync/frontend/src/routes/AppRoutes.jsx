@@ -138,11 +138,11 @@ export default function AppRoutes() {
         <Route path="/applications/:tenderId/approved" element={<ApprovedApplicants />} />
         <Route path="/bidder-selection" element={<BidderSelection/>} />
         <Route path="/bidder-selection/:tenderId" element={<BidderList/>} />
-        <Route path="/Bidder/:applicationId" element={<BidderDetails />} />
+        <Route path="/Bidder/:tenderCode/:applicationId" element={<BidderDetails />} />
         <Route path="/bidder-list/:tenderId/finalized" element={<FinalizedBidders />} />
         <Route path="/approvement" element={<Approvement />} />
         <Route path="/pending" element={<Pending />} />
-        <Route path="/finalbidder" element={<FinalBidder />} />
+        <Route path="/finalbidder/:tenderCode" element={<FinalBidder />} />
         <Route path="/completed" element={<Completed />} />
         <Route path="/apply-tenders/payment/:appId" element={<TenderRegistrationPayment />} />
         <Route path="/apply-tenders/payment/choose-platform/:appId" element={<ChoosePaymentPlatform />} />

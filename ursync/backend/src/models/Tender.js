@@ -81,6 +81,8 @@ const tenderSchema = new Schema(
     // computeTab()/tabQueryCondition().
     isDocumentVerified: { type: Boolean, default: false, index: true },
 
+    isFinalizedBidders: { type: Boolean, default: false, index: true },
+
     status: {
       type: String,
       // Cancel/retender are tracked separately via isCancelled/isRetendered

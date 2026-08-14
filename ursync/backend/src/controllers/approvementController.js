@@ -1,9 +1,17 @@
 // src/controllers/approvementController.js
 //
-// Tenders-only (Bidders intentionally NOT covered here — still frontend
-// mock data per requirements).
+// Tenders tab: backed by the CreateTender model (approval workflow —
+// Sent to Head / Sent to Administrator / etc).
 //
-// Visibility rules:
+// Bidders tab: backed by the Tender model (the "live" tender collection
+// that tracks applicationDeadline / isDocumentVerified / isFinalizedBidders).
+// This tab lists tenders that are ready for bidder finalization:
+//   - isDocumentVerified === true
+//   - isFinalizedBidders  === false  (disappears once finalized)
+//   - applicationDeadline  > now
+//   - isDeleted            === false
+//
+// Visibility rules (Tenders tab only):
 //
 // department_head:
 //   - Sees ONLY tenders with status 'Sent to Head'
@@ -17,7 +25,7 @@
 //   - AND sentTo === this administrator's own _id
 //   - No department restriction — administrators aren't department-scoped
 //
-// Approve / Reject:
+// Approve / Reject (Tenders tab only):
 //   - department_head can only approve/reject a tender that is currently
 //     'Sent to Head' AND addressed to them.
 //   - administrator can only approve/reject a tender that is currently
@@ -37,6 +45,7 @@
 // the "everyone who touched this tender" final email.
 
 const CreateTender = require('../models/CreateTender')
+const Tender = require('../models/Tender')
 const User = require('../models/User')
 const Rejection = require('../models/Rejection')
 const Role = require('../models/Role')
@@ -128,6 +137,37 @@ function formatApprovementTender(t) {
     isCancelled: false,
     isRetendered: false,
     cancelledReason: null,
+  }
+}
+
+// Shaped for the Bidders tab, sourced from the `Tender` model (NOT
+// CreateTender) since applicationDeadline / isDocumentVerified /
+// isFinalizedBidders live there. Field names deliberately mirror
+// formatApprovementTender() (projectName, department, district, amount,
+// endDate, lastUpdated, etc) so Approvement.jsx's shared bits (search,
+// category filter, MetaRow usage) work the same way across both tabs.
+function formatBidderFinalizationTender(t) {
+  return {
+    recordId: t._id.toString(),
+    id: t.tenderCode,
+    projectName: t.title,
+    description: t.description || '',
+    image: t.image || '',
+    documentUrl: t.documentUrl || null,
+    department: t.departmentId?.name || '—',
+    category: t.categoryId?.name || '—',
+    district: t.districtId?.name || '—',
+    tenderType: t.procurementType || '',
+    amount: t.estimatedValue,
+    startDate: t.startDate,
+    endDate: t.closingDate,
+    applicationStartDate: t.applicationStartDate,
+    applicationEndDate: t.applicationEndDate,
+    applicationDeadline: t.applicationDeadline,
+    isFinalizedBidders: t.isFinalizedBidders,
+    isDocumentVerified: t.isDocumentVerified,
+    approvedApplicationCount: t.approvedApplicationCount || 0,
+    lastUpdated: t.updatedAt,
   }
 }
 
@@ -320,6 +360,47 @@ exports.rejectTender = async (req, res) => {
     return res.status(200).json({ success: true, data: tender })
   } catch (err) {
     console.error('rejectTender error:', err)
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message })
+  }
+}
+
+// ── GET /api/approvement/bidders ────────────────────────────────────────────
+// Bidders tab: tenders ready for bidder finalization.
+//   - isDocumentVerified === true   (docs already verified)
+//   - isFinalizedBidders  === false (must disappear once finalized)
+//   - applicationDeadline  > now    (deadline hasn't passed)
+//   - isDeleted            === false
+//
+// No department_head/administrator visibility split here — any
+// authenticated user reaching this endpoint sees the same list. Tighten
+// with a roleName check below if bidder finalization should be
+// role-restricted the same way the Tenders tab is.
+exports.getBidderFinalizationTenders = async (req, res) => {
+  try {
+    const me = await loadCurrentUser(req)
+    if (!me) {
+      return res.status(401).json({ success: false, message: 'Not authenticated' })
+    }
+
+    const now = new Date()
+
+    const tenders = await Tender.find({
+      isDeleted: false,
+      isDocumentVerified: true,
+      isFinalizedBidders: false,
+      applicationDeadline: { $lt: now },
+    })
+      .populate('departmentId', 'name')
+      .populate('categoryId', 'name')
+      .populate('districtId', 'name')
+      .sort({ applicationDeadline: 1 })
+      .lean()
+
+    const data = tenders.map(formatBidderFinalizationTender)
+
+    return res.status(200).json({ success: true, count: data.length, data })
+  } catch (err) {
+    console.error('getBidderFinalizationTenders error:', err)
     return res.status(500).json({ success: false, message: 'Server error', error: err.message })
   }
 }

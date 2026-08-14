@@ -67,6 +67,23 @@ function ConfirmModal({ open, count, busy, onCancel, onConfirm }) {
   )
 }
 
+function MetaRow({ icon, label }) {
+  const paths = {
+    exp: 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0',
+    pin: 'M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z',
+    cal: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+    doc: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z',
+  }
+  return (
+    <div className="flex items-start gap-1.5">
+      <svg className="w-3 h-3 mt-px flex-shrink-0 text-[#1A4A8C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={paths[icon]} />
+      </svg>
+      <span className="leading-snug truncate">{label}</span>
+    </div>
+  )
+}
+
 function ApprovedCard({ applicant, onView, onReject, rejecting }) {
   return (
     <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">
@@ -85,6 +102,13 @@ function ApprovedCard({ applicant, onView, onReject, rejecting }) {
         </div>
 
         <p className="text-[10px] font-mono text-[#6B7A8D] uppercase">{applicant.applicationId}</p>
+
+        <div className="space-y-1.5 text-xs text-[#6B7A8D] pt-2 border-t border-[#FFE5BF]">
+          <MetaRow icon="exp" label={'Experience: ' + applicant.experience} />
+          <MetaRow icon="pin" label={applicant.district} />
+          <MetaRow icon="cal" label={'Submitted: ' + new Date(applicant.submittedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} />
+          <MetaRow icon="doc" label={applicant.documents.length + ' documents uploaded'} />
+        </div>
 
         <div className="flex gap-2 mt-1">
           <button
