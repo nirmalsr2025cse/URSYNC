@@ -30,12 +30,26 @@
 //                              "Pending/Approvement" page, not this list.
 //
 // administrator / financial / tender_authority -> unrestricted, see everything.
+//
+// ── EMAIL NOTIFICATIONS ──────────────────────────────────────────────────
+// createTender()   -> "tender created" mail to creator (+ head, if creator
+//                      is a department_employee), and records the creator
+//                      as the first entry in tender.approvalChain.
+// sendToHead()     -> "sent to head" mail to the same recipients, and
+//                      records the sending employee in approvalChain.
+// sendToAdministrator() -> "sent to administrator" mail, and records the
+//                      sending head in approvalChain.
+// See src/services/tenderNotificationService.js for the recipient rules.
 
 const CreateTender = require('../models/CreateTender')
 const User = require('../models/User')
 const Role = require('../models/Role')
 const Category = require('../models/Category')
 const District = require('../models/District')
+const {
+  addToApprovalChain,
+  notifyStage,
+} = require('../services/tenderNotificationService')
 
 // ── helper: format a Mongo tender doc into the shape CreateSavedTenders.jsx / TenderView.jsx expect ──
 function formatTender(t) {
@@ -86,6 +100,14 @@ async function loadCurrentUser(req) {
   return User.findById(currentUser._id || currentUser.id)
     .populate('roleId')
     .populate('departmentId')
+}
+
+// Loads any user (typically a tender's createdBy) with role populated —
+// used by the notification service to decide whether to also CC the
+// department head.
+async function loadUserWithRole(userId) {
+  if (!userId) return null
+  return User.findById(userId).populate('roleId')
 }
 
 // Finds the active department_head user for a given department — the
@@ -341,6 +363,18 @@ exports.createTender = async (req, res) => {
       status: 'Draft', // always starts as Draft
     })
 
+    // ── notification: tender created ────────────────────────────────────
+    // Record the creator as the first approval-chain entry and email them
+    // (+ their department head, if they're an employee).
+    addToApprovalChain(tender, me._id, 'Created')
+    await tender.save()
+
+    notifyStage(tender, me, {
+      stageLabel: 'Created',
+      subject: `Tender Created: ${tender.title}`,
+      message: 'A new tender has been created and saved as Draft.',
+    })
+
     return res.status(201).json({ success: true, data: tender })
   } catch (err) {
     console.error('createTender error:', err)
@@ -479,7 +513,17 @@ exports.sendToHead = async (req, res) => {
     tender.status = 'Sent to Head'
     tender.sentTo = head._id
     tender.updatedBy = me._id
+
+    // ── notification: sent to head ──────────────────────────────────────
+    addToApprovalChain(tender, me._id, 'Sent to Head')
     await tender.save()
+
+    // me is the employee here, and always the creator (checked above).
+    notifyStage(tender, me, {
+      stageLabel: 'Sent to Head',
+      subject: `Tender Sent to Department Head: ${tender.title}`,
+      message: 'This tender has been sent to the department head for review.',
+    })
 
     return res.status(200).json({ success: true, data: tender })
   } catch (err) {
@@ -533,7 +577,20 @@ exports.sendToAdministrator = async (req, res) => {
     tender.status = 'Sent to Administrator'
     tender.sentTo = admin._id
     tender.updatedBy = me._id
+
+    // ── notification: sent to administrator ─────────────────────────────
+    addToApprovalChain(tender, me._id, 'Sent to Administrator')
     await tender.save()
+
+    // The head may be forwarding their OWN draft, or an employee's tender
+    // that was routed to them — fetch the real creator either way so the
+    // right person(s) get emailed.
+    const creatorUser = await loadUserWithRole(tender.createdBy)
+    notifyStage(tender, creatorUser, {
+      stageLabel: 'Sent to Administrator',
+      subject: `Tender Sent to Administrator: ${tender.title}`,
+      message: 'This tender has been sent to the administrator for review.',
+    })
 
     return res.status(200).json({ success: true, data: tender })
   } catch (err) {

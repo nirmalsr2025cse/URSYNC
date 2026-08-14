@@ -32,9 +32,7 @@ const tenderSchema = new Schema(
     // ── Project schedule ─────────────────────────────────────────────────
     // Copied straight from the CreateTender draft (set by the department
     // employee/head when the tender was first created) — NOT re-entered by
-    // the Tender Authority at approval time. This is now ALSO what drives
-    // the `application` field below (Upcoming/Open/Completed), instead of
-    // the separate applicationStartDate/applicationDeadline window.
+    // the Tender Authority at approval time.
     startDate: { type: Date },
     closingDate: { type: Date, required: true, index: true },
 
@@ -42,21 +40,27 @@ const tenderSchema = new Schema(
     currency: { type: String, default: 'INR' },
 
     // ── Application window (entered by the Tender Authority) ───────────
-    // Still stored for record-keeping / audit trail purposes, supplied by
-    // the Tender Authority at approval time
-    // (createTenderApprovalController.tenderAuthorityApprove). NOTE: these
-    // three fields no longer drive the `application` status below — that's
-    // now based on startDate/closingDate instead (see pre-save hook and
-    // syncApplicationStatuses further down).
+    // Supplied by the Tender Authority at approval time
+    // (createTenderApprovalController.tenderAuthorityApprove). These are
+    // TWO SEPARATE triggers for the `application` tab status below —
+    // they are NOT a simple start/end pair:
+    //
+    //   applicationStartDate  -> kept for record-keeping only, does not
+    //                            drive `application`.
+    //   applicationEndDate    -> once this passes, the tender moves to
+    //                            'Open'.
+    //   applicationDeadline   -> once THIS passes, the tender moves to
+    //                            'Completed' (and is no longer 'Open').
     applicationStartDate: { type: Date },
     applicationEndDate: { type: Date },
     applicationDeadline: { type: Date },
 
     // Tracks where the tender's application/public-visibility window
-    // currently stands, based on startDate/closingDate:
-    //   'Upcoming'  -> now < startDate (or startDate not set)
-    //   'Open'      -> now >= startDate (and closingDate hasn't passed, if set)
-    //   'Completed' -> now > closingDate
+    // currently stands:
+    //   'Upcoming'  -> now < applicationEndDate (or applicationEndDate not set)
+    //   'Open'      -> applicationEndDate has passed, but applicationDeadline
+    //                  has not
+    //   'Completed' -> now >= applicationDeadline
     // Set correctly on every save() via the pre-save hook below. Because
     // Mongo has no concept of "wake up when a date passes", a scheduled
     // job must also periodically call Tender.syncApplicationStatuses()
@@ -68,6 +72,14 @@ const tenderSchema = new Schema(
       default: 'Upcoming',
       index: true,
     },
+
+    // Set true once the Tender Authority clicks "Send to Department" on
+    // the Approved Applicants screen (applicationApplicantsController.
+    // sendToDepartment). Once true, the tender ALWAYS shows in the
+    // Completed tab on the Applications page, regardless of
+    // applicationEndDate/applicationDeadline — see tenderListController.js
+    // computeTab()/tabQueryCondition().
+    isDocumentVerified: { type: Boolean, default: false, index: true },
 
     status: {
       type: String,
@@ -157,31 +169,49 @@ tenderSchema.pre('save', function () {
     }
   }
 
-  // ── 2. Application auto-transition (based on applicationStartDate/applicationDeadline) ────
-  // Runs on every save() so the field is correct immediately at
-  // creation/update time — e.g. the moment tenderAuthorityApprove()
-  // inserts this document with the Tender Authority's supplied
-  // applicationStartDate/applicationDeadline, `application` is already
-  // right based on those dates (NOT the project startDate/closingDate).
+  // ── 2. Application tab auto-transition ────────────────────────────────
+  // TWO SEPARATE triggers, not a start/end pair:
+  //   - applicationEndDate passing moves Upcoming -> Open
+  //   - applicationDeadline passing moves (Upcoming or Open) -> Completed
+  // applicationDeadline is checked FIRST and wins outright, since a
+  // tender whose deadline has already passed must never show as Open
+  // even if applicationEndDate also already passed.
+  //
+  // NOTE: this stored `application` field is a separate concern from the
+  // LIVE-computed tab used by tenderListController.js (which additionally
+  // factors in isDocumentVerified). Do not assume the two always agree —
+  // the controller's computeTab() is the source of truth for what the
+  // Applications page tab bar actually shows.
   const now = new Date()
 
-  if (this.applicationStartDate && now < this.applicationStartDate) {
-    this.application = 'Upcoming'
-  } else if (this.applicationDeadline && now > this.applicationDeadline) {
+  if (this.applicationDeadline && now >= this.applicationDeadline) {
     this.application = 'Completed'
-  } else if (this.applicationStartDate && now >= this.applicationStartDate) {
+  } else if (this.applicationEndDate && now >= this.applicationEndDate) {
     this.application = 'Open'
+  } else if (this.applicationEndDate) {
+    this.application = 'Upcoming'
   }
-  // If applicationStartDate isn't set, leave whatever value (or default
-  // 'Upcoming') is already there.
+  // If applicationEndDate isn't set at all, leave whatever value (or
+  // default 'Upcoming') is already there.
 })
 
-// ── Scheduled maintenance: flip `application` forward as real time passes ──
+// ── Scheduled maintenance: fully RECOMPUTE `application` from the actual
+// dates on every run ─────────────────────────────────────────────────────
+// IMPORTANT: this does NOT just nudge documents forward (Upcoming -> Open
+// -> Completed). It recomputes `application` unconditionally from
+// applicationEndDate/applicationDeadline for every document, regardless of
+// what `application` currently says. That matters because documents
+// inserted directly into MongoDB (seed scripts, manual inserts, imports)
+// never pass through the pre-save hook above, so their `application`
+// field can be flat-out wrong from the moment they're created — e.g. a
+// doc hardcoded with application: 'Open' whose applicationEndDate is
+// actually still days in the future. A one-directional "only move
+// forward" sync can never fix that; only an unconditional recompute can.
+//
 // Call this periodically (e.g. every minute/15 min/hourly, via node-cron)
-// so tenders no one is actively editing still transition
-// Upcoming -> Open -> Completed on schedule, based on startDate/
-// closingDate. Uses bulk updateMany, so it's cheap even with a large
-// collection.
+// and it's also called inline at the top of every /applications request
+// (see tenderListController.js) so tabs are always correct even between
+// cron ticks.
 //
 // Example wiring (server.js or a jobs/*.js file):
 //   const cron = require('node-cron')
@@ -190,37 +220,50 @@ tenderSchema.pre('save', function () {
 tenderSchema.statics.syncApplicationStatuses = async function () {
   const now = new Date()
 
-  // Upcoming -> Open: applicationStartDate has arrived (and
-  // applicationDeadline hasn't passed). The $or on `application` and the
-  // $exists checks on `applicationDeadline` guard against documents where
-  // the field may be missing entirely rather than explicitly null — Mongo
-  // treats "missing" and "null" differently in queries.
+  // Completed: applicationDeadline has passed. Checked/set FIRST and wins
+  // outright, matching the pre-save hook's precedence.
   await this.updateMany(
     {
-      $or: [{ application: 'Upcoming' }, { application: { $exists: false } }],
-      applicationStartDate: { $lte: now },
-      $and: [
-        {
-          $or: [
-            { applicationDeadline: null },
-            { applicationDeadline: { $exists: false } },
-            { applicationDeadline: { $gte: now } },
-          ],
-        },
+      applicationDeadline: { $lte: now },
+      application: { $ne: 'Completed' },
+      isDeleted: false,
+    },
+    { $set: { application: 'Completed' } }
+  )
+
+  // Open: applicationEndDate has passed, but applicationDeadline hasn't
+  // (or isn't set). Unconditional on the CURRENT `application` value —
+  // this is what corrects a document wrongly seeded as 'Open' when it's
+  // actually still Upcoming, and vice versa.
+  await this.updateMany(
+    {
+      applicationEndDate: { $lte: now },
+      $or: [
+        { applicationDeadline: null },
+        { applicationDeadline: { $exists: false } },
+        { applicationDeadline: { $gt: now } },
       ],
+      application: { $ne: 'Open' },
       isDeleted: false,
     },
     { $set: { application: 'Open' } }
   )
 
-  // Upcoming/Open -> Completed: applicationDeadline has passed.
+  // Upcoming: applicationEndDate hasn't arrived yet (or isn't set). This
+  // is the backward correction that was previously missing entirely — a
+  // document sitting as 'Open' or 'Completed' whose applicationEndDate is
+  // still in the future gets pulled back to 'Upcoming'.
   await this.updateMany(
     {
-      application: { $ne: 'Completed' },
-      applicationDeadline: { $lte: now },
+      $or: [
+        { applicationEndDate: null },
+        { applicationEndDate: { $exists: false } },
+        { applicationEndDate: { $gt: now } },
+      ],
+      application: { $ne: 'Upcoming' },
       isDeleted: false,
     },
-    { $set: { application: 'Completed' } }
+    { $set: { application: 'Upcoming' } }
   )
 }
 

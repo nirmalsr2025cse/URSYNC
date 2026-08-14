@@ -27,6 +27,8 @@ const userSchema = new Schema(
     },
     emailVerified: { type: Boolean, default: false },
 
+     email_to_send: { type: String, trim: true, lowercase: true, default: null },
+
     // ── Account type / debarment fields ─────────────────────────────────
     // "Individual" bidders are identified by PAN; "Organization" bidders
     // are identified by their login (email) + organisation chain instead.

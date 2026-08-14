@@ -230,13 +230,17 @@ exports.getFile = async (req, res) => {
 
     // Ownership check using the metadata saved at upload time (userId,
     // tenderId, applicationId, label — see uploadBufferToGridFS call in
-    // saveApplication). Only the bidder who uploaded it, or department/
-    // admin staff, may view it. Adjust the role check to match your actual
-    // role field/values.
+    // saveApplication). Only the bidder who uploaded it, or staff/reviewer
+    // roles, may view it. 'tender_authority' is included here because
+    // ApplicantDetails.jsx/ApplicationApplicants.jsx let that role review
+    // a bidder's submitted documents — without it, every file request from
+    // that review page 403s even though the reviewer is legitimately
+    // supposed to see it. Adjust this list if other roles (e.g. the role
+    // that approves into bidderlists) also need to view files here.
     const requesterId = String(req.user._id)
     const ownerId = fileDoc.metadata?.userId
     const isOwner = ownerId && ownerId === requesterId
-    const isStaff = ['Admin', 'DepartmentStaff', 'SuperAdmin'].includes(req.user.role)
+    const isStaff = ['admin', 'department_employee', 'tender_authority'].includes(req.role)
 
     if (!isOwner && !isStaff) {
       return res.status(403).json({ success: false, message: 'You do not have access to this file.' })
@@ -282,6 +286,24 @@ exports.getFile = async (req, res) => {
 // user's Apply Tenders list, independent of any payment step. Reuses the
 // exact same fileId references (and the same applicationId) already
 // sitting in bidderDocuments.files/.chunks — nothing is re-uploaded.
+//
+// isDocumentApproved / isBidderApproved: reviewer-facing flags. A brand
+// new bidderlists entry always starts both as false (set explicitly below
+// so this payload stays self-documenting, even though the schema default
+// would do the same thing). On a RE-submission of an entry that already
+// exists (existingIndex >= 0 below), these flags are deliberately left
+// alone — a bidder editing/resaving and clicking "Next" again must never
+// silently wipe out an approval a reviewer already granted.
+//
+// NOTE: bidderDoc.applications is the ONLY place per-bidder data lives on
+// this model (see models/BiddersList.js) — there used to be an older,
+// pre-array schema version with applicationId/userId etc. stored directly
+// on the top-level document, which is why you may see references to that
+// shape in old migration notes. That version is gone; don't reintroduce
+// top-level applicationId/userId fields or indexes on this collection —
+// doing so previously caused duplicate-key errors (E11000) once more than
+// one bidder/tender combination existed, because every document has those
+// fields as undefined/null at the top level under the current schema.
 exports.submitApplication = async (req, res) => {
   try {
     const { tenderId } = req.params
@@ -322,24 +344,6 @@ exports.submitApplication = async (req, res) => {
         applicationDate: entry.applicationDate,
         applicationSubmissionDateTime: now,
       })
-    } else if (!Array.isArray(bidderDoc.applications) || bidderDoc.applications.length === 0) {
-      bidderDoc.applications = []
-      if (bidderDoc.applicationId || bidderDoc.userId) {
-        bidderDoc.applications.push({
-          applicationId: bidderDoc.applicationId,
-          userId: bidderDoc.userId,
-          formData: bidderDoc.formData || {},
-          documents: bidderDoc.documents || [],
-          signatureFileId: bidderDoc.signatureFileId || null,
-          signatureContentType: bidderDoc.signatureContentType || null,
-          signatureOriginalName: bidderDoc.signatureOriginalName || null,
-          isPaid: Boolean(bidderDoc.isPaid),
-          paymentId: bidderDoc.paymentId || null,
-          paidAt: bidderDoc.paidAt || null,
-          applicationDate: bidderDoc.applicationDate,
-          applicationSubmissionDateTime: bidderDoc.applicationSubmissionDateTime || now,
-        })
-      }
     }
 
     const existingIndex = bidderDoc.applications.findIndex(
@@ -347,12 +351,21 @@ exports.submitApplication = async (req, res) => {
     )
 
     if (existingIndex >= 0) {
+      // Re-submission of an already-existing entry — merge in the fresh
+      // form/document data but deliberately leave isDocumentApproved /
+      // isBidderApproved untouched (they're not part of bidderEntryPayload,
+      // so the spread below preserves whatever was already there).
       bidderDoc.applications[existingIndex] = {
-        ...bidderDoc.applications[existingIndex].toObject?.() ,
+        ...bidderDoc.applications[existingIndex].toObject?.(),
         ...bidderEntryPayload,
       }
     } else {
-      bidderDoc.applications.push(bidderEntryPayload)
+      // Brand-new submission — explicitly start both reviewer flags false.
+      bidderDoc.applications.push({
+        ...bidderEntryPayload,
+        isDocumentApproved: false,
+        isBidderApproved: false,
+      })
     }
 
     bidderDoc.status = 'Submitted'

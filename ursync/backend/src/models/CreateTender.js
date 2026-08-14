@@ -83,6 +83,22 @@ const createTenderSchema = new Schema(
 
     isRejected: { type: Boolean, default: false },
 
+    // ── Approval chain (for notification emails) ────────────────────────
+    // Every user who has acted on this tender — created it, sent it
+    // onward, approved it at any stage — gets an entry here. Used by
+    // tenderNotificationService.notifyFinalApproval() to email everyone
+    // who touched the tender once the Tender Authority finally approves
+    // and publishes it. Entries are append-only and deduped per
+    // (userId, stage) pair by addToApprovalChain().
+    approvalChain: [
+      {
+        userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        stage: { type: String, required: true }, // e.g. 'Created', 'Sent to Head', 'Tender Authority Approved'
+        at: { type: Date, default: Date.now },
+        _id: false,
+      },
+    ],
+
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
   },

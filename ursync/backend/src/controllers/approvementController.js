@@ -22,13 +22,30 @@
 //     'Sent to Head' AND addressed to them.
 //   - administrator can only approve/reject a tender that is currently
 //     'Sent to Administrator' AND addressed to them.
-//   - Approve -> status 'Approved'. Reject -> status 'Rejected'.
+//   - Approve -> department_head: status 'Approved' (final, own action).
+//     Approve -> administrator: status 'Sent to Financial' (forward action).
+//   - Reject -> status 'Rejected'.
+//
+// ── EMAIL NOTIFICATIONS ────────────────────────────────────────────────
+// approveTender() -> records the acting user (head or administrator) in
+//   tender.approvalChain, then emails the base recipients (creator, + the
+//   department head if the creator is a department_employee) about the
+//   new stage.
+// rejectTender()  -> emails the base recipients with the rejection reason.
+// See src/services/tenderNotificationService.js for the recipient rules,
+// and notifyFinalApproval() (fired later, at Tender Authority stage) for
+// the "everyone who touched this tender" final email.
 
 const CreateTender = require('../models/CreateTender')
 const User = require('../models/User')
 const Rejection = require('../models/Rejection')
 const Role = require('../models/Role')
 const formatCurrency = require('../utils/formatCurrency')
+const {
+  addToApprovalChain,
+  notifyStage,
+  notifyRejection,
+} = require('../services/tenderNotificationService')
 
 const NOT_DELETED = { $ne: true }
 
@@ -38,6 +55,15 @@ async function loadCurrentUser(req) {
   return User.findById(currentUser._id || currentUser.id)
     .populate('roleId')
     .populate('departmentId')
+}
+
+// Loads the tender's creator with roleId populated — required by
+// tenderNotificationService.baseRecipients() to decide whether to also CC
+// the department head (only applies if the creator is a
+// department_employee).
+async function loadCreatorWithRole(createdBy) {
+  if (!createdBy) return null
+  return User.findById(createdBy).populate('roleId')
 }
 
 // Finds an active financial-department user — the target of the
@@ -152,6 +178,10 @@ exports.getApprovementTenders = async (req, res) => {
 // administrator approving -> status 'Sent to Financial', sentTo set to an
 // active financial-department user — this is a forward action, not a
 // final approval. The Financial Department reviews it from there.
+//
+// Either way, the acting user is recorded in tender.approvalChain, and a
+// "stage changed" email goes out to the base recipients (creator, + the
+// department head if the creator is a department_employee).
 exports.approveTender = async (req, res) => {
   try {
     const me = await loadCurrentUser(req)
@@ -183,6 +213,10 @@ exports.approveTender = async (req, res) => {
       return res.status(403).json({ success: false, message: 'This tender was not sent to you.' })
     }
 
+    let stageLabel
+    let notifySubject
+    let notifyMessage
+
     if (roleName === 'administrator') {
       const financialUser = await resolveFinancialUser()
       if (!financialUser) {
@@ -193,12 +227,28 @@ exports.approveTender = async (req, res) => {
       }
       tender.status = 'Sent to Financial'
       tender.sentTo = financialUser._id
+      stageLabel = 'Administrator Approved'
+      notifySubject = `Tender Sent to Financial: ${tender.title}`
+      notifyMessage = 'This tender has been reviewed by the administrator and sent to Financial.'
     } else {
       tender.status = 'Approved'
+      stageLabel = 'Head Approved'
+      notifySubject = `Tender Approved by Head: ${tender.title}`
+      notifyMessage = 'This tender has been approved by the department head.'
     }
+
+    // ── notification: record this approval in the chain ─────────────────
+    addToApprovalChain(tender, me._id, stageLabel)
 
     tender.updatedBy = me._id
     await tender.save()
+
+    const creatorUser = await loadCreatorWithRole(tender.createdBy)
+    notifyStage(tender, creatorUser, {
+      stageLabel,
+      subject: notifySubject,
+      message: notifyMessage,
+    })
 
     return res.status(200).json({ success: true, data: tender })
   } catch (err) {
@@ -210,8 +260,9 @@ exports.approveTender = async (req, res) => {
 // ── PATCH /api/approvement/tenders/:id/reject ───────────────────────────────
 // Requires a `reason` in the request body — this is not optional. On
 // success: the tender's status becomes 'Rejected', isRejected is set true,
-// and a document is written to the `rejections` collection recording who
-// rejected it, from which department, and why.
+// a document is written to the `rejections` collection recording who
+// rejected it, from which department, and why, and a rejection email goes
+// out to the base recipients (creator, + department head if applicable).
 exports.rejectTender = async (req, res) => {
   try {
     const me = await loadCurrentUser(req)
@@ -261,6 +312,10 @@ exports.rejectTender = async (req, res) => {
       Reason: reason,
       RejectedDate: new Date(),
     })
+
+    // ── notification: rejection email ───────────────────────────────────
+    const creatorUser = await loadCreatorWithRole(tender.createdBy)
+    notifyRejection(tender, creatorUser, reason)
 
     return res.status(200).json({ success: true, data: tender })
   } catch (err) {

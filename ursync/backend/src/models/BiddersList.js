@@ -21,6 +21,12 @@
 // user can only ever have ONE record for a given tender — and it's exactly
 // what applyTenderController.listApplyTenders queries to exclude
 // already-applied tenders from that user's Apply Tenders list.
+//
+// isDocumentApproved / isBidderApproved — reviewer-facing flags set by
+// admin staff after the fact (e.g. from a "Review Applications" screen).
+// They default to false the moment a bidder submits (clicks "Next"), and
+// nothing in the apply flow itself ever sets them true — that happens in
+// whatever admin/reviewer endpoint is built to approve documents/bidders.
 
 const mongoose = require('mongoose')
 const { Schema } = mongoose
@@ -51,6 +57,12 @@ const applicationEntrySchema = new Schema(
     applicationDate: { type: String },
     applicationTime: { type: Date },
     applicationSubmissionDateTime: { type: Date, default: Date.now },
+
+    // ── Reviewer approval flags ─────────────────────────────────────────
+    // Set to false automatically on submission; flipped to true later by
+    // an admin/reviewer action (not part of the apply flow).
+    isDocumentApproved: { type: Boolean, default: false },
+    isBidderApproved: { type: Boolean, default: false },
   },
   { timestamps: true }
 )
@@ -60,17 +72,17 @@ const biddersListSchema = new Schema(
     tenderId: { type: Schema.Types.ObjectId, ref: 'Tender', required: true },
     departmentId: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
 
+    // One BiddersList document holds MANY bidders for a tender (one entry
+    // per user in `applications[]`). status/paymentId/paidAt/applicationDate
+    // are therefore per-bidder concerns and live ONLY inside each
+    // applications[] entry (isPaid/paymentId/paidAt/applicationDate above) —
+    // do NOT re-add top-level versions of these fields. A previous version
+    // of this schema had them at the top level too, which meant every new
+    // bidder's submission silently clobbered the previous bidder's
+    // status/paymentId/paidAt for the whole tender. That data is gone from
+    // existing documents only via a migration; new writes should no longer
+    // set these top-level fields at all.
     applications: { type: [applicationEntrySchema], default: [] },
-
-    // Draft -> Submitted -> Paid. This document stays at the tender level;
-    // each child application entry can still track its own status/payment.
-    status: { type: String, default: 'Submitted' },
-    applicationDate: { type: String },
-    applicationSubmissionDateTime: { type: Date, default: Date.now },
-
-    // ── Payment details — optional; not required at submission time ──────
-    paymentId: { type: String, default: null },
-    paidAt: { type: Date, default: null },
   },
   { timestamps: true }
 )

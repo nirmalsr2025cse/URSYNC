@@ -3,6 +3,7 @@ const express = require('express')
 const cors = require('cors')
 const path = require('path')
 const tenderRoutes = require('./routes/tenderRoutes')
+const tenderListRoutes = require('./routes/tenderListRoutes') // NEW — Applications tab bar (Open/Upcoming/Completed)
 const authRoutes = require('./routes/authRoutes')
 const locationRoutes = require('./routes/locationRoutes')
 const debarmentRoutes = require('./routes/debarmentRoutes') // NEW
@@ -41,6 +42,12 @@ app.use(
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' })) //Checks the serve works correctly
 
+// IMPORTANT: tenderListRoutes MUST be mounted before tenderRoutes.
+// tenderRoutes has a `GET /:id` route — if it's registered first, Express
+// matches top-down and `/api/tenders/applications` gets swallowed by that
+// `:id` param (treating "applications" as a tender id) before it ever
+// reaches tenderListRoutes, producing a 404 "Tender not found".
+app.use('/api/tenders', tenderListRoutes) // NEW — Applications tab bar, must come first
 app.use('/api/tenders', tenderRoutes) // Main Part
 app.use('/api/auth', authRoutes) //Authentication
 app.use('/api/location', locationRoutes)//Tender By Location

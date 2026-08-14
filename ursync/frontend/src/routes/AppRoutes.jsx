@@ -134,8 +134,8 @@ export default function AppRoutes() {
         <Route path="/announcements" element={<Announcements />} />
         <Route path="/applications"                    element={<Applications />} />
         <Route path="/applications/:tenderId"          element={<ApplicationApplicants />} />
-        <Route path="/applications/:tenderId/approved" element={<ApprovedApplicants />} />
         <Route path="/Applicant/:applicationId"        element={<ApplicantDetails />} />
+        <Route path="/applications/:tenderId/approved" element={<ApprovedApplicants />} />
         <Route path="/bidder-selection" element={<BidderSelection/>} />
         <Route path="/bidder-selection/:tenderId" element={<BidderList/>} />
         <Route path="/Bidder/:applicationId" element={<BidderDetails />} />

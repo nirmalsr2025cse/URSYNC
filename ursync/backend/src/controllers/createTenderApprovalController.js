@@ -62,6 +62,22 @@
 // `createtenders` and its published counterpart in `tenders` showed two
 // different codes for the same tender. Fixed below: tenderCode is now set
 // directly from tender.tenderId.
+//
+// ── EMAIL NOTIFICATIONS ────────────────────────────────────────────────
+// rejectTender()         -> rejection email to base recipients (creator,
+//                            + department head if creator is an employee).
+// financialApprove()     -> records the Financial user in approvalChain,
+//                            "sent to Tender Authority" email to base
+//                            recipients.
+// tenderAuthorityApprove() -> records the Tender Authority user in
+//                            approvalChain, THEN (only after both the live
+//                            Tender insert and the draft save succeed)
+//                            fires notifyFinalApproval(): emails the
+//                            creator, every user recorded in
+//                            approvalChain (everyone who touched this
+//                            tender across every stage), and every active
+//                            tender_authority user.
+// See src/services/tenderNotificationService.js for the recipient rules.
 
 const CreateTender = require('../models/CreateTender')
 const Tender = require('../models/Tender')
@@ -69,6 +85,12 @@ const Rejection = require('../models/Rejection')
 const Role = require('../models/Role')
 const User = require('../models/User')
 const Department = require('../models/Department')
+const {
+  addToApprovalChain,
+  notifyStage,
+  notifyRejection,
+  notifyFinalApproval,
+} = require('../services/tenderNotificationService')
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -109,6 +131,15 @@ async function findTenderAuthorityForDepartment(departmentId) {
   // Fallback: no department-specific tender authority found (or tender has
   // no departmentId) — use any active tender_authority.
   return findUserByRoleName('tender_authority')
+}
+
+// Loads the tender's creator with roleId populated — required by
+// tenderNotificationService.baseRecipients() to decide whether to also CC
+// the department head (only applies if the creator is a
+// department_employee).
+async function loadCreatorWithRole(createdBy) {
+  if (!createdBy) return null
+  return User.findById(createdBy).populate('roleId')
 }
 
 // departmentId needs `code` and `organization` too — Pending.jsx's
@@ -212,6 +243,10 @@ exports.rejectTender = async (req, res) => {
     tender.sentTo = null
     await tender.save()
 
+    // ── notification: rejection email ───────────────────────────────────
+    const creatorUser = await loadCreatorWithRole(tender.createdBy)
+    notifyRejection(tender, creatorUser, reason.trim())
+
     return res.status(200).json({ success: true, message: 'Tender rejected.', data: tender })
   } catch (err) {
     console.error('rejectTender error:', err)
@@ -225,6 +260,8 @@ exports.rejectTender = async (req, res) => {
 //   - CreateTender.sentTo  -> an active user with role 'tender_authority',
 //                             preferring one in the same department as the
 //                             tender (see findTenderAuthorityForDepartment).
+//   - the Financial user is recorded in tender.approvalChain, and a
+//     "sent to Tender Authority" email goes out to the base recipients.
 exports.financialApprove = async (req, res) => {
   try {
     const { id } = req.params
@@ -247,10 +284,20 @@ exports.financialApprove = async (req, res) => {
       })
     }
 
+    // ── notification: record this approval in the chain ─────────────────
+    addToApprovalChain(tender, currentUser._id, 'Financial Approved')
+
     tender.status = 'Sent to Tender Authority'
     tender.sentTo = tenderAuthorityUser._id
     tender.updatedBy = currentUser._id
     await tender.save()
+
+    const creatorUser = await loadCreatorWithRole(tender.createdBy)
+    notifyStage(tender, creatorUser, {
+      stageLabel: 'Sent to Tender Authority',
+      subject: `Tender Sent to Tender Authority: ${tender.title}`,
+      message: 'This tender has been approved by Financial and sent to the Tender Authority.',
+    })
 
     return res.status(200).json({
       success: true,
@@ -275,6 +322,12 @@ exports.financialApprove = async (req, res) => {
 // CreateTender doc to 'Approved' and save it. This guarantees the two
 // collections can never end up mismatched — no more "status says Approved
 // but tenders collection has nothing" state.
+//
+// Once the draft is successfully saved as 'Approved', this is the FINAL
+// stage — the Tender Authority user is recorded in approvalChain, and
+// notifyFinalApproval() fires: it emails the creator, every user recorded
+// in approvalChain (i.e. everyone who touched this tender at any stage),
+// and every active tender_authority user.
 exports.tenderAuthorityApprove = async (req, res) => {
   try {
     const { id } = req.params
@@ -389,6 +442,9 @@ exports.tenderAuthorityApprove = async (req, res) => {
 
         status: liveStatus,
 
+        isDocumentVerified: false,
+        isFinalizedBidders: false,
+
         createdBy: tender.createdBy,
         updatedBy: currentUser._id,
       })
@@ -426,6 +482,13 @@ exports.tenderAuthorityApprove = async (req, res) => {
 
     // ── STEP 2: only now, after the live Tender exists, mark the draft Approved ──
     try {
+      // ── notification: record the Tender Authority's approval in the chain ──
+      // This is the last entry — the chain now holds every user who acted
+      // on this tender across every stage (Created, Sent to Head,
+      // Head/Administrator Approved, Financial Approved, Tender Authority
+      // Approved).
+      addToApprovalChain(tender, currentUser._id, 'Tender Authority Approved')
+
       tender.status = 'Approved'
       tender.updatedBy = currentUser._id
       tender.sentTo = null
@@ -433,6 +496,12 @@ exports.tenderAuthorityApprove = async (req, res) => {
       tender.applicationEndDate = appEnd
       tender.applicationDeadline = appDeadline
       await tender.save()
+
+      // ── notification: final "approved & published" email ────────────
+      // Goes to the creator, every user in approvalChain (everyone who
+      // touched this tender), and every active tender_authority user.
+      const creatorUser = await loadCreatorWithRole(tender.createdBy)
+      notifyFinalApproval(tender, creatorUser)
     } catch (saveErr) {
       // The live Tender was already created successfully at this point.
       // The draft failing to save as 'Approved' is now the anomaly to

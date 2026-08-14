@@ -1,9 +1,9 @@
 // src/pages/BidderList.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
 import { APPLICATION_TENDERS } from '../data/applicationMockData'
-import { getApproved } from './ApplicationApplicants'
+import { useApi } from '../api/client'
 
 function Toast({ toast }) {
   if (!toast) return null
@@ -164,11 +164,30 @@ export default function BidderList() {
   const decodedId         = decodeURIComponent(tenderId || '')
   const fromTab           = location.state?.fromTab || 'Ongoing'
   const PAGE_SIZE         = useResponsiveItemsPerPage()
+  const { apiFetch }      = useApi()
 
   const tender = APPLICATION_TENDERS.find((t) => t.id === decodedId)
 
-  // Applicants approved by Tender Authority
-  const approvedByAuthority = useMemo(() => getApproved(decodedId), [decodedId])
+  // Applicants approved by Tender Authority — sourced from the backend
+  // (isDocumentApproved === true on BiddersList.applications[] for this
+  // tender), not a local JS store.
+  const [approvedByAuthority, setApprovedByAuthority] = useState([])
+  const [loadingApproved, setLoadingApproved] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+
+  useEffect(() => {
+    if (!decodedId) return
+    setLoadingApproved(true)
+    setLoadError(null)
+    apiFetch(`/tenders/applications/applicants?tenderCode=${encodeURIComponent(decodedId)}&approved=true`)
+      .then((res) => setApprovedByAuthority(res.data.applicants))
+      .catch((err) => {
+        console.error('Failed to load approved applicants:', err)
+        setLoadError(err.message || 'Failed to load approved applicants')
+        setApprovedByAuthority([])
+      })
+      .finally(() => setLoadingApproved(false))
+  }, [decodedId, apiFetch])
 
   // Use approved list if available, else fall back to all applicants
   const applicantPool = approvedByAuthority.length > 0
@@ -257,8 +276,18 @@ export default function BidderList() {
     )
   }
 
+  if (loadingApproved) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-2 border-[#1A4A8C] border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 lg:p-6 space-y-5 pb-24 min-h-screen animate-fade-in">
+      <Toast toast={toast} />
+
       {/* ── Header ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
@@ -305,9 +334,11 @@ export default function BidderList() {
                   d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="text-xs text-amber-800 font-medium">
-            {approvedByAuthority.length > 0
-              ? `Showing ${approvedByAuthority.length} applicants approved and sent by Tender Authority.`
-              : 'No applicants have been sent by Tender Authority yet. Showing all applicants for review.'
+            {loadError
+              ? `Couldn't load approved applicants (${loadError}). Showing all applicants for review.`
+              : approvedByAuthority.length > 0
+                ? `Showing ${approvedByAuthority.length} applicants approved and sent by Tender Authority.`
+                : 'No applicants have been sent by Tender Authority yet. Showing all applicants for review.'
             }
           </p>
         </div>
