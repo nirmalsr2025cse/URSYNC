@@ -31,10 +31,8 @@ import Applications           from '../pages/Applications'
 import ApplicationApplicants  from '../pages/ApplicationApplicants'
 import ApplicantDetails       from '../pages/ApplicantDetails'
 import ApprovedApplicants     from '../pages/ApprovedApplicants'
-import BidderSelection from '../pages/BidderSelection'
 import BidderList from '../pages/BidderList'
 import BidderDetails from '../pages/BidderDetails'
-import FinalizedBidders from '../pages/FinalizedBidders'
 import TenderByClassification from '../pages/TenderByClassification'
 import TenderDetailsView from '../pages/TenderDetailsView'
 import Approvement from '../pages/Approvement'
@@ -45,9 +43,6 @@ import TenderRegistrationPayment from '../pages/TenderRegistrationPayment'
 import ChoosePaymentPlatform from '../pages/ChoosePaymentPlatform'
 import TenderFinancialChangeDetailsPage from '../pages/TenderFinancialChangeDetailsPage'
 import TenderFinancialChangesPage from '../pages/TenderFinancialChangesPage'
-import AdminBidderView from '../pages/AdminBidderView'
-import AdminBidderList from '../pages/AdminBidderList'
-import AdminBidderDetails from '../pages/AdminBidderDetails'
 import Conflicts from '../pages/Conflicts'
 import ConflictDetails from '../pages/ConflictDetails'
 import SearchResourcePage from '../pages/SearchResourcepage'
@@ -55,6 +50,7 @@ import ResourceSharing from '../pages/ResourceSharing'
 import GetResourcePage from '../pages/GetResourcePage'
 import ResourceDetailPage from '../pages/ResourceDetailPage'
 import AppliedTenders from '../pages/AppliedTenders'
+import Approved from '../pages/Approved'
 
 
 export default function AppRoutes() {
@@ -136,10 +132,8 @@ export default function AppRoutes() {
         <Route path="/applications/:tenderId"          element={<ApplicationApplicants />} />
         <Route path="/Applicant/:applicationId"        element={<ApplicantDetails />} />
         <Route path="/applications/:tenderId/approved" element={<ApprovedApplicants />} />
-        <Route path="/bidder-selection" element={<BidderSelection/>} />
         <Route path="/bidder-selection/:tenderId" element={<BidderList/>} />
         <Route path="/Bidder/:tenderCode/:applicationId" element={<BidderDetails />} />
-        <Route path="/bidder-list/:tenderId/finalized" element={<FinalizedBidders />} />
         <Route path="/approvement" element={<Approvement />} />
         <Route path="/pending" element={<Pending />} />
         <Route path="/finalbidder/:tenderCode" element={<FinalBidder />} />
@@ -148,9 +142,6 @@ export default function AppRoutes() {
         <Route path="/apply-tenders/payment/choose-platform/:appId" element={<ChoosePaymentPlatform />} />
         <Route path="/financial-changes" element={<TenderFinancialChangesPage />} />
         <Route path="/financial-changes/details" element={<TenderFinancialChangeDetailsPage />} />
-        <Route path="/bidder-list" element={<AdminBidderView />} />
-        <Route path="/bidder-list/:tenderId" element={<AdminBidderList />} />
-        <Route path="/bidder-list/:tenderId/:applicationId" element={<AdminBidderDetails />} />
         <Route path="/conflicts" element={<Conflicts />} />
         <Route path="/conflicts/:id" element={<ConflictDetails />} />
         <Route path="/search-resource" element={<SearchResourcePage />} />
@@ -158,6 +149,7 @@ export default function AppRoutes() {
         <Route path="/search-resource/details" element={<ResourceDetailPage />} />
         <Route path="/resource-sharing" element={<ResourceSharing />} />
         <Route path="/applied-tenders" element={<AppliedTenders />} />
+        <Route path="/approved" element={<Approved />} /> 
       </Route>
 
       {/* Wildcard MUST stay last. It was previously listed first — with

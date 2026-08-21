@@ -17,6 +17,7 @@ const tempBidderApplicationRoutes = require('./routes/tempBidderApplicationRoute
 const paymentRoutes = require('./routes/paymentRoutes')
 const appliedTenderRoutes = require('./routes/appliedTenderRoutes')
 const finalBidderRoutes = require('./routes/finalBidderRoutes')
+const approvedRoutes = require('./routes/approvedRoutes')
 
 const app = express()
 app.use(
@@ -63,6 +64,7 @@ app.use('/api/temp-applications', tempBidderApplicationRoutes)
 app.use('/api/payments', paymentRoutes)
 app.use('/api/applied-tenders', appliedTenderRoutes) // NEW — Applied Tenders page
 app.use('/api/finalbidders', finalBidderRoutes)
+app.use('/api/approvement', approvedRoutes)
 
 
 // 404 handler

@@ -54,7 +54,7 @@ export const NAV_CONFIG = {
     { label: 'Reports & Feedbacks',    path: '/reports',          icon: 'chart'    },
     { label: 'Cancelled / Retendered', path: '/cancelled',        icon: 'retender' },
     { label: 'Check Tender Status',    path: '/tender-status',    icon: 'status'   },
-    { label: 'Bidder Selection',       path: '/bidder-selection', icon: 'users'    },
+    { label: 'Approved',               path: '/approved', icon: 'users'    },
   ],
 
   [ROLES.DEPARTMENT_HEAD]: [
@@ -66,7 +66,7 @@ export const NAV_CONFIG = {
     { label: 'Resource Sharing',       path: '/resource-sharing', icon: 'share'    },
     { label: 'Cancelled / Retendered', path: '/cancelled',        icon: 'retender' },
     { label: 'Check Tender Status',    path: '/tender-status',    icon: 'status'   },
-    { label: 'Bidder Selection',       path: '/bidder-selection', icon: 'users'    },
+    { label: 'Approved',               path: '/approved', icon: 'users'    },
     { label: 'Approvement',            path: '/approvement',      icon: 'approve'  },
   ],
 
@@ -77,7 +77,7 @@ export const NAV_CONFIG = {
     { label: 'Conflicts',              path: '/conflicts',      icon: 'conflict' },
     { label: 'Cancelled / Retendered', path: '/cancelled',      icon: 'retender' },
     { label: 'Check Tender Status',    path: '/tender-status',  icon: 'status'   },
-    { label: 'Bidder List',            path: '/bidder-list',    icon: 'users'    },
+    { label: 'Approved',               path: '/approved',    icon: 'users'    },
     { label: 'Approvement',            path: '/approvement',    icon: 'approve'  },
   ],
 
@@ -87,6 +87,7 @@ export const NAV_CONFIG = {
     { label: 'Completed',                path: '/completed',         icon: 'completed'    },
     { label: 'Cancelled / Retendered',   path: '/cancelled',         icon: 'retender'},
     { label: 'Tender Financial Changes', path: '/financial-changes', icon: 'finance' },
+    { label: 'Approved',               path: '/approved', icon: 'users'    },
   ],
 
   [ROLES.TENDER_AUTHORITY]: [
@@ -95,6 +96,7 @@ export const NAV_CONFIG = {
     { label: 'Completed',    path: '/completed',    icon: 'completed'    },
     { label: 'Cancelled / Retendered',    path: '/cancelled',           icon: 'retender' },
     { label: 'Applications', path: '/applications', icon: 'applications' },
+    { label: 'Approved',               path: '/approved', icon: 'users'    },
   ],
 
   [ROLES.TENDER_PERSON]: [
