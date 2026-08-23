@@ -359,10 +359,18 @@ export default function Approved() {
     })
   }
 
-  // ── Bidders tab "View" button — left blank intentionally, per spec this
-  // navigation behaviour only applies to the Tenders tab cards.
+  // ── Bidders tab "View" button — navigates to the read-only applicant
+  // list for this tender (ApplicationApplicants.jsx), sourced from
+  // bidderlists (tender_authority) or finalbidders (department_head /
+  // department_employee) on the backend. `bidder.id` is the tenderCode
+  // (e.g. "TN/PWD/2026/001") — matches the encoding the normal
+  // pending-applicants flow already uses, so the URL shape is consistent
+  // across both flows. The backend resolves tenderCode -> Tender._id
+  // itself before querying bidderlists/finalbidders.
   function handleViewBidder(bidder) {
-    // navigate(...) goes here (bidder details), if/when needed
+    navigate('/applications/' + encodeURIComponent(bidder.id), {
+      state: { readOnly: true, fromPath: rootPath },
+    })
   }
 
   const hasFilters = search || categoryFilter !== 'All'

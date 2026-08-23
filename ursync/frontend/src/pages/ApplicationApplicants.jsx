@@ -1,5 +1,22 @@
 // src/pages/ApplicationApplicants.jsx
-import React, { useState, useMemo, useEffect } from 'react'
+//
+// Two modes, both rendered by this same page:
+//
+// 1. NORMAL (default) — pending-applicants review queue for a tender,
+//    reached from the Applications page. `tenderId` route param is the
+//    tender's tenderCode. Cards show View + Approve; approving hits
+//    PATCH /tenders/applications/applicants/:applicationId/approve.
+//
+// 2. READ-ONLY (location.state.readOnly === true) — reached from the
+//    Approved page's Bidders-tab card "View" button. `tenderId` route
+//    param is the tender's tenderCode (same encoding as the normal
+//    flow above). Fetches from the read-only
+//    GET /approvement/bidders/:tenderCode/applicants endpoint instead —
+//    tender_authority reads bidderlists, department_head/employee read
+//    finalbidders. Cards show ONLY the View button — no Approve button,
+//    no "View List" floating action, since there is nothing left to
+//    approve here.
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Pagination from '../components/Pagination'
 import { useApi } from '../api/client'
@@ -18,7 +35,10 @@ function Toast({ toast }) {
   )
 }
 
-function ApplicantCard({ applicant, onView, onApprove, approving, isCompleted }) {
+// `hideApprove` covers both the old `isCompleted` case (Completed tab, no
+// approving left to do) and the new `readOnly` case (Approved page's
+// Bidders tab — display-only, never had an Approve action to begin with).
+function ApplicantCard({ applicant, onView, onApprove, approving, hideApprove }) {
   return (
     <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">
       <div className="h-1 w-full bg-[#1A4A8C]" />
@@ -49,12 +69,12 @@ function ApplicantCard({ applicant, onView, onApprove, approving, isCompleted })
             onClick={() => onView(applicant)}
             className={[
               'flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-[#FFF2DB] text-[#0A2240] border border-[#FFE5BF] hover:bg-[#FFE5BF] transition-colors',
-              isCompleted ? 'w-full' : 'flex-1',
+              hideApprove ? 'w-full' : 'flex-1',
             ].join(' ')}
           >
             View
           </button>
-          {!isCompleted && (
+          {!hideApprove && (
             <button
               onClick={() => onApprove(applicant)}
               disabled={approving}
@@ -99,6 +119,11 @@ export default function ApplicationApplicants() {
   const fromTab = location.state?.fromTab || 'Open'
   const isCompleted = fromTab === 'Completed'
 
+  // Read-only mode: reached from the Approved page's Bidders-tab card.
+  // `decodedId` here is the tender's tenderCode, same as the normal mode.
+  const readOnly = location.state?.readOnly === true
+  const backPath = location.state?.fromPath || '/approved'
+
   const PAGE_SIZE = 6
   const [currentPage, setCurrentPage] = useState(1)
   const [toast, setToast] = useState(null)
@@ -110,6 +135,15 @@ export default function ApplicationApplicants() {
   const [approvingId, setApprovingId] = useState(null)
   const [approvedCount, setApprovedCount] = useState(0)
 
+  // Guards against a stale-response race: if the user navigates from
+  // tender A's card to tender B's card quickly, A's slower network
+  // response must NOT be allowed to land after B's and overwrite B's
+  // correct data with A's. Every fetch stamps the tender it was fetched
+  // FOR into this ref before the request goes out; when a response comes
+  // back, it's only committed to state if that stamp still matches the
+  // tender currently on screen (decodedId may have moved on by then).
+  const requestedForRef = useRef(null)
+
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
@@ -118,30 +152,75 @@ export default function ApplicationApplicants() {
   // Pending list = isDocumentApproved !== true
   function loadPending() {
     if (!decodedId) return
+    const requestedFor = decodedId
+    requestedForRef.current = requestedFor
     setLoading(true)
     setLoadError(null)
     return apiFetch(`/tenders/applications/applicants?tenderCode=${encodeURIComponent(decodedId)}&approved=false`)
       .then((res) => {
+        if (requestedForRef.current !== requestedFor) return // stale — a newer tender has since been requested
         setTender(res.data.tender)
         setApplicants(res.data.applicants)
       })
-      .catch((err) => setLoadError(err.message || 'Failed to load applicants'))
-      .finally(() => setLoading(false))
+      .catch((err) => {
+        if (requestedForRef.current !== requestedFor) return
+        setLoadError(err.message || 'Failed to load applicants')
+      })
+      .finally(() => {
+        if (requestedForRef.current === requestedFor) setLoading(false)
+      })
   }
 
   // Just used for the floating "View List (n)" badge count
   function loadApprovedCount() {
     if (!decodedId) return
+    const requestedFor = decodedId
     apiFetch(`/tenders/applications/applicants?tenderCode=${encodeURIComponent(decodedId)}&approved=true`)
-      .then((res) => setApprovedCount(res.data.applicants.length))
+      .then((res) => {
+        if (requestedForRef.current !== requestedFor) return
+        setApprovedCount(res.data.applicants.length)
+      })
       .catch(() => {})
   }
 
+  // Read-only: finalized bidders for this tender (bidderlists or
+  // finalbidders, depending on role — decided server-side).
+  function loadApprovedBidderApplicants() {
+    if (!decodedId) return
+    const requestedFor = decodedId
+    requestedForRef.current = requestedFor
+    setLoading(true)
+    setLoadError(null)
+    return apiFetch(`/approvement/bidders/${encodeURIComponent(decodedId)}/applicants`)
+      .then((res) => {
+        if (requestedForRef.current !== requestedFor) return // stale — a newer tender has since been requested
+        setTender(res.data.tender)
+        setApplicants(res.data.applicants)
+      })
+      .catch((err) => {
+        if (requestedForRef.current !== requestedFor) return
+        setLoadError(err.message || 'Failed to load bidders')
+      })
+      .finally(() => {
+        if (requestedForRef.current === requestedFor) setLoading(false)
+      })
+  }
+
   useEffect(() => {
-    loadPending()
-    loadApprovedCount()
+    // Reset any previously-shown tender/applicants immediately so a
+    // slow-loading new tender never briefly shows the last tender's data.
+    setTender(null)
+    setApplicants([])
+    setApprovedCount(0)
+
+    if (readOnly) {
+      loadApprovedBidderApplicants()
+    } else {
+      loadPending()
+      loadApprovedCount()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decodedId])
+  }, [decodedId, readOnly])
 
   async function handleApprove(applicant) {
     setApprovingId(applicant.applicationId)
@@ -163,7 +242,7 @@ export default function ApplicationApplicants() {
 
   function handleView(applicant) {
     navigate('/Applicant/' + encodeURIComponent(applicant.applicationId), {
-      state: { tenderId: tender.id, fromPath: '/applications' },
+      state: { tenderId: tender.id, fromPath: readOnly ? backPath : '/applications' },
     })
   }
 
@@ -185,7 +264,12 @@ export default function ApplicationApplicants() {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
         <p className="font-bold text-[#0A2240] mb-2">{loadError || 'Tender not found.'}</p>
-        <button onClick={() => navigate('/applications', { state: { fromTab } })} className="text-sm text-[#1A4A8C] underline">Back to Applications</button>
+        <button
+          onClick={() => (readOnly ? navigate(backPath) : navigate('/applications', { state: { fromTab } }))}
+          className="text-sm text-[#1A4A8C] underline"
+        >
+          {readOnly ? 'Back to Approved' : 'Back to Applications'}
+        </button>
       </div>
     )
   }
@@ -195,14 +279,21 @@ export default function ApplicationApplicants() {
       <Toast toast={toast} />
 
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/applications', { state: { fromTab } })} className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors">
+        <button
+          onClick={() => (readOnly ? navigate(backPath) : navigate('/applications', { state: { fromTab } }))}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#FFE5BF] bg-white text-[#6B7A8D] hover:bg-[#FFF2DB] transition-colors"
+        >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
         <div>
-          <h1 className="text-xl font-extrabold text-[#0A2240]">Applicants</h1>
-          <p className="text-xs text-[#6B7A8D] mt-0.5">{applicants.length} pending applicants for this tender</p>
+          <h1 className="text-xl font-extrabold text-[#0A2240]">{readOnly ? 'Bidders' : 'Applicants'}</h1>
+          <p className="text-xs text-[#6B7A8D] mt-0.5">
+            {readOnly
+              ? `${applicants.length} finalized bidder${applicants.length !== 1 ? 's' : ''} for this tender`
+              : `${applicants.length} pending applicants for this tender`}
+          </p>
         </div>
       </div>
 
@@ -220,7 +311,9 @@ export default function ApplicationApplicants() {
 
       {paginated.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-[#FFE5BF] border-dashed">
-          <p className="font-semibold text-[#0A2240]">No pending applicants.</p>
+          <p className="font-semibold text-[#0A2240]">
+            {readOnly ? 'No finalized bidders.' : 'No pending applicants.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
@@ -231,7 +324,7 @@ export default function ApplicationApplicants() {
               onView={handleView}
               onApprove={handleApprove}
               approving={approvingId === a.applicationId}
-              isCompleted={isCompleted}
+              hideApprove={readOnly || isCompleted}
             />
           ))}
         </div>
@@ -239,7 +332,7 @@ export default function ApplicationApplicants() {
 
       <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
 
-      {approvedCount > 0 && (
+      {!readOnly && approvedCount > 0 && (
         <button
           onClick={() => navigate('/applications/' + encodeURIComponent(tender.id) + '/approved', { state: { fromTab } })}
           className="fixed bottom-8 right-8 z-40 flex items-center gap-2 px-5 py-3.5 rounded-full bg-[#F62440] text-white shadow-lg hover:bg-red-600 hover:scale-105 transition-all duration-200 font-semibold text-sm"
