@@ -191,6 +191,13 @@ export default function ApplicantDetails() {
   const decodedAppId = decodeURIComponent(applicationId || '')
   const { apiFetch, fetchFileBlobUrl } = useApi()
 
+  // Read-only mode: reached from the Approved page's Bidders-tab card via
+  // ApplicationApplicants.jsx's handleView(), which now passes both flags
+  // through navigation state. `tenderId` here is actually the tender's
+  // tenderCode (same value used throughout the read-only bidders flow).
+  const readOnly = location.state?.readOnly === true
+  const tenderCode = location.state?.tenderId
+
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [tender, setTender] = useState(null)
@@ -202,6 +209,30 @@ export default function ApplicantDetails() {
 
   useEffect(() => {
     if (!decodedAppId) return
+
+    // Read-only: this applicant is a finalized bidder (FinalBidders for
+    // department_head/employee, BiddersList for tender_authority) — fetch
+    // from the approved-bidders detail endpoint instead of the
+    // pending-applicants one, which never had this applicant's data.
+    if (readOnly) {
+      if (!tenderCode) {
+        setLoadError('Missing tender reference for this bidder.')
+        setLoading(false)
+        return
+      }
+      setLoading(true)
+      setLoadError(null)
+      apiFetch(`/approvement/bidders/${encodeURIComponent(tenderCode)}/applicants/${encodeURIComponent(decodedAppId)}`)
+        .then((res) => {
+          setTender(res.data.tender)
+          setApplicant(res.data.applicant)
+          setStatus(res.data.applicant.isPaid ? 'Approved' : 'Pending')
+        })
+        .catch((err) => setLoadError(err.message || 'Failed to load bidder'))
+        .finally(() => setLoading(false))
+      return
+    }
+
     setLoading(true)
     setLoadError(null)
     apiFetch(`/tenders/applications/applicants/${encodeURIComponent(decodedAppId)}`)
@@ -212,7 +243,7 @@ export default function ApplicantDetails() {
       })
       .catch((err) => setLoadError(err.message || 'Failed to load applicant'))
       .finally(() => setLoading(false))
-  }, [decodedAppId, apiFetch])
+  }, [decodedAppId, readOnly, tenderCode, apiFetch])
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })

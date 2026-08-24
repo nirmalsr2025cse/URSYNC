@@ -48,10 +48,7 @@ async function buildTenderCodeMap(docs, docLabel) {
 
   const missing = ids.filter((id) => !map.has(id))
   if (missing.length > 0) {
-    console.warn(
-      `[reportsFeedbacksController] ${missing.length} ${docLabel} reference a tenderId with no matching document in the tenders collection:`,
-      missing
-    )
+    console.warn(`Warning: ${docLabel} reference non-existent tenderId(s):`, missing)
   }
 
   return map

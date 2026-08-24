@@ -231,16 +231,19 @@ exports.getFile = async (req, res) => {
     // Ownership check using the metadata saved at upload time (userId,
     // tenderId, applicationId, label — see uploadBufferToGridFS call in
     // saveApplication). Only the bidder who uploaded it, or staff/reviewer
-    // roles, may view it. 'tender_authority' is included here because
-    // ApplicantDetails.jsx/ApplicationApplicants.jsx let that role review
-    // a bidder's submitted documents — without it, every file request from
-    // that review page 403s even though the reviewer is legitimately
-    // supposed to see it. Adjust this list if other roles (e.g. the role
-    // that approves into bidderlists) also need to view files here.
+    // roles, may view it. 'tender_authority' and 'department_head' are
+    // included here because ApplicantDetails.jsx/ApplicationApplicants.jsx
+    // let both roles review a bidder's submitted/finalized documents —
+    // tender_authority via bidderlists, department_head via the finalbidders
+    // snapshot (see approvedController.js's BIDDER_LIST_MODEL_BY_ROLE).
+    // Without department_head here, every file request from that role's
+    // read-only Bidders-tab review page 403s even though the department
+    // head is legitimately supposed to see the finalized bidder's
+    // documents. Adjust this list if other roles also need file access.
     const requesterId = String(req.user._id)
     const ownerId = fileDoc.metadata?.userId
     const isOwner = ownerId && ownerId === requesterId
-    const isStaff = ['admin', 'department_employee', 'tender_authority'].includes(req.role)
+    const isStaff = ['admin', 'tender_authority', 'department_head'].includes(req.role)
 
     if (!isOwner && !isStaff) {
       return res.status(403).json({ success: false, message: 'You do not have access to this file.' })

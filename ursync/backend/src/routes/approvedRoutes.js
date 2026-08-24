@@ -9,6 +9,7 @@ const {
   getApprovedTenders,
   getApprovedBidders,
   getApprovedBidderApplicants,
+  getApprovedBidderApplicantDetail,
 } = require('../controllers/approvedController')
 router.get('/tabs', authMiddleware, getApprovedTabs)
 router.get('/tenders/approved', authMiddleware, getApprovedTenders)
@@ -17,6 +18,11 @@ router.get('/bidders/approved', authMiddleware, getApprovedBidders)
 // (tender_authority -> bidderlists, department_head/employee -> finalbidders).
 // :tenderId here is the tenderCode, e.g. "TN/PWD/2026/001".
 router.get('/bidders/:tenderId/applicants', authMiddleware, getApprovedBidderApplicants)
+// Read-only SINGLE-applicant detail (formData + documents + signature,
+// each carrying a fetchable `url`) for the Approved page's Bidders-tab
+// "View" button. Same role -> collection mapping as the list route above.
+router.get('/bidders/:tenderId/applicants/:applicationId', authMiddleware, getApprovedBidderApplicantDetail)
+
 module.exports = router
 // ── Mount in your main app/router file, e.g.: ──────────────────────────────
 //   const approvedRoutes = require('./routes/approvedRoutes')

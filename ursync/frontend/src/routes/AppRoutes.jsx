@@ -38,7 +38,6 @@ import TenderDetailsView from '../pages/TenderDetailsView'
 import Approvement from '../pages/Approvement'
 import Pending from '../pages/Pending'
 import FinalBidder from '../pages/FinalBidder'
-import Completed from '../pages/Completed'
 import TenderRegistrationPayment from '../pages/TenderRegistrationPayment'
 import ChoosePaymentPlatform from '../pages/ChoosePaymentPlatform'
 import TenderFinancialChangeDetailsPage from '../pages/TenderFinancialChangeDetailsPage'
@@ -137,7 +136,6 @@ export default function AppRoutes() {
         <Route path="/approvement" element={<Approvement />} />
         <Route path="/pending" element={<Pending />} />
         <Route path="/finalbidder/:tenderCode" element={<FinalBidder />} />
-        <Route path="/completed" element={<Completed />} />
         <Route path="/apply-tenders/payment/:appId" element={<TenderRegistrationPayment />} />
         <Route path="/apply-tenders/payment/choose-platform/:appId" element={<ChoosePaymentPlatform />} />
         <Route path="/financial-changes" element={<TenderFinancialChangesPage />} />

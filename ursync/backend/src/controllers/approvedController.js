@@ -19,7 +19,7 @@ const FinalBidders = require('../models/FinalBidders')
 const formatCurrency = require('../utils/formatCurrency')
 
 // Roles allowed to see the Bidders tab on the Approved page.
-const ROLES_WITH_BIDDERS_TAB = ['department_employee', 'department_head', 'tender_authority']
+const ROLES_WITH_BIDDERS_TAB = ['department_head', 'tender_authority']
 
 // Bidders-tab query rules, per role:
 //   - tender_authority: isDocumentVerified === true (isFinalizedBidders not required)
@@ -28,7 +28,6 @@ const ROLES_WITH_BIDDERS_TAB = ['department_employee', 'department_head', 'tende
 const BIDDERS_QUERY_BY_ROLE = {
   tender_authority: { isDocumentVerified: true },
   department_head: { isDocumentVerified: true, isFinalizedBidders: true },
-  department_employee: { isDocumentVerified: true, isFinalizedBidders: true },
 }
 
 // Which collection backs the per-bidder applicant list on the Bidders tab,
@@ -40,7 +39,24 @@ const BIDDERS_QUERY_BY_ROLE = {
 const BIDDER_LIST_MODEL_BY_ROLE = {
   tender_authority: BiddersList,
   department_head: FinalBidders,
-  department_employee: FinalBidders,
+}
+
+// Route prefix that serves a document's raw bytes by fileId, for
+// GridFS-backed files under the `bidderDocuments` bucket (see the
+// `fileId` comment on FinalBidders.js / BiddersList.js's documentSchema).
+// This is the SAME bucket the pending-applicants flow's
+// `/temp-applications/file/:fileId` route reads from — reused here rather
+// than duplicated, since the file bytes for an approved/finalized bidder's
+// documents were never copied anywhere else, only the metadata was.
+//
+// NOTE: adjust this constant if your actual file-serving route has a
+// different path — grep your routes folder for "file/:fileId" or
+// "GridFSBucket" to confirm the real prefix, then update this one line.
+const BIDDER_DOCUMENT_FILE_ROUTE_PREFIX = '/temp-applications/file'
+
+function buildFileUrl(fileId) {
+  if (!fileId) return null
+  return `${BIDDER_DOCUMENT_FILE_ROUTE_PREFIX}/${fileId}`
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -159,6 +175,41 @@ function mapApplicationEntryToApplicantCard(entry) {
     district: fd.district || fd.applicantDistrict || '—',
     submittedDate: entry.applicationSubmissionDateTime || entry.applicationTime || entry.createdAt,
     documents: entry.documents || [],
+    isPaid: entry.isPaid || false,
+    isDocumentApproved: entry.isDocumentApproved || false,
+    isBidderApproved: entry.isBidderApproved || false,
+  }
+}
+
+// Reshape one `applications[]` entry -> the fuller shape
+// ApplicantDetails.jsx expects (formData object as-is, documents/signature
+// with a fetchable `url`, so Preview/Download work the same way they do
+// on the pending-applicants flow).
+function mapApplicationEntryToApplicantDetail(entry) {
+  const documents = (entry.documents || []).map((doc) => ({
+    fileId: doc.fileId,
+    label: doc.label,
+    originalName: doc.originalName,
+    contentType: doc.contentType,
+    size: doc.size,
+    url: buildFileUrl(doc.fileId),
+  }))
+
+  const signature = entry.signatureFileId
+    ? {
+        fileId: entry.signatureFileId,
+        originalName: entry.signatureOriginalName,
+        contentType: entry.signatureContentType,
+        url: buildFileUrl(entry.signatureFileId),
+      }
+    : null
+
+  return {
+    applicationId: entry.applicationId,
+    userId: entry.userId,
+    formData: entry.formData || {},
+    documents,
+    signature,
     isPaid: entry.isPaid || false,
     isDocumentApproved: entry.isDocumentApproved || false,
     isBidderApproved: entry.isBidderApproved || false,
@@ -324,6 +375,61 @@ exports.getApprovedBidderApplicants = async (req, res) => {
       data: {
         tender: mapTenderToApplicantsHeader(tenderDoc),
         applicants,
+      },
+    })
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message })
+  }
+}
+
+// ── GET /api/approvement/bidders/:tenderId/applicants/:applicationId ─────
+// Read-only SINGLE-applicant detail (formData + documents + signature,
+// each document/signature carrying a fetchable `url`), for the Approved
+// page's Bidders-tab "View" button — the ApplicantDetails.jsx page hits
+// this instead of the pending-applicants detail endpoint when it's
+// opened in read-only mode. Same role → collection mapping as the list
+// endpoint above, so a department_head sees the finalbidders snapshot's
+// documents (which it never could before — that's the whole fix).
+exports.getApprovedBidderApplicantDetail = async (req, res) => {
+  try {
+    const roleName = getRoleName(req)
+    const tenderCode = req.params.tenderId
+    const { applicationId } = req.params
+
+    const Model = BIDDER_LIST_MODEL_BY_ROLE[roleName]
+    if (!Model) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: tender_authority, department_head, or department_employee only',
+      })
+    }
+
+    const tenderDoc = await Tender.findOne({ tenderCode, isDeleted: false })
+      .populate('departmentId', 'name code organization')
+      .populate('districtId', 'name')
+      .lean()
+
+    if (!tenderDoc) {
+      return res.status(404).json({ success: false, message: 'Tender not found' })
+    }
+
+    const list = await Model.findOne({ tenderId: tenderDoc._id })
+      .sort({ updatedAt: -1 })
+      .lean()
+
+    const entry = (list?.applications || []).find(
+      (a) => String(a.applicationId) === String(applicationId)
+    )
+
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Applicant not found' })
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        tender: mapTenderToApplicantsHeader(tenderDoc),
+        applicant: mapApplicationEntryToApplicantDetail(entry),
       },
     })
   } catch (err) {

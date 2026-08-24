@@ -84,7 +84,6 @@ export const NAV_CONFIG = {
   [ROLES.FINANCIAL]: [
     { label: 'Home',                     path: '/home',              icon: 'home'    },
     { label: 'Pending',                  path: '/pending',           icon: 'pending' },
-    { label: 'Completed',                path: '/completed',         icon: 'completed'    },
     { label: 'Cancelled / Retendered',   path: '/cancelled',         icon: 'retender'},
     { label: 'Tender Financial Changes', path: '/financial-changes', icon: 'finance' },
     { label: 'Approved',               path: '/approved', icon: 'users'    },
@@ -93,7 +92,6 @@ export const NAV_CONFIG = {
   [ROLES.TENDER_AUTHORITY]: [
     { label: 'Home',         path: '/home',         icon: 'home'         },
     { label: 'Pending',      path: '/pending',      icon: 'pending'      },
-    { label: 'Completed',    path: '/completed',    icon: 'completed'    },
     { label: 'Cancelled / Retendered',    path: '/cancelled',           icon: 'retender' },
     { label: 'Applications', path: '/applications', icon: 'applications' },
     { label: 'Approved',               path: '/approved', icon: 'users'    },

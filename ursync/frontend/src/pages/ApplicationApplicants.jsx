@@ -240,9 +240,20 @@ export default function ApplicationApplicants() {
     }
   }
 
+  // NOTE: `readOnly` is now passed through navigation state so
+  // ApplicantDetails.jsx knows to call the read-only approved-bidders
+  // detail endpoint (which resolves from FinalBidders/BiddersList) instead
+  // of the pending-applicants detail endpoint. Without this flag,
+  // department_head (and everyone else in read-only mode) hit an endpoint
+  // that never had their applicant's data, which is why documents/downloads
+  // silently failed on the Approved page's Bidders tab.
   function handleView(applicant) {
     navigate('/Applicant/' + encodeURIComponent(applicant.applicationId), {
-      state: { tenderId: tender.id, fromPath: readOnly ? backPath : '/applications' },
+      state: {
+        tenderId: tender.id,
+        fromPath: readOnly ? backPath : '/applications',
+        readOnly,
+      },
     })
   }
 
