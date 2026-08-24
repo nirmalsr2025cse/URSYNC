@@ -360,6 +360,9 @@ export default function FinalBidder() {
           showToast('Bidders finalized successfully.', 'success')
           setTenderMeta((prev) => prev ? { ...prev, isFinalizedBidders: true } : prev)
           setConfirmModal(null)
+          // Send the user back to Approvement (Tenders tab is Approvement's
+          // default activeTab) instead of leaving them on a now-stale page.
+          navigate(backTarget, { replace: true, state: { fromPath: sidebarFromPath } })
         })
         .catch((err) => showToast(err.message || 'Failed to finalize bidders.', 'error'))
         .finally(() => setWorking(false))

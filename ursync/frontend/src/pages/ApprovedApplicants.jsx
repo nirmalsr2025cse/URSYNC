@@ -4,12 +4,11 @@
 // "Reject" flips isDocumentApproved back to false server-side, which
 // sends the applicant back to ApplicationApplicants.jsx's pending list.
 // "Send to Department" finalizes the whole approved set: copies them into
-// FinalBidders and sets Tender.isDocumentVerified = true, which moves the
-// tender into the Completed tab.
+// FinalBidders and sets Tender.isDocumentVerified = true.
 
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
-import Pagination from '../components/Pagination'
+import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
 import { useApi } from '../api/client'
 
 function Toast({ toast }) {
@@ -43,7 +42,7 @@ function ConfirmModal({ open, count, busy, onCancel, onConfirm }) {
         <h3 className="text-base font-bold text-[#0A2240] mb-2">Send to Department?</h3>
         <p className="text-sm text-[#6B7A8D] leading-relaxed mb-6">
           This will finalize {count} approved applicant{count !== 1 ? 's' : ''} for this tender and send them to
-          the department. Once confirmed, this tender will move to the Completed tab and this action cannot be undone.
+          the department. This action cannot be undone.
         </p>
         <div className="flex gap-3">
           <button
@@ -142,7 +141,13 @@ export default function ApprovedApplicants() {
   const location = useLocation()
   const fromTab = location.state?.fromTab || 'Open'
 
-  const PAGE_SIZE = 6
+  // Was hardcoded to 6, which doesn't adapt per breakpoint and caused the
+  // grid (1 col mobile / 2 col tablet / 3 col desktop) and the page size to
+  // drift out of sync — e.g. only 3 of 4 cards showing on some screens.
+  // Use the same responsive hook FinalBidder.jsx / Approvement.jsx use so
+  // page size always matches the actual grid: 1x6 mobile, 2x3 tablet,
+  // 3x2 desktop.
+  const PAGE_SIZE = useResponsiveItemsPerPage()
   const [currentPage, setCurrentPage] = useState(1)
   const [toast, setToast] = useState(null)
 
@@ -178,6 +183,13 @@ export default function ApprovedApplicants() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decodedId])
 
+  // Keep currentPage in range if PAGE_SIZE changes (e.g. resizing the
+  // window across breakpoints) — otherwise you could land on a page that
+  // no longer exists once the responsive page size shrinks/grows.
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [PAGE_SIZE])
+
   async function handleReject(applicant) {
     setRejectingId(applicant.applicationId)
     try {
@@ -199,6 +211,9 @@ export default function ApprovedApplicants() {
     })
   }
 
+  // On success: just go back to the Applications page on whatever tab the
+  // user came from (fromTab) — no more forcing/redirecting to a
+  // "Completed" tab.
   async function handleConfirmSend() {
     setSending(true)
     try {
@@ -209,7 +224,7 @@ export default function ApprovedApplicants() {
       setConfirmOpen(false)
       showToast('Sent to department successfully')
       setTimeout(() => {
-        navigate('/applications', { state: { fromTab: 'Completed' } })
+        navigate('/applications', { state: { fromTab } })
       }, 1000)
     } catch (err) {
       showToast(err.message || 'Failed to send to department', 'error')
@@ -221,7 +236,7 @@ export default function ApprovedApplicants() {
   const paginated = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE
     return applicants.slice(start, start + PAGE_SIZE)
-  }, [applicants, currentPage])
+  }, [applicants, currentPage, PAGE_SIZE])
 
   if (loading) {
     return (

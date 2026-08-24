@@ -4,6 +4,7 @@ const TempBidderApplication = require('../models/TempBidderApplication')
 const Tender = require('../models/Tender')
 const BiddersList = require('../models/BiddersList')
 const { getBucket, uploadBufferToGridFS, deleteGridFSFileSafe } = require('../config/gridfs')
+const { notifyApplicationSubmitted } = require('../services/applicantNotificationService')
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf']
 
@@ -386,6 +387,21 @@ exports.submitApplication = async (req, res) => {
       await TempBidderApplication.deleteOne({ _id: tempDoc._id })
     } else {
       await tempDoc.save()
+    }
+
+    // ── Send "application received" email ────────────────────────────
+    // Best-effort, non-blocking of the response — matches how every other
+    // notification in this codebase is fired (see tenderNotificationService
+    // calls elsewhere: they're awaited but internally swallow their own
+    // errors so a mail failure never turns a successful submission into a
+    // 500). Load the parent Tender doc just for title/tenderCode.
+    try {
+      const tenderDoc = await Tender.findById(tenderId).select('title tenderCode').lean()
+      if (tenderDoc) {
+        await notifyApplicationSubmitted(tenderDoc, bidderEntryPayload, req.user)
+      }
+    } catch (mailErr) {
+      console.error('submitApplication: notifyApplicationSubmitted failed:', mailErr)
     }
 
     return res.status(200).json({

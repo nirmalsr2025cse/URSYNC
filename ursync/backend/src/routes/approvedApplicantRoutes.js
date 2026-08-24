@@ -17,19 +17,12 @@ const {
   getApplicantDetails,
   approveApplicant,
   rejectApplicant,
-  sendToDepartment,
 } = require('../controllers/applicationApplicantsController')
 
 const authMiddleware = require('../middleware/authMiddleware') // adjust path/name if needed
 
 // GET /api/tenders/applications/applicants?tenderCode=...&approved=false|true|all
 router.get('/', authMiddleware, getApplicants)
-
-// PATCH /api/tenders/applications/applicants/send-to-department
-// NOTE: this must be registered BEFORE the '/:applicationId' route below,
-// otherwise Express will match "send-to-department" as an :applicationId
-// value instead of hitting this handler.
-router.patch('/send-to-department', authMiddleware, sendToDepartment)
 
 // GET /api/tenders/applications/applicants/:applicationId
 router.get('/:applicationId', authMiddleware, getApplicantDetails)

@@ -226,7 +226,12 @@ export default function ApplicantDetails() {
         .then((res) => {
           setTender(res.data.tender)
           setApplicant(res.data.applicant)
-          setStatus(res.data.applicant.isPaid ? 'Approved' : 'Pending')
+          // Status reflects document-review state (isDocumentApproved is
+          // the flag the review queue and backend actually flip on
+          // approve/reject — see applicationApplicantsController.js).
+          // isPaid is an unrelated payment flag and was wrongly used here
+          // before, which showed "Pending" for approved-but-unpaid bidders.
+          setStatus(res.data.applicant.isDocumentApproved ? 'Approved' : 'Pending')
         })
         .catch((err) => setLoadError(err.message || 'Failed to load bidder'))
         .finally(() => setLoading(false))
@@ -239,7 +244,7 @@ export default function ApplicantDetails() {
       .then((res) => {
         setTender(res.data.tender)
         setApplicant(res.data.applicant)
-        setStatus(res.data.applicant.isPaid ? 'Approved' : 'Pending')
+        setStatus(res.data.applicant.isDocumentApproved ? 'Approved' : 'Pending')
       })
       .catch((err) => setLoadError(err.message || 'Failed to load applicant'))
       .finally(() => setLoading(false))

@@ -8,7 +8,6 @@ import { useApi } from '../api/client'
 const TABS = [
   { id: 'Open',      label: 'Open'      },
   { id: 'Upcoming',  label: 'Upcoming'  },
-  { id: 'Completed', label: 'Completed' },
 ]
 
 export default function Applications() {
@@ -32,7 +31,7 @@ export default function Applications() {
   const [tenders, setTenders] = useState([])
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const [counts, setCounts] = useState({ Open: 0, Upcoming: 0, Completed: 0 })
+  const [counts, setCounts] = useState({ Open: 0, Upcoming: 0 })
 
   const [departments, setDepartments] = useState(['All'])
   const [districts,   setDistricts]   = useState(['All'])
@@ -113,7 +112,6 @@ export default function Applications() {
   const EMPTY_TEXT = {
     Open:      'No open application tenders.',
     Upcoming:  'No upcoming tenders yet.',
-    Completed: 'No completed tenders.',
   }
 
   return (
@@ -249,7 +247,7 @@ export default function Applications() {
                   tender={{ ...tender, status: activeTab }}
                   viewMode="grid"
                   className="flex-1"
-                  onClick={() => activeTab !== 'Completed' && navigate('/applications/' + encodeURIComponent(tender.id), { state: { fromTab: activeTab } })}
+                  onClick={() => navigate('/applications/' + encodeURIComponent(tender.id), { state: { fromTab: activeTab } })}
                   footer={
                     activeTab === 'Open' ? (
                       <button
@@ -261,13 +259,6 @@ export default function Applications() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                         View Applications
-                      </button>
-                    ) : activeTab === 'Completed' ? (
-                      <button
-                        onClick={() => navigate('/applications/' + encodeURIComponent(tender.id), { state: { fromTab: activeTab } })}
-                        className="mt-2 w-full py-2.5 text-xs font-semibold rounded-xl bg-tn-blue text-white border border-[#FFE5BF] transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        View Details
                       </button>
                     ) : null
                   }

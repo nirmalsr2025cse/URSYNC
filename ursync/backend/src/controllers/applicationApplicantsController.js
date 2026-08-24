@@ -10,7 +10,10 @@
 // applications[] entry into a FinalBidders document (see
 // src/models/FinalBidders.js) and flips Tender.isDocumentVerified to true,
 // which moves the tender into the Completed tab on the Applications page
-// (see tenderListController.js).
+// (see tenderListController.js). It also emails every approved applicant a
+// "selected" notice, and every applicant left behind in bidderlists
+// (isDocumentApproved !== true) a "not selected" notice — see
+// services/applicantNotificationService.js.
 //
 //   GET   /api/tenders/applications/applicants?tenderCode=...&approved=false
 //   GET   /api/tenders/applications/applicants/:applicationId
@@ -21,6 +24,7 @@
 const Tender = require('../models/Tender')
 const BiddersList = require('../models/BiddersList')
 const FinalBidders = require('../models/FinalBidders')
+const { notifySelected, notifyNotSelected } = require('../services/applicantNotificationService')
 
 function formatTenderSummary(t) {
   return {
@@ -208,6 +212,11 @@ exports.rejectApplicant = async (req, res) => {
 // If a FinalBidders document already exists for this tender (e.g. the
 // action is retried), it's overwritten with the current approved set
 // rather than duplicated.
+//
+// Email notifications (best-effort, never blocks the response):
+//   - every entry copied into FinalBidders  -> "selected" mail
+//   - every remaining bidderlists entry that is NOT approved
+//     (isDocumentApproved !== true)         -> "not selected" mail
 exports.sendToDepartment = async (req, res) => {
   try {
     const { tenderCode } = req.body
@@ -222,9 +231,9 @@ exports.sendToDepartment = async (req, res) => {
     }
 
     const biddersList = await BiddersList.findOne({ tenderId: tender._id }).lean()
-    const approvedApplications = (biddersList?.applications || []).filter(
-      (a) => a.isDocumentApproved === true
-    )
+    const allApplications = biddersList?.applications || []
+    const approvedApplications = allApplications.filter((a) => a.isDocumentApproved === true)
+    const notSelectedApplications = allApplications.filter((a) => a.isDocumentApproved !== true)
 
     if (approvedApplications.length === 0) {
       return res.status(400).json({
@@ -247,6 +256,20 @@ exports.sendToDepartment = async (req, res) => {
 
     tender.isDocumentVerified = true
     await tender.save()
+
+    // ── Notify applicants ─────────────────────────────────────────────
+    // Best-effort — a mail failure must never turn a successful
+    // send-to-department action into an error response. Fired in
+    // parallel; each notify* call already swallows its own errors (see
+    // applicantNotificationService.js).
+    try {
+      await Promise.all([
+        ...approvedApplications.map((entry) => notifySelected(tender, entry)),
+        ...notSelectedApplications.map((entry) => notifyNotSelected(tender, entry)),
+      ])
+    } catch (mailErr) {
+      console.error('sendToDepartment: applicant notification batch failed:', mailErr)
+    }
 
     return res.status(200).json({
       success: true,

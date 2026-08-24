@@ -15,6 +15,14 @@
 // tempBidderApplicationController.submitApplication). From that point on,
 // listApplyTenders excludes that tender from THAT user's results — other
 // users still see it normally.
+//
+// NOTE: listApplyTenders / getApplyTenderMeta additionally exclude any
+// tender whose applicationEndDate has already passed (< now), even if
+// the syncApplicationStatuses cron hasn't yet flipped `application`
+// forward. This is a belt-and-suspenders guard so a stale/late cron run
+// never lets an expired tender leak into the bidder-facing list.
+// getApplyTenderByCode intentionally does NOT apply this guard — see the
+// comment on that handler below.
 
 const Tender = require('../models/Tender')
 const User = require('../models/User')
@@ -62,6 +70,23 @@ function buildJoinStages() {
     },
     { $unwind: { path: '$districtDoc', preserveNullAndEmptyArrays: true } },
   ]
+}
+
+// Excludes tenders whose application window has already closed
+// (applicationEndDate < now). Tenders with no applicationEndDate set
+// are left alone — absence of an end date isn't the same as an expired
+// one. Push this stage AFTER buildJoinStages() so it can only need the
+// raw Tender field.
+function excludeExpiredApplicationStage() {
+  return {
+    $match: {
+      $or: [
+        { applicationEndDate: null },
+        { applicationEndDate: { $exists: false } },
+        { applicationEndDate: { $gte: new Date() } },
+      ],
+    },
+  }
 }
 
 // Reshapes an aggregated tender doc into the flat fields ApplyTenders.jsx /
@@ -123,6 +148,9 @@ async function listApplyTenders(req, res) {
 
     const stages = buildJoinStages()
     stages.push({ $match: { application } })
+    // Never surface a tender whose applicationEndDate has already
+    // passed, regardless of what `application` currently says.
+    stages.push(excludeExpiredApplicationStage())
 
     // Once this user has submitted an application for a tender (a
     // bidderlists entry exists for tenderId+this user), that tender should
@@ -186,6 +214,10 @@ async function getApplyTenderMeta(req, res) {
 
     const stages = buildJoinStages()
     stages.push({ $match: { application: { $in: APPLICATION_STATES } } })
+    // Keep the filter dropdowns in sync with what listApplyTenders will
+    // actually show — don't offer a department/category/district whose
+    // only matching tenders have already expired.
+    stages.push(excludeExpiredApplicationStage())
 
     const [departments, districts, categories] = await Promise.all([
       Tender.aggregate([...stages, { $group: { _id: '$departmentDoc.name' } }, { $sort: { _id: 1 } }]),
@@ -212,11 +244,11 @@ async function getApplyTenderMeta(req, res) {
 // ApplyTenderForm.jsx to populate the read-only "Tender Details" section
 // when a bidder opens the Apply form. Applies the same tender_person-only
 // restriction and isDeleted/isCancelled filtering as the list endpoint,
-// but intentionally does NOT restrict by application state — once a
-// bidder has the deadline link/URL, a tender that has since moved to
-// Completed/closed should still resolve here (the form itself uses
-// applicationDeadline to show the "Application Closed" state), rather
-// than surfacing a confusing 404.
+// but intentionally does NOT restrict by application state or expired
+// deadline — once a bidder has the deadline link/URL, a tender that has
+// since moved to Completed/closed should still resolve here (the form
+// itself uses applicationDeadline to show the "Application Closed"
+// state), rather than surfacing a confusing 404.
 async function getApplyTenderByCode(req, res) {
   try {
     const me = await loadCurrentUser(req)

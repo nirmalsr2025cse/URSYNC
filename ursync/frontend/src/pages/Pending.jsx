@@ -87,6 +87,15 @@ function toCardShape(doc) {
   }
 }
 
+// Converts a Date/ISO-string into the 'YYYY-MM-DD' shape <input type="date">
+// needs for its value/min/max attributes.
+function toDateInputValue(d) {
+  if (!d) return ''
+  const date = new Date(d)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
+}
+
 export default function Pending() {
   const [inputVal, setInputVal] = useState('')
   const navigate = useNavigate()
@@ -130,6 +139,18 @@ export default function Pending() {
   const [rejectReason, setRejectReason] = useState('')
   const [rejectReasonError, setRejectReasonError] = useState('')
 
+  // ── Tender currently open in the confirm modal (needed for the approval
+  // date bounds — the picker must stay within this tender's own
+  // startDate/closingDate window) ─────────────────────────────────────────
+  const confirmTender = useMemo(() => {
+    if (!confirmModal) return null
+    return allTenders.find((t) => t.id === confirmModal.tenderId) || null
+  }, [confirmModal, allTenders])
+
+  // Bounds for the date pickers: the tender's own project startDate/closingDate.
+  const tenderMinDate = confirmTender ? toDateInputValue(confirmTender.startDate) : ''
+  const tenderMaxDate = confirmTender ? toDateInputValue(confirmTender.closingDate) : ''
+
   // ── Toast helper ──────────────────────────────────────────────────────────
   function showToast(message, type = 'success') {
     setToast({ message, type })
@@ -171,7 +192,20 @@ export default function Pending() {
   }
 
   function handleDateChange(field, value) {
-    setApprovalDates((prev) => ({ ...prev, [field]: value }))
+    setApprovalDates((prev) => {
+      const next = { ...prev, [field]: value }
+      // Changing an earlier field can invalidate later ones (they may now
+      // fall outside the new min bound) — clear anything downstream that's
+      // no longer valid so the user can't submit a stale/inconsistent set.
+      if (field === 'applicationStartDate' && next.applicationEndDate && next.applicationEndDate < value) {
+        next.applicationEndDate = ''
+        next.applicationDeadline = ''
+      }
+      if (field === 'applicationEndDate' && next.applicationDeadline && next.applicationDeadline < value) {
+        next.applicationDeadline = ''
+      }
+      return next
+    })
     setDateErrors((prev) => ({ ...prev, [field]: undefined }))
   }
 
@@ -195,6 +229,20 @@ export default function Pending() {
     if (!errors.applicationEndDate && !errors.applicationDeadline) {
       if (new Date(applicationDeadline) < new Date(applicationEndDate)) {
         errors.applicationDeadline = 'Must be on/after Application End Date'
+      }
+    }
+
+    // Keep all three inside the tender's own project window
+    // (startDate <= applicationX <= closingDate), since that's what the
+    // date pickers are now constrained to via min/max.
+    if (confirmTender) {
+      const tMin = tenderMinDate
+      const tMax = tenderMaxDate
+      if (!errors.applicationStartDate && tMin && applicationStartDate < tMin) {
+        errors.applicationStartDate = `Must be on/after tender start date (${tMin})`
+      }
+      if (!errors.applicationDeadline && tMax && applicationDeadline > tMax) {
+        errors.applicationDeadline = `Must be on/before tender closing date (${tMax})`
       }
     }
 
@@ -387,6 +435,14 @@ export default function Pending() {
             {/* ── Approval date fields — approve action, tender_authority only ── */}
             {confirmModal.action === 'approve' && showApprovalDates && (
               <div className="space-y-3 mb-6">
+                {confirmTender && (tenderMinDate || tenderMaxDate) && (
+                  <p className="text-[11px] text-tn-muted -mt-1 mb-1">
+                    Pick dates within the tender's project window
+                    {tenderMinDate && <> from <span className="font-semibold text-tn-navy">{tenderMinDate}</span></>}
+                    {tenderMaxDate && <> to <span className="font-semibold text-tn-navy">{tenderMaxDate}</span></>}.
+                  </p>
+                )}
+
                 <div>
                   <label className="block text-xs font-semibold text-tn-navy mb-1">
                     Application Start Date
@@ -394,6 +450,8 @@ export default function Pending() {
                   <input
                     type="date"
                     value={approvalDates.applicationStartDate}
+                    min={tenderMinDate || undefined}
+                    max={tenderMaxDate || undefined}
                     onChange={(e) => handleDateChange('applicationStartDate', e.target.value)}
                     className={[
                       'w-full px-3 py-2 text-sm border rounded-lg bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all',
@@ -412,9 +470,12 @@ export default function Pending() {
                   <input
                     type="date"
                     value={approvalDates.applicationEndDate}
+                    min={approvalDates.applicationStartDate || tenderMinDate || undefined}
+                    max={tenderMaxDate || undefined}
+                    disabled={!approvalDates.applicationStartDate}
                     onChange={(e) => handleDateChange('applicationEndDate', e.target.value)}
                     className={[
-                      'w-full px-3 py-2 text-sm border rounded-lg bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all',
+                      'w-full px-3 py-2 text-sm border rounded-lg bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed',
                       dateErrors.applicationEndDate ? 'border-red-400' : 'border-[#FFE5BF]',
                     ].join(' ')}
                   />
@@ -430,9 +491,12 @@ export default function Pending() {
                   <input
                     type="date"
                     value={approvalDates.applicationDeadline}
+                    min={approvalDates.applicationEndDate || tenderMinDate || undefined}
+                    max={tenderMaxDate || undefined}
+                    disabled={!approvalDates.applicationEndDate}
                     onChange={(e) => handleDateChange('applicationDeadline', e.target.value)}
                     className={[
-                      'w-full px-3 py-2 text-sm border rounded-lg bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all',
+                      'w-full px-3 py-2 text-sm border rounded-lg bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed',
                       dateErrors.applicationDeadline ? 'border-red-400' : 'border-[#FFE5BF]',
                     ].join(' ')}
                   />

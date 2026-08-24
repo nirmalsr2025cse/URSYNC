@@ -1,120 +1,189 @@
-// src/controllers/approvedApplicantController.js
+// src/controllers/applicationApplicantsController.js
 //
-// Backs the ApplicantDetails.jsx page when reached via:
-//   /applications/:tenderCode/approved/:applicationId
+// Serves the "Applicants" screens for a single tender. Source of truth for
+// "has this bidder been approved" is the isDocumentApproved flag on the
+// applications[] entry inside BiddersList (see src/models/BiddersList.js).
+// approve() flips it true, reject() flips it back false — nothing else
+// about the record changes, and the record is never deleted either way.
 //
-// `tenderCode` is the human-readable Tender.tenderCode (e.g. "TN/PWD/2026/014"),
-// NOT the Mongo _id — matches the convention already used by
-// applyTenderController.getApplyTenderByCode for the apply flow. Since
-// BiddersList.tenderId actually stores the Tender's _id (not its code), we
-// resolve tenderCode -> Tender -> _id first, then use that _id to query
-// BiddersList.
-//
-// `applicationId` is BiddersList.applications[].applicationId (a Mongo
-// ObjectId generated once in tempBidderApplicationController.saveApplication
-// and carried over unchanged through submitApplication) — it uniquely
-// identifies one bidder's submitted application to one tender.
-//
-// This does NOT do role-based field stripping server-side — it returns the
-// full application record (including bidAmount/emdAmount/securityDeposit
-// inside formData) and lets the frontend decide what to render based on the
-// viewer's role. Restrict WHO can hit this endpoint at all at the route/
-// middleware layer, the same way your other protected routes do.
+//   GET   /api/tenders/applications/applicants?tenderCode=...&approved=false
+//   GET   /api/tenders/applications/applicants/:applicationId
+//   PATCH /api/tenders/applications/applicants/:applicationId/approve
+//   PATCH /api/tenders/applications/applicants/:applicationId/reject
 
-const mongoose = require('mongoose')
-const BiddersList = require('../models/BiddersList')
 const Tender = require('../models/Tender')
+const BiddersList = require('../models/BiddersList')
 
-// GET /api/applications/:tenderCode/approved/:applicationId
-exports.getApprovedApplicant = async (req, res) => {
+function formatTenderSummary(t) {
+  return {
+    id: t.tenderCode,
+    _id: t._id.toString(),
+    title: t.title,
+    department: t.departmentId?.name || '—',
+    district: t.districtId?.name || '—',
+    value: t.estimatedValue,
+    currency: t.currency || 'INR',
+  }
+}
+
+// NOTE: applicantName/companyName/experience/district aren't top-level
+// fields on the applications[] entry — they live inside formData because
+// the apply form is dynamic per tender. Adjust the fd.* keys below to match
+// whatever field names ApplyTenderForm.jsx actually submits.
+function formatApplicant(entry) {
+  const fd = entry.formData || {}
+  return {
+    applicationId: entry.applicationId.toString(),
+    userId: entry.userId?.toString ? entry.userId.toString() : entry.userId,
+    applicantName: fd.applicantName || fd.name || '—',
+    companyName: fd.companyName || fd.firmName || '—',
+    experience: fd.experience || '—',
+    district: fd.district || '—',
+    submittedDate: entry.applicationSubmissionDateTime,
+    isPaid: entry.isPaid,
+    isDocumentApproved: entry.isDocumentApproved,
+    isBidderApproved: entry.isBidderApproved,
+    documents: (entry.documents || []).map((d) => ({
+      fileId: d.fileId.toString(),
+      label: d.label,
+      originalName: d.originalName,
+      contentType: d.contentType,
+      size: d.size,
+      url: `/temp-applications/file/${d.fileId}`,
+    })),
+    signature: entry.signatureFileId
+      ? {
+          fileId: entry.signatureFileId.toString(),
+          contentType: entry.signatureContentType,
+          originalName: entry.signatureOriginalName,
+          url: `/temp-applications/file/${entry.signatureFileId}`,
+        }
+      : null,
+    formData: fd,
+  }
+}
+
+// ── GET /api/tenders/applications/applicants?tenderCode=...&approved=false ─
+// approved: 'false' (default) -> pending list (isDocumentApproved !== true)
+//           'true'            -> approved list
+//           'all'             -> everything
+exports.getApplicants = async (req, res) => {
   try {
-    const tenderCode = String(req.params.tenderCode || '').trim()
-    const { applicationId } = req.params
+    const { tenderCode } = req.query
+    const approvedParam = (req.query.approved || 'false').toLowerCase()
 
     if (!tenderCode) {
-      return res.status(400).json({ success: false, message: 'tenderCode is required.' })
-    }
-    if (!mongoose.Types.ObjectId.isValid(applicationId)) {
-      return res.status(400).json({ success: false, message: 'Invalid applicationId.' })
+      return res.status(400).json({ success: false, message: 'tenderCode is required' })
     }
 
-    // tenderCode -> Tender doc. Same join pattern as
-    // applyTenderController.buildJoinStages, trimmed to what this page needs.
     const tender = await Tender.findOne({ tenderCode, isDeleted: false })
-      .populate('departmentId', 'name code organization')
-      .populate('categoryId', 'name')
+      .populate('departmentId', 'name')
+      .populate('districtId', 'name')
       .lean()
 
     if (!tender) {
-      return res.status(404).json({ success: false, message: 'Tender not found.' })
+      return res.status(404).json({ success: false, message: 'Tender not found' })
     }
 
-    // BiddersList.tenderId stores the Tender's _id, not its tenderCode —
-    // this is why we had to resolve the Tender doc first, above.
-    const bidderDoc = await BiddersList.findOne(
-      { tenderId: tender._id, 'applications.applicationId': applicationId },
-      { 'applications.$': 1 }
-    ).lean()
+    const biddersList = await BiddersList.findOne({ tenderId: tender._id }).lean()
+    const allApplications = biddersList?.applications || []
 
-    if (!bidderDoc || !bidderDoc.applications?.length) {
-      return res.status(404).json({ success: false, message: 'Applicant not found.' })
+    let filtered
+    if (approvedParam === 'true') {
+      filtered = allApplications.filter((a) => a.isDocumentApproved === true)
+    } else if (approvedParam === 'all') {
+      filtered = allApplications
+    } else {
+      filtered = allApplications.filter((a) => a.isDocumentApproved !== true)
     }
-
-    const entry = bidderDoc.applications[0]
-    const formData = entry.formData || {}
-
-    const toFileMeta = (d) => ({
-      name: d.label,
-      originalName: d.originalName,
-      contentType: d.contentType,
-      // Reuses the same authenticated streaming endpoint already built for
-      // the temp/draft flow — it works for permanent bidderlists files too
-      // since they reference the exact same GridFS fileIds.
-      url: `/temp-applications/file/${d.fileId}`,
-    })
 
     return res.status(200).json({
       success: true,
       data: {
-        tender: {
-          _id: tender._id,
-          tenderCode: tender.tenderCode,
-          id: tender.tenderCode,
-          title: tender.title,
-          department: tender.departmentId?.name || '',
-          departmentCode: tender.departmentId?.code || '',
-          category: tender.categoryId?.name || '',
-          estimatedValue: tender.estimatedValue,
-        },
-        applicant: {
-          applicationId: entry.applicationId,
-          // Applicant Information
-          applicantName: formData.applicantName || '',
-          mobile: formData.mobile || '',
-          email: formData.email || '',
-          district: formData.district || '',
-          // Company Details
-          companyName: formData.companyName || '',
-          companyRegNo: formData.companyRegNo || '',
-          experience: formData.experienceYears || '',
-          submittedDate: entry.applicationSubmissionDateTime || entry.applicationDate || null,
-          // Financial fields — sensitive; frontend hides these for
-          // tender_authority. Sent here regardless of role since this
-          // endpoint is shared across roles; access control for WHO can
-          // hit this endpoint at all still belongs at the route level.
-          bidAmount: formData.bidAmount || '',
-          emdAmount: formData.emdAmount || '',
-          securityDeposit: formData.securityDeposit || '',
-          // Status
-          isPaid: entry.isPaid || false,
-          approvalStatus: entry.approvalStatus || 'Pending',
-          // Documents
-          documents: (entry.documents || []).map(toFileMeta),
-        },
+        tender: formatTenderSummary(tender),
+        applicants: filtered.map(formatApplicant),
       },
     })
   } catch (err) {
-    console.error('getApprovedApplicant error:', err)
-    return res.status(500).json({ success: false, message: 'Failed to fetch applicant details', error: err.message })
+    console.error('getApplicants error:', err)
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message })
+  }
+}
+
+// ── GET /api/tenders/applications/applicants/:applicationId ────────────────
+exports.getApplicantDetails = async (req, res) => {
+  try {
+    const { applicationId } = req.params
+
+    const biddersList = await BiddersList.findOne({
+      'applications.applicationId': applicationId,
+    }).lean()
+
+    if (!biddersList) {
+      return res.status(404).json({ success: false, message: 'Applicant not found' })
+    }
+
+    const entry = biddersList.applications.find(
+      (a) => a.applicationId.toString() === applicationId
+    )
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Applicant not found' })
+    }
+
+    const tender = await Tender.findById(biddersList.tenderId)
+      .populate('departmentId', 'name')
+      .populate('districtId', 'name')
+      .lean()
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        tender: formatTenderSummary(tender),
+        applicant: formatApplicant(entry),
+      },
+    })
+  } catch (err) {
+    console.error('getApplicantDetails error:', err)
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message })
+  }
+}
+
+// Shared updater — approve/reject both just flip isDocumentApproved on the
+// matching applications[] entry using Mongo's positional $ operator.
+async function setDocumentApproved(applicationId, value) {
+  return BiddersList.findOneAndUpdate(
+    { 'applications.applicationId': applicationId },
+    { $set: { 'applications.$.isDocumentApproved': value } },
+    { returnDocument: 'after' }
+  ).lean()
+}
+
+// ── PATCH /api/tenders/applications/applicants/:applicationId/approve ──────
+exports.approveApplicant = async (req, res) => {
+  try {
+    const updated = await setDocumentApproved(req.params.applicationId, true)
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Applicant not found' })
+    }
+    return res.status(200).json({ success: true, message: 'Applicant approved' })
+  } catch (err) {
+    console.error('approveApplicant error:', err)
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message })
+  }
+}
+
+// ── PATCH /api/tenders/applications/applicants/:applicationId/reject ───────
+// "Reject" = send the applicant back to the pending list (un-approve their
+// documents). It never deletes the application record.
+exports.rejectApplicant = async (req, res) => {
+  try {
+    const updated = await setDocumentApproved(req.params.applicationId, false)
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Applicant not found' })
+    }
+    return res.status(200).json({ success: true, message: 'Applicant moved back to pending' })
+  } catch (err) {
+    console.error('rejectApplicant error:', err)
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message })
   }
 }

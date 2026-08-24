@@ -222,28 +222,25 @@ tenderSchema.pre('save', function () {
 tenderSchema.statics.syncApplicationStatuses = async function () {
   const now = new Date()
 
-  // Completed: applicationDeadline has passed. Checked/set FIRST and wins
-  // outright, matching the pre-save hook's precedence.
+  // Completed: applicationEndDate has passed.
   await this.updateMany(
     {
-      applicationDeadline: { $lte: now },
+      applicationEndDate: { $lte: now },
       application: { $ne: 'Completed' },
       isDeleted: false,
     },
     { $set: { application: 'Completed' } }
   )
 
-  // Open: applicationEndDate has passed, but applicationDeadline hasn't
-  // (or isn't set). Unconditional on the CURRENT `application` value —
-  // this is what corrects a document wrongly seeded as 'Open' when it's
-  // actually still Upcoming, and vice versa.
+  // Open: applicationStartDate has passed, but applicationEndDate hasn't
+  // (or isn't set).
   await this.updateMany(
     {
-      applicationEndDate: { $lte: now },
+      applicationStartDate: { $lte: now },
       $or: [
-        { applicationDeadline: null },
-        { applicationDeadline: { $exists: false } },
-        { applicationDeadline: { $gt: now } },
+        { applicationEndDate: null },
+        { applicationEndDate: { $exists: false } },
+        { applicationEndDate: { $gt: now } },
       ],
       application: { $ne: 'Open' },
       isDeleted: false,
@@ -251,16 +248,13 @@ tenderSchema.statics.syncApplicationStatuses = async function () {
     { $set: { application: 'Open' } }
   )
 
-  // Upcoming: applicationEndDate hasn't arrived yet (or isn't set). This
-  // is the backward correction that was previously missing entirely — a
-  // document sitting as 'Open' or 'Completed' whose applicationEndDate is
-  // still in the future gets pulled back to 'Upcoming'.
+  // Upcoming: applicationStartDate hasn't arrived yet (or isn't set).
   await this.updateMany(
     {
       $or: [
-        { applicationEndDate: null },
-        { applicationEndDate: { $exists: false } },
-        { applicationEndDate: { $gt: now } },
+        { applicationStartDate: null },
+        { applicationStartDate: { $exists: false } },
+        { applicationStartDate: { $gt: now } },
       ],
       application: { $ne: 'Upcoming' },
       isDeleted: false,
