@@ -17,15 +17,28 @@
 //   PATCH /api/finalbidders/:id/reject
 //         isBidderApproved: true -> false  (removes from final list)
 //   PATCH /api/finalbidders/tender/:tenderCode/finalize
-//         locks the tender: Tender.isFinalizedBidders = true
+//         locks the tender: Tender.isFinalizedBidders = true.
+//         Also, as of this version:
+//           - snapshots every isBidderApproved === true entry into the
+//             `auctionbidders` collection (see src/models/AuctionBidders.js)
+//           - emails every one of those entries a "selected" notice
+//           - emails every entry left behind (isBidderApproved !== true)
+//             a "not selected" notice
+//         See services/applicantNotificationService.js for the mail
+//         bodies. All of it is best-effort — a mail or snapshot failure
+//         never turns a successful finalize action into an error
+//         response for the caller (the tender lock itself has already
+//         been saved by that point).
 //   GET   /api/finalbidders/file/:fileId
 //         streams a document/signature out of GridFS
 
 const mongoose = require('mongoose')
 const FinalBidders = require('../models/FinalBidders')
+const AuctionBidders = require('../models/AuctionBidders')
 const Tender = require('../models/Tender')
 const User = require('../models/User')
 const { getBucket } = require('../config/gridfs')
+const { notifySelected, notifyNotSelected } = require('../services/applicantNotificationService')
 
 async function loadCurrentUser(req) {
   const currentUser = req.user
@@ -401,9 +414,24 @@ exports.rejectBidderApplication = async (req, res) => {
 // ── PATCH /api/finalbidders/tender/:tenderCode/finalize ─────────────────────
 // Locks the tender's bidder list: Tender.isFinalizedBidders = true.
 // Requires at least one bidder already in the final list
-// (isBidderApproved === true). Once finalized, approve/reject on this
-// tender's applications is blocked (see rejectBidderApplication above —
-// wire the same guard into approve if you want it locked both ways).
+// (isBidderApproved === true).
+//
+// As of this version, finalize also:
+//   1. Snapshots every isBidderApproved === true entry from FinalBidders
+//      into a NEW `auctionbidders` collection document (see
+//      src/models/AuctionBidders.js) — full field-for-field copy, same
+//      pattern as BiddersList -> FinalBidders.
+//   2. Emails every one of those entries a "selected" notice.
+//   3. Emails every entry left behind (isBidderApproved !== true at
+//      finalize time) a "not selected" notice.
+//
+// Both the snapshot write and the emails are best-effort with respect to
+// the HTTP response: by the time either runs, Tender.isFinalizedBidders
+// has already been saved, so a snapshot or mail failure is logged but
+// does not turn a successful finalize action into an error response.
+// (If the snapshot write itself needs to be a hard requirement instead,
+// move the isFinalizedBidders save to AFTER a successful AuctionBidders
+// write and wrap both in a transaction — ask if you want that instead.)
 exports.finalizeBidders = async (req, res) => {
   try {
     const me = await loadCurrentUser(req)
@@ -425,10 +453,19 @@ exports.finalizeBidders = async (req, res) => {
       return res.status(409).json({ success: false, message: 'Bidders for this tender are already finalized.' })
     }
 
-    const finalBidders = await FinalBidders.findOne({ tenderId: tender._id }).lean()
-    const approvedCount = (finalBidders?.applications || []).filter((a) => a.isBidderApproved).length
+    // Populate userId so email resolution (formData.email -> User.email_to_send
+    // -> User.email, see applicantNotificationService.resolveApplicantEmail)
+    // has a fallback even when an applicant's formData is missing an email.
+    const finalBidders = await FinalBidders.findOne({ tenderId: tender._id }).populate(
+      'applications.userId',
+      'email email_to_send fullName'
+    )
 
-    if (approvedCount === 0) {
+    const allApplications = finalBidders?.applications || []
+    const approvedApplications = allApplications.filter((a) => a.isBidderApproved === true)
+    const notSelectedApplications = allApplications.filter((a) => a.isBidderApproved !== true)
+
+    if (approvedApplications.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Add at least one bidder to the final list before finalizing.',
@@ -438,10 +475,47 @@ exports.finalizeBidders = async (req, res) => {
     tender.isFinalizedBidders = true
     await tender.save()
 
+    // ── 1. Snapshot approved entries into `auctionbidders` ───────────────
+    // Best-effort — logged, never turns a successful finalize into an
+    // error response (the tender lock above has already been saved).
+    try {
+      await AuctionBidders.findOneAndUpdate(
+        { tenderId: tender._id },
+        {
+          tenderId: tender._id,
+          departmentId: tender.departmentId,
+          applications: approvedApplications.map((a) => (a.toObject ? a.toObject() : a)),
+          finalizedAt: new Date(),
+          finalizedBy: me._id || null,
+        },
+        { upsert: true, setDefaultsOnInsert: true }
+      )
+    } catch (snapshotErr) {
+      console.error('finalizeBidders: AuctionBidders snapshot failed:', snapshotErr)
+    }
+
+    // ── 2 & 3. Notify applicants ──────────────────────────────────────────
+    // Best-effort, fired in parallel — each notify* call already swallows
+    // its own errors (see applicantNotificationService.js). Every entry
+    // is emailed individually by applicationId, so two entries sharing
+    // the same email address each still get their own message.
+    try {
+      await Promise.all([
+        ...approvedApplications.map((entry) => notifySelected(tender, entry)),
+        ...notSelectedApplications.map((entry) => notifyNotSelected(tender, entry)),
+      ])
+    } catch (mailErr) {
+      console.error('finalizeBidders: applicant notification batch failed:', mailErr)
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Bidders finalized successfully.',
-      data: { tenderCode: tender.tenderCode, isFinalizedBidders: true, finalizedCount: approvedCount },
+      data: {
+        tenderCode: tender.tenderCode,
+        isFinalizedBidders: true,
+        finalizedCount: approvedApplications.length,
+      },
     })
   } catch (err) {
     console.error('finalizeBidders error:', err)

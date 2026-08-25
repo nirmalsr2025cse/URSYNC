@@ -18,6 +18,11 @@
 //   #18 Audit trail via PaymentEvent for admin/reconciliation
 //   #25 Logging of every lifecycle event
 //
+// NOTE: There is no more AppliedBidder / permanent-record migration step.
+// A "paid" application is simply the TempBidderApplication entry with
+// isPaid: true and the payment fields populated on it. The 48h cleanup
+// job must be updated to skip entries where isPaid is true.
+//
 // What this file DOES NOT and CANNOT cover (out of backend-code scope):
 //   OS/device issues (#9, #23), network/DNS/SSL infra (#13), notification
 //   delivery (#15), file-upload-after-payment (#16 — that's
@@ -30,7 +35,6 @@
 
 const Tender = require('../models/Tender')
 const TempBidderApplication = require('../models/TempBidderApplication')
-const AppliedBidder = require('../models/AppliedBidder')
 const PaymentEvent = require('../models/PaymentEvent')
 const {
   createFixedAmountQr,
@@ -75,6 +79,14 @@ function getUserEligibilityReason(user) {
   return null
 }
 
+// ── Shared helper: fetch the user's TempBidderApplication entry ─────────────
+async function findTempEntry(tenderId, userId) {
+  const tempDoc = await TempBidderApplication.findOne({ tenderId, 'applications.userId': userId })
+  if (!tempDoc) return { tempDoc: null, entry: null }
+  const entry = tempDoc.applications.find((a) => String(a.userId) === String(userId))
+  return { tempDoc, entry }
+}
+
 // ── GET /api/payments/application/:tenderId ─────────────────────────────────
 exports.getApplicationSummary = async (req, res) => {
   try {
@@ -93,12 +105,6 @@ exports.getApplicationSummary = async (req, res) => {
       return res.status(403).json({ success: false, message: ineligibleReason })
     }
 
-    const alreadyPaid = await AppliedBidder.findOne({ tenderId, userId }).select('_id')
-    if (alreadyPaid) {
-      await PaymentEvent.log('blocked_already_paid', { tenderId, userId })
-      return res.status(409).json({ success: false, message: 'This application has already been paid for.', alreadyPaid: true })
-    }
-
     const tempDoc = await TempBidderApplication.findOne(
       { tenderId, 'applications.userId': userId },
       { 'applications.$': 1 }
@@ -110,6 +116,11 @@ exports.getApplicationSummary = async (req, res) => {
     }
 
     const entry = tempDoc.applications[0]
+
+    if (entry.isPaid) {
+      await PaymentEvent.log('blocked_already_paid', { tenderId, userId })
+      return res.status(409).json({ success: false, message: 'This application has already been paid for.', alreadyPaid: true })
+    }
 
     return res.status(200).json({
       success: true,
@@ -146,16 +157,14 @@ exports.createQr = async (req, res) => {
       return res.status(403).json({ success: false, message: ineligibleReason })
     }
 
-    const alreadyPaid = await AppliedBidder.findOne({ tenderId, userId }).select('_id')
-    if (alreadyPaid) {
-      return res.status(409).json({ success: false, message: 'This application has already been paid for.' })
-    }
-
-    const tempDoc = await TempBidderApplication.findOne({ tenderId, 'applications.userId': userId })
-    if (!tempDoc) {
+    const { tempDoc, entry } = await findTempEntry(tenderId, userId)
+    if (!tempDoc || !entry) {
       return res.status(404).json({ success: false, message: 'No saved application found. Please fill the form first.' })
     }
-    const entry = tempDoc.applications.find((a) => String(a.userId) === String(userId))
+
+    if (entry.isPaid) {
+      return res.status(409).json({ success: false, message: 'This application has already been paid for.' })
+    }
 
     // Reuse an existing, still-open QR — avoids spawning duplicate QR ids
     // and duplicate charges from repeated page loads/refreshes.
@@ -201,16 +210,15 @@ exports.checkQrStatus = async (req, res) => {
   const { tenderId } = req.params
   const userId = req.user._id
   try {
-    const alreadyPaid = await AppliedBidder.findOne({ tenderId, userId })
-    if (alreadyPaid) {
-      return res.status(200).json({ success: true, data: { status: 'paid', paymentId: alreadyPaid.razorpayPaymentId } })
-    }
-
-    const tempDoc = await TempBidderApplication.findOne({ tenderId, 'applications.userId': userId })
-    if (!tempDoc) {
+    const { tempDoc, entry } = await findTempEntry(tenderId, userId)
+    if (!tempDoc || !entry) {
       return res.status(404).json({ success: false, message: 'No saved application found.' })
     }
-    const entry = tempDoc.applications.find((a) => String(a.userId) === String(userId))
+
+    if (entry.isPaid) {
+      return res.status(200).json({ success: true, data: { status: 'paid', paymentId: entry.razorpayPaymentId } })
+    }
+
     if (!entry.razorpayQrId) {
       return res.status(200).json({ success: true, data: { status: 'no_qr' } })
     }
@@ -245,21 +253,17 @@ exports.checkQrStatus = async (req, res) => {
       })
     }
 
-    const tender = await Tender.findById(tenderId).select('departmentId')
-    const applied = await migrateEntryToAppliedBidders({
+    const marked = await markEntryPaid({
       tenderId,
-      departmentId: tender.departmentId,
       userId,
-      entry,
       paymentId: captured.id,
       qrId: entry.razorpayQrId,
       amountPaid: captured.amount,
     })
 
     await closeQr(entry.razorpayQrId).catch(() => {})
-    await removeTempEntry(tenderId, userId)
 
-    return res.status(200).json({ success: true, data: { status: 'paid', paymentId: applied.razorpayPaymentId } })
+    return res.status(200).json({ success: true, data: { status: 'paid', paymentId: marked.razorpayPaymentId } })
   } catch (err) {
     console.error('checkQrStatus error:', err)
     // A transient failure here must NOT look like "payment failed" to the
@@ -296,33 +300,26 @@ exports.handleWebhook = async (req, res) => {
       return res.status(200).json({ success: true })
     }
 
-    const already = await AppliedBidder.findOne({ tenderId, userId })
-    if (already) {
+    const { tempDoc, entry } = await findTempEntry(tenderId, userId)
+    if (!tempDoc || !entry) return res.status(200).json({ success: true })
+
+    if (entry.isPaid) {
       await PaymentEvent.log('payment_duplicate_ignored', { tenderId, userId, razorpayPaymentId: payment.id })
       return res.status(200).json({ success: true }) // idempotent
     }
 
     if (payment.amount !== REGISTRATION_FEE_PAISE) {
       await PaymentEvent.log('payment_amount_mismatch', { tenderId, userId, razorpayPaymentId: payment.id, amount: payment.amount })
-      return res.status(200).json({ success: true }) // flagged for manual review, not auto-migrated
+      return res.status(200).json({ success: true }) // flagged for manual review, not auto-marked
     }
 
-    const tempDoc = await TempBidderApplication.findOne({ tenderId, 'applications.userId': userId })
-    if (!tempDoc) return res.status(200).json({ success: true })
-    const entry = tempDoc.applications.find((a) => String(a.userId) === String(userId))
-    if (!entry) return res.status(200).json({ success: true })
-
-    const tender = await Tender.findById(tenderId).select('departmentId')
-    await migrateEntryToAppliedBidders({
+    await markEntryPaid({
       tenderId,
-      departmentId: tender.departmentId,
       userId,
-      entry,
       paymentId: payment.id,
       qrId,
       amountPaid: payment.amount,
     })
-    await removeTempEntry(tenderId, userId)
 
     return res.status(200).json({ success: true })
   } catch (err) {
@@ -332,51 +329,43 @@ exports.handleWebhook = async (req, res) => {
   }
 }
 
-// ── Shared helper: copy a temp draft into the permanent collection ─────────
-// Upsert + the unique (tenderId, userId) index is the real duplicate guard —
-// protects against "user pays twice", "double-tap Pay", "callback received
-// twice", and "webhook + poll race each try to migrate at the same time".
-async function migrateEntryToAppliedBidders({ tenderId, departmentId, userId, entry, paymentId, qrId, amountPaid }) {
+// ── Shared helper: mark a TempBidderApplication entry as paid in place ─────
+// Uses a conditional filter (isPaid not already true) so concurrent
+// webhook + poll calls can't both "win" and double-log a payment — the
+// second one simply matches nothing and is treated as already-done.
+async function markEntryPaid({ tenderId, userId, paymentId, qrId, amountPaid }) {
   try {
-    const applied = await AppliedBidder.findOneAndUpdate(
-      { tenderId, userId },
+    const updated = await TempBidderApplication.findOneAndUpdate(
       {
-        $setOnInsert: {
-          tenderId,
-          departmentId,
-          userId,
-          formData: entry.formData || {},
-          documents: entry.documents || [],
-          signatureFilePath: entry.signatureFilePath || null,
-          applicationDate: entry.applicationDate,
-          applicationTime: entry.applicationTime,
-          paymentMethod: 'upi_qr',
-          razorpayQrId: qrId,
-          razorpayPaymentId: paymentId,
-          amountPaid,
-          paidAt: new Date(),
+        tenderId,
+        applications: { $elemMatch: { userId, isPaid: { $ne: true } } },
+      },
+      {
+        $set: {
+          'applications.$.isPaid': true,
+          'applications.$.paymentMethod': 'upi_qr',
+          'applications.$.razorpayQrId': qrId,
+          'applications.$.razorpayPaymentId': paymentId,
+          'applications.$.amountPaid': amountPaid,
+          'applications.$.paidAt': new Date(),
         },
       },
-      { upsert: true, new: true }
+      { new: true }
     )
-    await PaymentEvent.log('migration_success', { tenderId, userId, razorpayPaymentId: paymentId, amount: amountPaid })
-    return applied
-  } catch (err) {
-    // E11000 = duplicate key — someone else's concurrent request already
-    // migrated this exact (tenderId, userId) a moment earlier. Not an error
-    // from the caller's point of view — fetch and return what's there.
-    if (err.code === 11000) {
+
+    if (!updated) {
+      // Someone else's concurrent request already marked this entry paid a
+      // moment earlier. Not an error from the caller's point of view —
+      // fetch and return what's there.
       await PaymentEvent.log('payment_duplicate_ignored', { tenderId, userId, razorpayPaymentId: paymentId })
-      return AppliedBidder.findOne({ tenderId, userId })
+      const doc = await TempBidderApplication.findOne({ tenderId, 'applications.userId': userId })
+      return doc.applications.find((a) => String(a.userId) === String(userId))
     }
-    await PaymentEvent.log('migration_failed', { tenderId, userId, razorpayPaymentId: paymentId, message: err.message })
+
+    await PaymentEvent.log('payment_marked_paid', { tenderId, userId, razorpayPaymentId: paymentId, amount: amountPaid })
+    return updated.applications.find((a) => String(a.userId) === String(userId))
+  } catch (err) {
+    await PaymentEvent.log('payment_mark_failed', { tenderId, userId, razorpayPaymentId: paymentId, message: err.message })
     throw err
   }
-}
-
-async function removeTempEntry(tenderId, userId) {
-  await TempBidderApplication.updateOne(
-    { tenderId },
-    { $pull: { applications: { userId } } }
-  )
 }

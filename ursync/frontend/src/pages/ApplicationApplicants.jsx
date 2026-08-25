@@ -39,6 +39,19 @@ function Toast({ toast }) {
 // approving left to do) and the new `readOnly` case (Approved page's
 // Bidders tab — display-only, never had an Approve action to begin with).
 function ApplicantCard({ applicant, onView, onApprove, approving, hideApprove }) {
+  // Experience can arrive either as a flattened top-level field
+  // (applicant.experience, set server-side from formData.experience) or,
+  // if the server's field-name guess didn't match this tender's dynamic
+  // apply-form, it may only exist inside applicant.formData itself. Fall
+  // back through both before giving up, so the row doesn't render blank
+  // or "Experience: undefined".
+  const experienceValue =
+    applicant.formData?.experienceYears && applicant.formData?.experienceYear !== '—'
+      ? applicant.formData?.experienceYears
+      : '—'
+
+  const year = experienceValue === '—' ? '' : experienceValue === '1' ? ' year' : ' years'
+  
   return (
     <div className="bg-white border border-[#FFE5BF] rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col">
       <div className="h-1 w-full bg-[#1A4A8C]" />
@@ -58,7 +71,7 @@ function ApplicantCard({ applicant, onView, onApprove, approving, hideApprove })
         <p className="text-[10px] font-mono text-[#6B7A8D] uppercase">{applicant.applicationId}</p>
 
         <div className="space-y-1.5 text-xs text-[#6B7A8D] pt-2 border-t border-[#FFE5BF]">
-          <MetaRow icon="exp" label={'Experience: ' + applicant.experience} />
+          <MetaRow icon="exp" label={'Experience: ' + experienceValue + year } />
           <MetaRow icon="pin" label={applicant.district} />
           <MetaRow icon="cal" label={'Submitted: ' + new Date(applicant.submittedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} />
           <MetaRow icon="doc" label={applicant.documents.length + ' documents uploaded'} />

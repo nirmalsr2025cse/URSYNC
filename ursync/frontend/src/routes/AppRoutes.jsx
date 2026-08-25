@@ -41,6 +41,7 @@ import FinalBidder from '../pages/FinalBidder'
 import TenderRegistrationPayment from '../pages/TenderRegistrationPayment'
 import ChoosePaymentPlatform from '../pages/ChoosePaymentPlatform'
 import TenderFinancialChangeDetailsPage from '../pages/TenderFinancialChangeDetailsPage'
+import TenderFinancialReviewPage from '../pages/TenderFinancialReviewPage'
 import TenderFinancialChangesPage from '../pages/TenderFinancialChangesPage'
 import Conflicts from '../pages/Conflicts'
 import ConflictDetails from '../pages/ConflictDetails'
@@ -139,6 +140,7 @@ export default function AppRoutes() {
         <Route path="/apply-tenders/payment/:appId" element={<TenderRegistrationPayment />} />
         <Route path="/apply-tenders/payment/choose-platform/:appId" element={<ChoosePaymentPlatform />} />
         <Route path="/financial-changes" element={<TenderFinancialChangesPage />} />
+        <Route path="/review-financial-changes" element={<TenderFinancialReviewPage />} />
         <Route path="/financial-changes/details" element={<TenderFinancialChangeDetailsPage />} />
         <Route path="/conflicts" element={<Conflicts />} />
         <Route path="/conflicts/:id" element={<ConflictDetails />} />

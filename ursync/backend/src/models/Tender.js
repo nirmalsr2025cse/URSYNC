@@ -4,6 +4,9 @@
 // display strings. The controller resolves those refs via $lookup and
 // reshapes the response so the frontend (TenderCard.jsx / Home.jsx) doesn't
 // need to change at all.
+//
+// *** UPDATED for the Apply Financial Changes feature: added `financialField`
+// *** (see the block below) — everything else is unchanged from before.
 const mongoose = require('mongoose')
 const { Schema } = mongoose
 
@@ -82,6 +85,17 @@ const tenderSchema = new Schema(
     isDocumentVerified: { type: Boolean, default: false, index: true },
 
     isFinalizedBidders: { type: Boolean, default: false, index: true },
+
+    // ── Financial change tracking (Apply Financial Changes feature) ──────
+    // false -> tender shows in the "Apply" tab on the Tender Financial
+    //          Changes page (no financial change request raised yet, or
+    //          none currently active).
+    // true  -> tender shows in the "Applied" tab instead. Flipped to true
+    //          by financialChangeController.applyFinancialChange() the
+    //          moment a request is first raised for this tender, and the
+    //          full history of requests lives in the companion
+    //          FinancialChange collection (one doc per tenderCode).
+    financialField: { type: Boolean, default: false, index: true },
 
     status: {
       type: String,

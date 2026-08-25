@@ -22,6 +22,13 @@
 //
 // Everything else (sections, validation, ImageUploadBox, etc.) is shared
 // between all modes.
+//
+// NOTE ON DECLARATION DATE: the "Date" field in Section 3 is always
+// locked to today's local date. It is never user-editable (readOnly +
+// disabled in every mode, including apply mode), it is force-set to
+// today whenever a tender/draft/application loads or reloads, and it is
+// force-set to today again immediately before every save/submit — so a
+// stale saved value can never be displayed or persisted.
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
@@ -449,7 +456,9 @@ export default function ApplyTenderForm() {
           return
         }
         setTender(data.tender || null)
-        setForm((p) => ({ ...p, ...data.formData }))
+        // declarationDate is always forced to today on load — never trust
+        // the previously-saved value, regardless of what formData holds.
+        setForm((p) => ({ ...p, ...data.formData, declarationDate: todayLocalISODate() }))
         setSavedDocuments(data.documents || [])
         setSavedSignatureUrl(data.signatureUrl || null)
         setSavedSignatureContentType(data.signatureContentType || null)
@@ -495,7 +504,10 @@ export default function ApplyTenderForm() {
     apiFetch('/temp-applications/' + encodeURIComponent(tender._id))
       .then((res) => {
         if (res.data) {
-          setForm((p) => ({ ...p, ...res.data.formData }))
+          // declarationDate is always forced to today on load — never
+          // trust the previously-saved value, regardless of what
+          // formData holds.
+          setForm((p) => ({ ...p, ...res.data.formData, declarationDate: todayLocalISODate() }))
           setSavedDocuments(res.data.documents || [])
           setSavedSignatureUrl(res.data.signatureUrl || null)
           setSavedSignatureContentType(res.data.signatureContentType || null)
@@ -558,6 +570,9 @@ export default function ApplyTenderForm() {
   // In edit mode the saved formData (loaded above) already has these, but
   // this keeps them in sync with the live tender doc (e.g. if department
   // name changed) without clobbering anything the user is mid-editing.
+  //
+  // declarationDate is intentionally NOT merged with the previous value —
+  // it is always stamped to today's date, every time the tender loads.
   useEffect(() => {
     if (!tender) return
     setForm((p) => ({
@@ -569,7 +584,7 @@ export default function ApplyTenderForm() {
       projectLocation:  p.projectLocation || tender.location || '',
       projectDuration:  p.projectDuration || tender.projectDuration?.toString() || tender.duration || '',
       emdAmount:        p.emdAmount || tender.emdAmount || '',
-      declarationDate:  p.declarationDate || todayLocalISODate(),
+      declarationDate:  todayLocalISODate(), // always today, never the saved/loaded value
     }))
   }, [tender])
 
@@ -620,12 +635,17 @@ export default function ApplyTenderForm() {
   // ── APPLY MODE: persist the current draft (text fields + any newly-picked
   // files). Uses a raw fetch (not apiFetch) because apiFetch always sets
   // Content-Type: application/json, which breaks multipart/form-data.
+  //
+  // declarationDate is re-stamped to today right before the payload is
+  // built, so a save always records the current date even if the tab was
+  // left open across a day boundary.
   async function persistDraft() {
     const token = localStorage.getItem('token')
     const idForDraft = tender._id
+    const payloadForm = { ...form, declarationDate: todayLocalISODate() }
 
     const body = new FormData()
-    body.append('formData', JSON.stringify(form))
+    body.append('formData', JSON.stringify(payloadForm))
     Object.entries(documentFiles).forEach(([label, file]) => {
       if (file) body.append(label, file)
     })
@@ -668,11 +688,15 @@ export default function ApplyTenderForm() {
   // PUT /api/applied-tenders/:applicationId — same multipart convention as
   // persistDraft() above (formData JSON + one field per replaced document +
   // optional signature), so ImageUploadBox needs no changes to work here.
+  //
+  // declarationDate is re-stamped to today right before the payload is
+  // built, same as persistDraft().
   async function persistAppliedEdit() {
     const token = localStorage.getItem('token')
+    const payloadForm = { ...form, declarationDate: todayLocalISODate() }
 
     const body = new FormData()
-    body.append('formData', JSON.stringify(form))
+    body.append('formData', JSON.stringify(payloadForm))
     Object.entries(documentFiles).forEach(([label, file]) => {
       if (file) body.append(label, file)
     })
@@ -738,6 +762,8 @@ export default function ApplyTenderForm() {
             .catch(() => {})
         }
       }
+      // Reflect the freshly-stamped date in the UI immediately after save.
+      setForm((p) => ({ ...p, declarationDate: todayLocalISODate() }))
     } catch (err) {
       showToast(err.message || 'Failed to save application.', 'error')
     } finally {
@@ -1119,11 +1145,21 @@ export default function ApplyTenderForm() {
                  readOnly={isClosed} placeholder="Full name as signature"
                  className={inputCls('')} />
         </Field>
+        {/*
+          Date is always locked to today: readOnly + disabled in every
+          mode (apply, edit, view), regardless of isClosed. The value
+          itself is force-set to today's date whenever the tender/draft
+          loads and again immediately before every save, so it can never
+          display or persist a stale date.
+        */}
         <Field label="Date" required error={errors.declarationDate}>
-          <input type="date" value={form.declarationDate}
-                 onChange={(e) => set('declarationDate', e.target.value)}
-                 readOnly={isClosed}
-                 className={inputCls('declarationDate')} />
+          <input
+            type="date"
+            value={form.declarationDate}
+            readOnly
+            disabled
+            className={inputCls('declarationDate', true)}
+          />
         </Field>
         <Field label="Remarks" full>
           <textarea value={form.remarks} onChange={(e) => set('remarks', e.target.value)}

@@ -20,11 +20,32 @@
 //   PATCH /api/tenders/applications/applicants/:applicationId/approve
 //   PATCH /api/tenders/applications/applicants/:applicationId/reject
 //   PATCH /api/tenders/applications/applicants/send-to-department
+//
+// ── EMAIL NOTIFICATIONS ──────────────────────────────────────────────────
+// There is only ONE point in this whole flow that ever sends mail:
+// sendToDepartment(), the final "Send to Department" action. Per-applicant
+// approve/reject (department_head's document review) do NOT send any mail
+// — they only flip isDocumentApproved on that one applications[] entry.
+// Mail only goes out once, in a single batch, when sendToDepartment runs:
+//   - every entry copied into FinalBidders           -> "selected"
+//   - every remaining bidderlists entry NOT approved  -> "not selected"
+//     (this covers both "never clicked approve" AND "approved, then
+//     rejected before send" — anyone whose isDocumentApproved !== true
+//     at send time falls in this bucket)
+//
+// If two different applications[] entries happen to share the same email
+// address, each still gets its own separate email — recipients are
+// resolved and sent per applicationId, never deduped by address. See
+// applicantNotificationService.js for the actual mail bodies; all of it
+// is best-effort and never turns a successful API response into an error.
 
 const Tender = require('../models/Tender')
 const BiddersList = require('../models/BiddersList')
 const FinalBidders = require('../models/FinalBidders')
-const { notifySelected, notifyNotSelected } = require('../services/applicantNotificationService')
+const {
+  notifySelected,
+  notifyNotSelected,
+} = require('../services/applicantNotificationService')
 
 function formatTenderSummary(t) {
   return {
@@ -171,12 +192,17 @@ async function setDocumentApproved(applicationId, value) {
 }
 
 // ── PATCH /api/tenders/applications/applicants/:applicationId/approve ──────
+// department_head, single-applicant document review. Flips
+// isDocumentApproved to true ONLY — no mail is sent here. All emails are
+// deferred to sendToDepartment(), so approving one applicant here has no
+// visible effect on anyone's inbox until "Send to Department" is clicked.
 exports.approveApplicant = async (req, res) => {
   try {
     const updated = await setDocumentApproved(req.params.applicationId, true)
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Applicant not found' })
     }
+
     return res.status(200).json({ success: true, message: 'Applicant approved' })
   } catch (err) {
     console.error('approveApplicant error:', err)
@@ -186,13 +212,18 @@ exports.approveApplicant = async (req, res) => {
 
 // ── PATCH /api/tenders/applications/applicants/:applicationId/reject ───────
 // "Reject" = send the applicant back to the pending list (un-approve their
-// documents). It never deletes the application record.
+// documents). It never deletes the application record. Flips
+// isDocumentApproved to false ONLY — no mail is sent here, same reasoning
+// as approveApplicant above. If this applicant is still unapproved when
+// "Send to Department" is eventually clicked, they'll be swept into the
+// "not selected" batch at that point, same as anyone never touched at all.
 exports.rejectApplicant = async (req, res) => {
   try {
     const updated = await setDocumentApproved(req.params.applicationId, false)
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Applicant not found' })
     }
+
     return res.status(200).json({ success: true, message: 'Applicant moved back to pending' })
   } catch (err) {
     console.error('rejectApplicant error:', err)
@@ -203,17 +234,19 @@ exports.rejectApplicant = async (req, res) => {
 // ── PATCH /api/tenders/applications/applicants/send-to-department ──────────
 // Body: { tenderCode }
 //
-// Final step of the review flow: takes every applications[] entry on this
-// tender's BiddersList that currently has isDocumentApproved === true,
-// copies them (full field-for-field snapshot) into a FinalBidders
-// document, and flips Tender.isDocumentVerified to true — which is what
-// moves the tender into the Completed tab (see tenderListController.js).
+// Final step of the review flow, and the ONLY place in this file that
+// sends any mail. Takes every applications[] entry on this tender's
+// BiddersList that currently has isDocumentApproved === true, copies them
+// (full field-for-field snapshot) into a FinalBidders document, and flips
+// Tender.isDocumentVerified to true — which is what moves the tender into
+// the Completed tab (see tenderListController.js).
 //
 // If a FinalBidders document already exists for this tender (e.g. the
 // action is retried), it's overwritten with the current approved set
 // rather than duplicated.
 //
-// Email notifications (best-effort, never blocks the response):
+// Email notifications (best-effort, never blocks the response), sent in
+// one batch right here:
 //   - every entry copied into FinalBidders  -> "selected" mail
 //   - every remaining bidderlists entry that is NOT approved
 //     (isDocumentApproved !== true)         -> "not selected" mail
@@ -261,7 +294,9 @@ exports.sendToDepartment = async (req, res) => {
     // Best-effort — a mail failure must never turn a successful
     // send-to-department action into an error response. Fired in
     // parallel; each notify* call already swallows its own errors (see
-    // applicantNotificationService.js).
+    // applicantNotificationService.js). Every entry is emailed
+    // individually by applicationId, so two entries sharing the same
+    // email address each still get their own message.
     try {
       await Promise.all([
         ...approvedApplications.map((entry) => notifySelected(tender, entry)),

@@ -670,6 +670,7 @@ export default function CreateTender() {
             type="date"
             name="startDate"
             value={form.startDate}
+            min={toDateInputValue(new Date())}
             onChange={e => handleStartDateChange(e.target.value)}
             className={errors.startDate ? inputError : inputClass}
           />
@@ -680,7 +681,9 @@ export default function CreateTender() {
             type="date"
             name="closingDate"
             value={form.closingDate}
-            min={form.startDate || ''}
+            min={form.startDate && form.startDate > toDateInputValue(new Date())
+              ? form.startDate
+              : toDateInputValue(new Date())}
             onChange={e => handleClosingDateChange(e.target.value)}
             className={errors.closingDate ? inputError : inputClass}
           />

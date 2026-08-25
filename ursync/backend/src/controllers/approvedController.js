@@ -178,6 +178,16 @@ function mapApplicationEntryToApplicantCard(entry) {
     isPaid: entry.isPaid || false,
     isDocumentApproved: entry.isDocumentApproved || false,
     isBidderApproved: entry.isBidderApproved || false,
+    // FIX: this was previously missing, so ApplicationApplicants.jsx's
+    // own fallback (applicant.formData?.experience ||
+    // applicant.formData?.yearsOfExperience) had nothing to read —
+    // `formData` never reached the client at all, which is why
+    // Experience always rendered as "—" on the read-only Bidders-tab
+    // view even when fd.experience/fd.yearsOfExperience didn't match
+    // this tender's actual dynamic field name. Included here so that
+    // fallback can do its job, same as applicationApplicantsController.js's
+    // formatApplicant() already does.
+    formData: fd,
   }
 }
 
