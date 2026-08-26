@@ -51,6 +51,7 @@ import GetResourcePage from '../pages/GetResourcePage'
 import ResourceDetailPage from '../pages/ResourceDetailPage'
 import AppliedTenders from '../pages/AppliedTenders'
 import Approved from '../pages/Approved'
+import AddResources from '../pages/AddResources'
 
 
 export default function AppRoutes() {
@@ -150,6 +151,7 @@ export default function AppRoutes() {
         <Route path="/resource-sharing" element={<ResourceSharing />} />
         <Route path="/applied-tenders" element={<AppliedTenders />} />
         <Route path="/approved" element={<Approved />} /> 
+        <Route path="/add-resources" element={<AddResources />} />
       </Route>
 
       {/* Wildcard MUST stay last. It was previously listed first — with

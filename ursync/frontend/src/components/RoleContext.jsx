@@ -64,6 +64,7 @@ export const NAV_CONFIG = {
     { label: 'Reports & Feedbacks',    path: '/reports',          icon: 'chart'    },
     { label: 'Conflicts',              path: '/conflicts',        icon: 'conflict' },
     { label: 'Resource Sharing',       path: '/resource-sharing', icon: 'share'    },
+    { label: 'Add Resources', path: '/add-resources', icon: 'Boxes' },
     { label: 'Cancelled / Retendered', path: '/cancelled',        icon: 'retender' },
     { label: 'Check Tender Status',    path: '/tender-status',    icon: 'status'   },
     { label: 'Tender Financial Changes', path: '/review-financial-changes', icon: 'finance' },

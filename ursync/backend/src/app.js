@@ -21,6 +21,8 @@ const approvedRoutes = require('./routes/approvedRoutes')
 const applicationApplicantsRoutes = require('./routes/applicationApplicantsRoutes')
 const financialChangeRoutes = require('./routes/financialChangeRoutes') // NEW — Tender Financial Changes page (Apply/Applied)
 const financialChangingRoutes = require('./routes/financialChangingRoutes')
+const resourceRoutes = require('./routes/resourceRoutes')
+const resourceSharingRoutes = require('./routes/resourceSharingRoutes')
 
 const app = express()
 app.use(
@@ -71,6 +73,8 @@ app.use('/api/approvement', approvedRoutes)
 app.use('/api/tenders/applications/applicants', applicationApplicantsRoutes) // NEW — Application Applicants page
 app.use('/api/financial-changes', financialChangeRoutes) // NEW — Tender Financial Changes page (Apply/Applied tabs)
 app.use('/api/financial-changing', financialChangingRoutes)
+app.use('/api/resources', resourceRoutes) // NEW — Resource Sharing pages
+app.use('/api/resource-sharing', resourceSharingRoutes)
 
 
 

@@ -169,29 +169,31 @@ export default function CancelledRetendered() {
         <p className="text-[15px] font-bold text-tn-navy uppercase tracking-widest">
           Tender ID / Organisation
         </p>
-        <div className="relative flex-1">
-          <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
-            <svg className="w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <input
-            type="text"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="e.g. TN-2026-0123"
-            className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
-          />
-          {loading && (
-            <div className="absolute inset-y-0 right-24 pr-1 flex items-center">
-              <div className="w-4 h-4 border-2 border-tn-blue border-t-transparent rounded-full animate-spin" />
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
+              <svg className="w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
             </div>
-          )}
+            <input
+              type="text"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="e.g. TN-2026-0123"
+              className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
+            />
+            {loading && (
+              <div className="absolute inset-y-0 right-3 flex items-center">
+                <div className="w-4 h-4 border-2 border-tn-blue border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+          </div>
           {keyword && (
             <button
               onClick={handleClear}
-              className="absolute inset-y-0 right-3 flex items-center text-xs text-tn-muted underline whitespace-nowrap"
+              className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap flex-shrink-0"
             >
               Clear all
             </button>
