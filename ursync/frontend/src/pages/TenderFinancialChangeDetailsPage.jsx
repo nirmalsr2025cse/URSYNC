@@ -3,25 +3,40 @@ import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   ChevronRight, ChevronLeft, ArrowUpDown, FileText, Download,
-  Info, MessageSquare,
+  Info, MessageSquare, Building2, MapPin, Tag, User, Calendar,
 } from "lucide-react";
-import {
-  fmt, fmtDate, pctChange, getStatus, getPriority, getChange,
-} from "../data/tenderFinancialData";
 
-// ─── Badges (kept local so this page has no dependency on the list page) ─────
-function StatusBadge({ status }) {
-  const c = getStatus(status);
-  return <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${c.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${c.dot}`}/>{status}</span>;
+// Kept local and self-contained — no dependency on the old mock data file,
+// since the real payload comes from GET /financial-changing and has a
+// different shape (tenderCode, not tenderId; no status/changeType fields).
+function fmt(n) {
+  if (n == null || Number.isNaN(n)) return "₹0";
+  return `₹${n.toLocaleString("en-IN")}`;
 }
+function fmtDate(d) {
+  if (!d) return "—";
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+function pctChange(original, revised) {
+  if (!original) return "0.0";
+  return (((revised - original) / original) * 100).toFixed(1);
+}
+
+const PRIORITY_STYLES = {
+  High: "bg-red-50 text-tn-danger border-tn-danger",
+  Medium: "bg-orange-50 text-tn-warn border-tn-warn",
+  Low: "bg-green-50 text-tn-success border-tn-success",
+};
 function PriorityBadge({ priority }) {
-  const c = getPriority(priority);
-  return <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${c.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${c.dot}`}/>{priority}</span>;
-}
-function ChangeBadge({ changeType }) {
-  const c = getChange(changeType);
-  const Icon = c.icon;
-  return <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${c.cls}`}><Icon size={11}/>{changeType}</span>;
+  if (!priority) return null;
+  const cls = PRIORITY_STYLES[priority] || "bg-slate-50 text-tn-muted border-tn-border";
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${cls}`}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current" />{priority}
+    </span>
+  );
 }
 
 export default function TenderFinancialChangeDetailsPage() {
@@ -57,6 +72,16 @@ export default function TenderFinancialChangeDetailsPage() {
     }, 900);
   }
 
+  const infoFields = [
+    ["Tender Code", tender.tenderCode],
+    ["Organization", tender.organization],
+    ["District", tender.district],
+    ["Category", tender.category],
+    ["Procurement Type", tender.procurementType],
+    ["Requested By", tender.requestedBy],
+    ["Request Date", fmtDate(tender.requestedDate)],
+  ].filter(([, v]) => v);
+
   return (
     <div className="p-4 sm:p-6 w-full">
 
@@ -80,18 +105,18 @@ export default function TenderFinancialChangeDetailsPage() {
       <div className="bg-white rounded-xl border border-tn-border shadow-sm overflow-hidden">
         {/* Header */}
         <div className="bg-tn-navy text-white px-6 py-4">
-          <p className="text-xs text-blue-200 font-mono">{tender.tenderId}</p>
+          <p className="text-xs text-blue-200 font-mono">{tender.tenderCode}</p>
           <h1 className="text-lg font-bold mt-0.5 leading-tight">{tender.projectName}</h1>
           <p className="text-xs text-blue-300 mt-0.5">Financial Change Request {isQuery ? "— Raise a Query" : "— Details"}</p>
         </div>
 
         <div className="p-6 space-y-6">
           {/* Badges */}
-          <div className="flex flex-wrap items-center gap-2">
-            <PriorityBadge priority={tender.priority}/>
-            <StatusBadge status={tender.status}/>
-            <ChangeBadge changeType={tender.changeType}/>
-          </div>
+          {tender.priority && (
+            <div className="flex flex-wrap items-center gap-2">
+              <PriorityBadge priority={tender.priority}/>
+            </div>
+          )}
 
           {/* Financial Summary */}
           <div>
@@ -121,7 +146,7 @@ export default function TenderFinancialChangeDetailsPage() {
           <div>
             <h3 className="text-xs font-bold text-tn-muted uppercase tracking-wider mb-3">Tender Information</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {[["Tender ID",tender.tenderId],["Organization",tender.organization],["Department",tender.department],["District",tender.district],["Category",tender.category],["Requested By",tender.requestedBy],["Request Date",fmtDate(tender.requestedDate)]].map(([l,v])=>(
+              {infoFields.map(([l, v]) => (
                 <div key={l} className="bg-tn-cream rounded-lg p-3 border border-tn-border">
                   <p className="text-[11px] text-tn-muted uppercase tracking-wide">{l}</p>
                   <p className="text-sm font-semibold text-tn-navy mt-0.5">{v}</p>
@@ -135,26 +160,30 @@ export default function TenderFinancialChangeDetailsPage() {
             <h3 className="text-xs font-bold text-tn-muted uppercase tracking-wider mb-3">Reason for Change</h3>
             <div className="bg-tn-light rounded-xl p-4 border border-tn-border flex items-start gap-3">
               <Info size={16} className="text-tn-blue flex-shrink-0 mt-0.5"/>
-              <p className="text-sm text-tn-navy">{tender.changeReason}</p>
+              <p className="text-sm text-tn-navy">{tender.reason || "—"}</p>
             </div>
           </div>
 
-          {/* Documents */}
-          <div>
-            <h3 className="text-xs font-bold text-tn-muted uppercase tracking-wider mb-3">Supporting Documents</h3>
-            <div className="flex flex-col gap-2">
-              {tender.documents.map(doc=>(
-                <div key={doc} className="flex items-center justify-between bg-tn-cream rounded-lg px-4 py-2.5 border border-tn-border">
-                  <div className="flex items-center gap-2 text-sm text-tn-navy font-medium">
-                    <FileText size={14} className="text-tn-muted"/>{doc}
-                  </div>
-                  <button className="text-xs flex items-center gap-1 text-tn-blue hover:text-tn-navy font-semibold transition-colors">
-                    <Download size={13}/>View
-                  </button>
+          {/* Supporting Document — the API only exposes a single documentUrl,
+              not an array, so there's nothing to list if it's absent. */}
+          {tender.documentUrl && (
+            <div>
+              <h3 className="text-xs font-bold text-tn-muted uppercase tracking-wider mb-3">Supporting Document</h3>
+              <div className="flex items-center justify-between bg-tn-cream rounded-lg px-4 py-2.5 border border-tn-border">
+                <div className="flex items-center gap-2 text-sm text-tn-navy font-medium">
+                  <FileText size={14} className="text-tn-muted"/>Attached document
                 </div>
-              ))}
+                <a
+                  href={tender.documentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs flex items-center gap-1 text-tn-blue hover:text-tn-navy font-semibold transition-colors"
+                >
+                  <Download size={13}/>View
+                </a>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Query-only: Financial Remarks + Submit */}
           {isQuery && (

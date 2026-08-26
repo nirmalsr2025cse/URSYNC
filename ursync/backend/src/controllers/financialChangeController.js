@@ -7,10 +7,12 @@
 //
 // IMPORTANT: the tenders collection's `estimatedValue` is NEVER modified by
 // this feature. Only `financialField` is flipped to true. The actual
-// original/revised amounts for the Applied tab are resolved like this:
+// original/revised amounts (and reason) for the Applied tab are resolved
+// like this:
 //   - Original Cost -> tenders collection, `estimatedValue` (unchanged, always).
 //   - Revised Cost  -> financialchanges collection, the LAST entry in that
 //                      tender's `amountchanges` array (`revisedAmount`).
+//   - Reason        -> financialchanges collection, the LAST entry's `reason`.
 //
 // Department scoping:
 //   - department_head only ever sees tenders belonging to their own
@@ -27,7 +29,8 @@ function isValidObjectId(id) {
 // Shapes a Tender document into what TenderFinancialReviewPage.jsx cards
 // expect. `revisedCostOverride` lets the Applied tab substitute the last
 // financialchanges entry's revisedAmount in place of estimatedValue.
-function toCardShape(tender, revisedCostOverride) {
+// `reasonOverride` carries that same entry's reason through to the card.
+function toCardShape(tender, revisedCostOverride, reasonOverride) {
   const revisedCost =
     typeof revisedCostOverride === 'number' ? revisedCostOverride : tender.estimatedValue
 
@@ -43,6 +46,7 @@ function toCardShape(tender, revisedCostOverride) {
     requestedDate: tender.updatedAt,
     originalCost: tender.estimatedValue, // always from tenders collection, never mutated
     revisedCost,
+    reason: reasonOverride || '', // last amountchanges entry's reason, if any
     remarks: tender.remarks || '',
     // No separate approval workflow in this feature — status just mirrors
     // which tab the card belongs to, for the view-modal badge.
@@ -111,18 +115,23 @@ async function getAppliedTenders(req, res) {
     const tenderCodes = tenders.map((t) => t.tenderCode)
     const changeDocs = await FinancialChange.find({ tenderCode: { $in: tenderCodes } })
 
-    // Map tenderCode -> last entry's revisedAmount.
+    // Map tenderCode -> last entry's revisedAmount / reason.
     const lastRevisedByCode = new Map()
+    const lastReasonByCode = new Map()
     for (const doc of changeDocs) {
       const last = doc.amountchanges[doc.amountchanges.length - 1]
-      if (last) lastRevisedByCode.set(doc.tenderCode, last.revisedAmount)
+      if (last) {
+        lastRevisedByCode.set(doc.tenderCode, last.revisedAmount)
+        lastReasonByCode.set(doc.tenderCode, last.reason || '')
+      }
     }
 
     const requests = tenders.map((t) => {
       const revisedCost = lastRevisedByCode.has(t.tenderCode)
         ? lastRevisedByCode.get(t.tenderCode)
         : t.estimatedValue // fallback safety net, shouldn't normally happen
-      return toCardShape(t, revisedCost)
+      const reason = lastReasonByCode.get(t.tenderCode) || ''
+      return toCardShape(t, revisedCost, reason)
     })
 
     return res.status(200).json({ requests })
@@ -133,11 +142,11 @@ async function getAppliedTenders(req, res) {
 }
 
 // PATCH /api/financial-changes/:tenderId
-// Body: { revisedAmount }
+// Body: { revisedAmount, reason }
 async function applyFinancialChange(req, res) {
   try {
     const { tenderId } = req.params
-    const { revisedAmount } = req.body
+    const { revisedAmount, reason } = req.body
 
     if (!isValidObjectId(tenderId)) {
       return res.status(400).json({ message: 'Invalid tender id.' })
@@ -146,6 +155,11 @@ async function applyFinancialChange(req, res) {
     const revised = Number(revisedAmount)
     if (typeof revisedAmount === 'undefined' || Number.isNaN(revised) || revised < 0) {
       return res.status(400).json({ message: 'A valid revisedAmount is required.' })
+    }
+
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : ''
+    if (!trimmedReason) {
+      return res.status(400).json({ message: 'A reason for the change is required.' })
     }
 
     const tender = await Tender.findOne({ _id: tenderId, isDeleted: false })
@@ -167,7 +181,7 @@ async function applyFinancialChange(req, res) {
 
     // No-op guard: if the entered amount equals the tender's original
     // amount, don't touch financialField and don't write a
-    // financialchanges entry at all.
+    // financialchanges entry at all (reason or not).
     if (originalAmount === revised) {
       const populated = await tender.populate(POPULATE_FIELDS)
       return res.status(200).json({
@@ -180,13 +194,15 @@ async function applyFinancialChange(req, res) {
     const entry = {
       originalAmount,
       revisedAmount: revised,
+      reason: trimmedReason,
       date: now.toISOString().slice(0, 10), // YYYY-MM-DD
       time: now.toTimeString().slice(0, 8), // HH:MM:SS
     }
 
     // Upsert into financialchanges: create the doc for this tenderCode if
     // it doesn't exist yet, otherwise just push the new entry onto
-    // amountchanges. This is the ONLY place the revised amount is stored.
+    // amountchanges. This is the ONLY place the revised amount + reason
+    // are stored.
     await FinancialChange.findOneAndUpdate(
       { tenderCode: tender.tenderCode },
       { $push: { amountchanges: entry } },
@@ -204,9 +220,9 @@ async function applyFinancialChange(req, res) {
 
     return res.status(200).json({
       message: 'Amount updated successfully.',
-      // revisedCost here is the amount just entered (the latest
-      // amountchanges entry), originalCost is tender.estimatedValue.
-      request: toCardShape(populated, revised),
+      // revisedCost/reason here are the values just entered (the latest
+      // amountchanges entry); originalCost is tender.estimatedValue.
+      request: toCardShape(populated, revised, trimmedReason),
     })
   } catch (err) {
     console.error('applyFinancialChange error:', err)

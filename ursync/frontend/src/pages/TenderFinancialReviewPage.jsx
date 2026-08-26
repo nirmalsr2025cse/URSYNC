@@ -3,7 +3,7 @@
 // Wired to the real backend:
 //   GET   /api/financial-changes/apply    -> Apply tab   (financialField=false)
 //   GET   /api/financial-changes/applied  -> Applied tab (financialField=true)
-//   PATCH /api/financial-changes/:tenderId -> save a new amount
+//   PATCH /api/financial-changes/:tenderId -> save a new amount + reason
 //
 // Access: department_head (scoped to their own department) / administrator.
 // Everything else (layout, cards, search, pagination, tab bar) is unchanged
@@ -96,20 +96,28 @@ function Toast({ toast, onClose }) {
 function FinancialCard({ row, editable, saving, onView, onEditSave }) {
   const [isEditing, setIsEditing] = useState(false);
   const [newAmount, setNewAmount] = useState(row.revisedCost);
+  const [reason, setReason] = useState("");
+  const [reasonTouched, setReasonTouched] = useState(false);
 
   function startEdit() {
     setNewAmount(row.revisedCost);
+    setReason("");
+    setReasonTouched(false);
     setIsEditing(true);
   }
   function cancelEdit() {
     setIsEditing(false);
     setNewAmount(row.revisedCost);
+    setReason("");
+    setReasonTouched(false);
   }
   async function saveEdit() {
     const val = parseFloat(newAmount);
-    if (isNaN(val) || val < 0) return;
+    const trimmedReason = reason.trim();
+    setReasonTouched(true);
+    if (isNaN(val) || val < 0 || !trimmedReason) return;
     setIsEditing(false);
-    await onEditSave(row, val);
+    await onEditSave(row, val, trimmedReason);
   }
 
   return (
@@ -136,6 +144,21 @@ function FinancialCard({ row, editable, saving, onView, onEditSave }) {
                 placeholder="Enter amount"
               />
             </div>
+
+            <p className="text-xs font-semibold text-tn-navy mt-1">Reason for Change</p>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              rows={2}
+              className={`w-full px-3 py-2 rounded-lg border text-xs text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/40 ${
+                reasonTouched && !reason.trim() ? "border-tn-danger" : "border-tn-border"
+              }`}
+              placeholder="Why is this amount being revised?"
+            />
+            {reasonTouched && !reason.trim() && (
+              <p className="text-[11px] text-tn-danger -mt-1">Reason is required.</p>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <button disabled={saving} onClick={saveEdit} className="flex items-center justify-center gap-1 px-2 py-2 rounded-lg text-xs font-semibold bg-tn-success hover:bg-green-700 text-white transition-all disabled:opacity-60">
                 {saving ? <Loader2 size={13} className="animate-spin"/> : <Check size={13}/>}<span>Save</span>
@@ -173,6 +196,12 @@ function FinancialCard({ row, editable, saving, onView, onEditSave }) {
           <div className="flex items-center gap-1.5"><Calendar size={11} className="flex-shrink-0"/><span>{fmtDate(row.requestedDate)}</span></div>
           <div className="col-span-2 flex items-center gap-1.5"><User size={11} className="flex-shrink-0"/><span className="truncate">{row.requestedBy}</span></div>
         </div>
+
+        {row.reason && (
+          <div className="bg-tn-light rounded-lg px-3 py-2 text-xs text-tn-navy border border-tn-border">
+            <span className="text-tn-muted font-semibold">Reason: </span>{row.reason}
+          </div>
+        )}
 
         {row.remarks && (
           <div className="bg-tn-light rounded-lg px-3 py-2 text-xs text-tn-navy border border-tn-border">
@@ -302,12 +331,12 @@ export default function TenderFinancialReviewPage() {
     setViewRow(row);
   }
 
-  async function handleEditSave(row, newAmount) {
+  async function handleEditSave(row, newAmount, reason) {
     setSavingId(row.changeId);
     try {
       const res = await apiFetch(`/financial-changes/${row.tenderId}`, {
         method: "PATCH",
-        body: JSON.stringify({ revisedAmount: newAmount }),
+        body: JSON.stringify({ revisedAmount: newAmount, reason }),
       });
 
       const updated = res.request;
@@ -350,6 +379,7 @@ export default function TenderFinancialReviewPage() {
               <div className="flex justify-between"><span className="text-tn-muted">Original Cost</span><span className="font-semibold">{fmt(viewRow.originalCost)}</span></div>
               <div className="flex justify-between"><span className="text-tn-muted">Revised Cost</span><span className="font-semibold">{fmt(viewRow.revisedCost)}</span></div>
               <div className="flex justify-between items-center"><span className="text-tn-muted">Status</span><StatusBadge status={viewRow.status}/></div>
+              {viewRow.reason && <p className="pt-2 border-t border-tn-border text-tn-navy"><span className="text-tn-muted font-semibold">Reason: </span>{viewRow.reason}</p>}
               {viewRow.remarks && <p className="pt-2 border-t border-tn-border text-tn-muted">{viewRow.remarks}</p>}
             </div>
           </div>
