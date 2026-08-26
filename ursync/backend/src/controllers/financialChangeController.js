@@ -1,259 +1,217 @@
 // src/controllers/financialChangeController.js
+//
+// Powers the "Tender Financial Changes" page:
+//   GET   /api/financial-changes/apply    -> financialField: false
+//   GET   /api/financial-changes/applied  -> financialField: true
+//   PATCH /api/financial-changes/:tenderId -> write history (does NOT touch tenders collection's amount)
+//
+// IMPORTANT: the tenders collection's `estimatedValue` is NEVER modified by
+// this feature. Only `financialField` is flipped to true. The actual
+// original/revised amounts for the Applied tab are resolved like this:
+//   - Original Cost -> tenders collection, `estimatedValue` (unchanged, always).
+//   - Revised Cost  -> financialchanges collection, the LAST entry in that
+//                      tender's `amountchanges` array (`revisedAmount`).
+//
+// Department scoping:
+//   - department_head only ever sees tenders belonging to their own
+//     department (req.departmentId, set by authMiddleware from the DB).
+//   - administrator sees every department's tenders.
 const mongoose = require('mongoose')
 const Tender = require('../models/Tender')
 const FinancialChange = require('../models/FinancialChange')
 
-// ── GET /api/financial-changes/tenders ─────────────────────────────────────
-// Returns the tenders a department_head should see on the Apply Financial
-// Changes page, split by tab:
-//   apply   -> tender.status === 'Ongoing' && financialField === false,
-//              scoped to the logged-in user's own department
-//   applied -> same scope, but financialField === true, each merged with
-//              its FinancialChange history so the card can show what was
-//              requested and its current status
-//
-// departmentId comes from req.departmentId (set by auth middleware from the
-// logged-in user's own department) with req.query.departmentId as a
-// fallback for testing — a department_head only ever sees their own
-// department's ongoing tenders, per "only the department head for that
-// department can apply for changes."
-exports.getFinancialChangeTenders = async (req, res) => {
-  try {
-    const departmentId = req.departmentId || req.query.departmentId
-    if (!departmentId) {
-      return res.status(400).json({ success: false, message: 'departmentId is required' })
-    }
-    if (!mongoose.Types.ObjectId.isValid(departmentId)) {
-      return res.status(400).json({ success: false, message: 'Invalid departmentId' })
-    }
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id)
+}
 
-    const baseMatch = {
-      status: 'Ongoing',
-      isDeleted: false,
-      departmentId: new mongoose.Types.ObjectId(departmentId),
-    }
+// Shapes a Tender document into what TenderFinancialReviewPage.jsx cards
+// expect. `revisedCostOverride` lets the Applied tab substitute the last
+// financialchanges entry's revisedAmount in place of estimatedValue.
+function toCardShape(tender, revisedCostOverride) {
+  const revisedCost =
+    typeof revisedCostOverride === 'number' ? revisedCostOverride : tender.estimatedValue
 
-    const [applyTenders, appliedTenders] = await Promise.all([
-      Tender.find({ ...baseMatch, financialField: false })
-        .populate('departmentId', 'name code')
-        .populate('categoryId', 'name')
-        .populate('districtId', 'name')
-        .sort({ closingDate: 1 })
-        .lean(),
-      Tender.find({ ...baseMatch, financialField: true })
-        .populate('departmentId', 'name code')
-        .populate('categoryId', 'name')
-        .populate('districtId', 'name')
-        .sort({ updatedAt: -1 })
-        .lean(),
-    ])
-
-    // Attach each applied tender's FinancialChange history (the full
-    // appliedChanges array) so the card can show the latest amount/status.
-    const appliedCodes = appliedTenders.map((t) => t.tenderCode)
-    const histories = await FinancialChange.find({ tenderCode: { $in: appliedCodes } })
-      .populate('appliedChanges.userId', 'fullName email')
-      .lean()
-    const historyByCode = Object.fromEntries(histories.map((h) => [h.tenderCode, h]))
-
-    const appliedWithHistory = appliedTenders.map((t) => ({
-      ...t,
-      financialChange: historyByCode[t.tenderCode] || null,
-    }))
-
-    return res.json({
-      success: true,
-      apply: applyTenders,
-      applied: appliedWithHistory,
-    })
-  } catch (err) {
-    console.error('getFinancialChangeTenders error:', err)
-    return res.status(500).json({ success: false, message: 'Failed to fetch financial change tenders' })
+  return {
+    changeId: tender._id,
+    tenderId: tender._id,
+    tenderCode: tender.tenderCode,
+    projectName: tender.title,
+    department: tender.departmentId?.name || '-',
+    district: tender.districtId?.name || '-',
+    category: tender.categoryId?.name || '-',
+    requestedBy: tender.updatedBy?.fullName || tender.createdBy?.fullName || '-',
+    requestedDate: tender.updatedAt,
+    originalCost: tender.estimatedValue, // always from tenders collection, never mutated
+    revisedCost,
+    remarks: tender.remarks || '',
+    // No separate approval workflow in this feature — status just mirrors
+    // which tab the card belongs to, for the view-modal badge.
+    status: tender.financialField ? 'Applied' : 'Not Applied',
+    documentCount: tender.documentUrl ? 1 : 0,
   }
 }
 
-// ── POST /api/financial-changes/apply ───────────────────────────────────────
-// Body: { tenderCode, originalCost, revisedCost, remarks }
-// userId comes from req.user (auth middleware) rather than the body, so a
-// client can't spoof who raised the request. A department_head may only
-// raise a request for a tender that belongs to their own department.
-//
-// Upsert logic exactly as required: if a FinancialChange doc for this
-// tenderCode already exists, push the new entry into its appliedChanges
-// array; otherwise create the document with a single-entry array. Either
-// way, the tender's financialField is flipped to true so it moves from the
-// Apply tab to the Applied tab.
-exports.applyFinancialChange = async (req, res) => {
-  const { tenderCode, originalCost, revisedCost, remarks } = req.body
-  const userId = req.user?._id || req.body.userId
-  const departmentId = req.departmentId || req.body.departmentId
-
-  if (!tenderCode || originalCost == null || revisedCost == null) {
-    return res.status(400).json({ success: false, message: 'tenderCode, originalCost and revisedCost are required' })
+// Builds the department-scoping filter shared by both list endpoints.
+function departmentScope(req) {
+  const base = { isDeleted: false }
+  if (req.role === 'department_head') {
+    if (!req.departmentId) {
+      // department_head with no department assigned should see nothing,
+      // rather than accidentally seeing every department's tenders.
+      base._id = null
+    } else {
+      base.departmentId = req.departmentId
+    }
   }
-  if (isNaN(Number(originalCost)) || isNaN(Number(revisedCost)) || Number(revisedCost) < 0) {
-    return res.status(400).json({ success: false, message: 'originalCost and revisedCost must be valid numbers' })
-  }
-  if (!userId) {
-    return res.status(401).json({ success: false, message: 'Authenticated user required' })
-  }
-
-  const session = await mongoose.startSession()
-  try {
-    let result
-    await session.withTransaction(async () => {
-      const tender = await Tender.findOne({ tenderCode }).session(session)
-      if (!tender) {
-        throw Object.assign(new Error('Tender not found'), { statusCode: 404 })
-      }
-      if (tender.status !== 'Ongoing') {
-        throw Object.assign(new Error('Financial changes can only be requested for ongoing tenders'), { statusCode: 400 })
-      }
-      if (departmentId && String(tender.departmentId) !== String(departmentId)) {
-        throw Object.assign(new Error('You can only request changes for tenders in your own department'), { statusCode: 403 })
-      }
-
-      const newEntry = {
-        userId,
-        dateOfChange: new Date(),
-        originalCost: Number(originalCost),
-        revisedCost: Number(revisedCost),
-        amount: Number(revisedCost) - Number(originalCost),
-        remarks: remarks || '',
-        status: 'Pending',
-      }
-
-      // Upsert: push into appliedChanges if the doc exists, else create it.
-      const financialChange = await FinancialChange.findOneAndUpdate(
-        { tenderCode },
-        { $push: { appliedChanges: newEntry } },
-        { new: true, upsert: true, setDefaultsOnInsert: true, session }
-      )
-
-      if (!tender.financialField) {
-        tender.financialField = true
-        await tender.save({ session })
-      }
-
-      result = financialChange
-    })
-
-    return res.status(201).json({ success: true, financialChange: result })
-  } catch (err) {
-    console.error('applyFinancialChange error:', err)
-    const status = err.statusCode || 500
-    return res.status(status).json({ success: false, message: err.message || 'Failed to submit financial change request' })
-  } finally {
-    session.endSession()
-  }
+  // administrator (and any other allowed role) sees all departments —
+  // no extra filter added.
+  return base
 }
 
-// ── GET /api/review-financial-changes/requests ──────────────────────────────
-// For the department_head's Tender Financial Changes page — every tender in
-// the logged-in user's OWN department (department_head is a
-// department-restricted role, so authMiddleware always sets req.departmentId
-// for it), regardless of financialField, so tenders that haven't had a
-// change applied yet (financialField: false) still show up alongside ones
-// that already have a request pending/approved/rejected. Each tender is
-// merged with its FinancialChange doc when one exists; when it doesn't,
-// toRow() on the frontend falls back to the tender's own estimatedValue and
-// a "Pending" placeholder status.
-exports.getAllFinancialChangeRequests = async (req, res) => {
-  try {
-    const departmentId = req.departmentId
-    if (!departmentId) {
-      return res.status(400).json({ success: false, message: 'No department found for the current user.' })
-    }
+const POPULATE_FIELDS = [
+  { path: 'departmentId', select: 'name' },
+  { path: 'categoryId', select: 'name' },
+  { path: 'districtId', select: 'name' },
+  { path: 'createdBy', select: 'fullName' },
+  { path: 'updatedBy', select: 'fullName' },
+]
 
-    const tenders = await Tender.find({
-      isDeleted: false,
-      departmentId: new mongoose.Types.ObjectId(departmentId),
-    })
-      .populate('departmentId', 'name code')
-      .populate('categoryId', 'name')
-      .populate('districtId', 'name')
+// GET /api/financial-changes/apply
+async function getApplyTenders(req, res) {
+  try {
+    const filter = { ...departmentScope(req), financialField: false }
+
+    const tenders = await Tender.find(filter)
+      .populate(POPULATE_FIELDS)
       .sort({ updatedAt: -1 })
-      .lean()
 
-    const codes = tenders.map((t) => t.tenderCode)
-    const histories = await FinancialChange.find({ tenderCode: { $in: codes } })
-      .populate('appliedChanges.userId', 'fullName email')
-      .lean()
-    const historyByCode = Object.fromEntries(histories.map((h) => [h.tenderCode, h]))
-
-    const withHistory = tenders.map((t) => ({
-      ...t,
-      financialChange: historyByCode[t.tenderCode] || null,
-    }))
-
-    return res.json({ success: true, requests: withHistory })
+    // Apply tab: no revision has happened yet, so Revised Cost == Original
+    // Cost == tenders.estimatedValue. No financialchanges lookup needed.
+    return res.status(200).json({ requests: tenders.map((t) => toCardShape(t)) })
   } catch (err) {
-    console.error('getAllFinancialChangeRequests error:', err)
-    return res.status(500).json({ success: false, message: 'Failed to fetch financial change requests' })
+    console.error('getApplyTenders error:', err)
+    return res.status(500).json({ message: 'Failed to load tenders for Apply tab.' })
   }
 }
 
-// ── PATCH /api/review-financial-changes/:tenderCode/changes/:changeId/status ──
-// Body: { status: 'Approved' | 'Rejected' }
-// Sets the status on one specific entry inside appliedChanges (identified by
-// its own _id, since a tender can accumulate more than one request over
-// time and only the entry actually being reviewed should move).
-exports.setFinancialChangeStatus = async (req, res) => {
-  const { tenderCode, changeId } = req.params
-  const { status } = req.body
-
-  if (!['Approved', 'Rejected'].includes(status)) {
-    return res.status(400).json({ success: false, message: "status must be 'Approved' or 'Rejected'" })
-  }
-
+// GET /api/financial-changes/applied
+async function getAppliedTenders(req, res) {
   try {
-    const financialChange = await FinancialChange.findOneAndUpdate(
-      { tenderCode, 'appliedChanges._id': changeId },
-      { $set: { 'appliedChanges.$.status': status } },
-      { new: true }
+    const filter = { ...departmentScope(req), financialField: true }
+
+    const tenders = await Tender.find(filter)
+      .populate(POPULATE_FIELDS)
+      .sort({ updatedAt: -1 })
+
+    if (tenders.length === 0) {
+      return res.status(200).json({ requests: [] })
+    }
+
+    // Bulk-fetch the matching financialchanges docs (one query, not N).
+    const tenderCodes = tenders.map((t) => t.tenderCode)
+    const changeDocs = await FinancialChange.find({ tenderCode: { $in: tenderCodes } })
+
+    // Map tenderCode -> last entry's revisedAmount.
+    const lastRevisedByCode = new Map()
+    for (const doc of changeDocs) {
+      const last = doc.amountchanges[doc.amountchanges.length - 1]
+      if (last) lastRevisedByCode.set(doc.tenderCode, last.revisedAmount)
+    }
+
+    const requests = tenders.map((t) => {
+      const revisedCost = lastRevisedByCode.has(t.tenderCode)
+        ? lastRevisedByCode.get(t.tenderCode)
+        : t.estimatedValue // fallback safety net, shouldn't normally happen
+      return toCardShape(t, revisedCost)
+    })
+
+    return res.status(200).json({ requests })
+  } catch (err) {
+    console.error('getAppliedTenders error:', err)
+    return res.status(500).json({ message: 'Failed to load tenders for Applied tab.' })
+  }
+}
+
+// PATCH /api/financial-changes/:tenderId
+// Body: { revisedAmount }
+async function applyFinancialChange(req, res) {
+  try {
+    const { tenderId } = req.params
+    const { revisedAmount } = req.body
+
+    if (!isValidObjectId(tenderId)) {
+      return res.status(400).json({ message: 'Invalid tender id.' })
+    }
+
+    const revised = Number(revisedAmount)
+    if (typeof revisedAmount === 'undefined' || Number.isNaN(revised) || revised < 0) {
+      return res.status(400).json({ message: 'A valid revisedAmount is required.' })
+    }
+
+    const tender = await Tender.findOne({ _id: tenderId, isDeleted: false })
+    if (!tender) {
+      return res.status(404).json({ message: 'Tender not found.' })
+    }
+
+    // Department scoping — a department_head can only edit their own
+    // department's tenders, even if they somehow guess another tender's id.
+    if (req.role === 'department_head') {
+      if (!req.departmentId || String(tender.departmentId) !== String(req.departmentId)) {
+        return res.status(403).json({ message: 'You do not have access to this tender.' })
+      }
+    }
+
+    // Original amount ALWAYS comes from the tenders collection and is
+    // NEVER written back to — this field stays untouched forever.
+    const originalAmount = tender.estimatedValue
+
+    // No-op guard: if the entered amount equals the tender's original
+    // amount, don't touch financialField and don't write a
+    // financialchanges entry at all.
+    if (originalAmount === revised) {
+      const populated = await tender.populate(POPULATE_FIELDS)
+      return res.status(200).json({
+        message: 'Amount unchanged — no update recorded.',
+        request: toCardShape(populated),
+      })
+    }
+
+    const now = new Date()
+    const entry = {
+      originalAmount,
+      revisedAmount: revised,
+      date: now.toISOString().slice(0, 10), // YYYY-MM-DD
+      time: now.toTimeString().slice(0, 8), // HH:MM:SS
+    }
+
+    // Upsert into financialchanges: create the doc for this tenderCode if
+    // it doesn't exist yet, otherwise just push the new entry onto
+    // amountchanges. This is the ONLY place the revised amount is stored.
+    await FinancialChange.findOneAndUpdate(
+      { tenderCode: tender.tenderCode },
+      { $push: { amountchanges: entry } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     )
 
-    if (!financialChange) {
-      return res.status(404).json({ success: false, message: 'Financial change request not found' })
-    }
+    // tenders collection: flip financialField only. estimatedValue is
+    // deliberately left untouched — Original Cost must keep reflecting
+    // the tender's true original amount forever.
+    tender.financialField = true
+    tender.updatedBy = req.user._id
+    await tender.save()
 
-    return res.json({ success: true, financialChange })
+    const populated = await tender.populate(POPULATE_FIELDS)
+
+    return res.status(200).json({
+      message: 'Amount updated successfully.',
+      // revisedCost here is the amount just entered (the latest
+      // amountchanges entry), originalCost is tender.estimatedValue.
+      request: toCardShape(populated, revised),
+    })
   } catch (err) {
-    console.error('setFinancialChangeStatus error:', err)
-    return res.status(500).json({ success: false, message: 'Failed to update request status' })
+    console.error('applyFinancialChange error:', err)
+    return res.status(500).json({ message: 'Failed to update tender amount.' })
   }
 }
 
-// ── PATCH /api/review-financial-changes/:tenderCode/changes/:changeId ──────
-// Body: { revisedCost }
-// Lets the reviewer adjust the requested revised amount before approving
-// (the "Edit" action on the review card). Recomputes `amount` from
-// originalCost so it stays consistent, and resets status back to Pending
-// since the numbers changed.
-exports.editFinancialChangeAmount = async (req, res) => {
-  const { tenderCode, changeId } = req.params
-  const { revisedCost } = req.body
-
-  if (revisedCost == null || isNaN(Number(revisedCost)) || Number(revisedCost) < 0) {
-    return res.status(400).json({ success: false, message: 'A valid revisedCost is required' })
-  }
-
-  try {
-    const financialChange = await FinancialChange.findOne({ tenderCode, 'appliedChanges._id': changeId })
-    if (!financialChange) {
-      return res.status(404).json({ success: false, message: 'Financial change request not found' })
-    }
-
-    const entry = financialChange.appliedChanges.id(changeId)
-    entry.revisedCost = Number(revisedCost)
-    entry.amount = Number(revisedCost) - entry.originalCost
-    entry.status = 'Pending'
-
-    await financialChange.save()
-
-    return res.json({ success: true, financialChange })
-  } catch (err) {
-    console.error('editFinancialChangeAmount error:', err)
-    return res.status(500).json({ success: false, message: 'Failed to update requested amount' })
-  }
-}
+module.exports = { getApplyTenders, getAppliedTenders, applyFinancialChange }

@@ -1,4 +1,4 @@
-//src/app.js
+// src/app.js
 const express = require('express')
 const cors = require('cors')
 const path = require('path')
@@ -19,7 +19,8 @@ const appliedTenderRoutes = require('./routes/appliedTenderRoutes')
 const finalBidderRoutes = require('./routes/finalBidderRoutes')
 const approvedRoutes = require('./routes/approvedRoutes')
 const applicationApplicantsRoutes = require('./routes/applicationApplicantsRoutes')
-const { financialChangeRoutes, reviewFinancialChangeRoutes } = require('./routes/financialChangeRoutes')
+const financialChangeRoutes = require('./routes/financialChangeRoutes') // NEW — Tender Financial Changes page (Apply/Applied)
+
 
 const app = express()
 app.use(
@@ -68,8 +69,8 @@ app.use('/api/applied-tenders', appliedTenderRoutes) // NEW — Applied Tenders 
 app.use('/api/finalbidders', finalBidderRoutes)
 app.use('/api/approvement', approvedRoutes)
 app.use('/api/tenders/applications/applicants', applicationApplicantsRoutes) // NEW — Application Applicants page
-app.use('/api/financial-changes', financialChangeRoutes)
-app.use('/api/review-financial-changes', reviewFinancialChangeRoutes)
+app.use('/api/financial-changes', financialChangeRoutes) // NEW — Tender Financial Changes page (Apply/Applied tabs)
+
 
 
 // 404 handler
