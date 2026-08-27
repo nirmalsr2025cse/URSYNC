@@ -22,6 +22,10 @@
 // DB) rather than trusted from the request body — this also means a
 // department_head can only ever create resources for their own
 // department, even if the client were tampered with.
+//
+// `category` (Heavy/Medium/Low) and `rentPerDay` were added alongside
+// the existing fields — both required, validated the same way as every
+// other field on this form.
 const mongoose = require('mongoose')
 const Resource = require('../models/Resource')
 const District = require('../models/District')
@@ -31,6 +35,7 @@ const { getNextSequence } = require('../models/Counter')
 const PHONE_REGEX = /^[6-9]\d{9}$/
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const CONDITIONS = ['Good', 'Average', 'Bad']
+const CATEGORIES = ['Heavy', 'Medium', 'Low']
 
 // How many digits to zero-pad the running number to: 1 -> "001".
 // Once the sequence exceeds this width (e.g. hits 1000), it just grows
@@ -96,8 +101,9 @@ async function getMyDepartment(req, res) {
 
 // POST /api/resources
 // Body: {
-//   resourceName, districtId, quantity, condition, description,
-//   specifications, contactPerson: { name, phone, email }, location
+//   resourceName, category, districtId, quantity, condition, rentPerDay,
+//   description, specifications, contactPerson: { name, phone, email },
+//   location
 // }
 async function createResource(req, res) {
   try {
@@ -107,9 +113,11 @@ async function createResource(req, res) {
 
     const {
       resourceName,
+      category,
       districtId,
       quantity,
       condition,
+      rentPerDay,
       description,
       specifications,
       contactPerson,
@@ -120,6 +128,10 @@ async function createResource(req, res) {
     const trimmedResourceName = typeof resourceName === 'string' ? resourceName.trim() : ''
     if (!trimmedResourceName) {
       return res.status(400).json({ message: 'Resource name is required.' })
+    }
+
+    if (!CATEGORIES.includes(category)) {
+      return res.status(400).json({ message: 'Category must be Heavy, Medium, or Low.' })
     }
 
     if (!districtId || !isValidObjectId(districtId)) {
@@ -133,6 +145,11 @@ async function createResource(req, res) {
 
     if (!CONDITIONS.includes(condition)) {
       return res.status(400).json({ message: 'Condition must be Good, Average, or Bad.' })
+    }
+
+    const rate = Number(rentPerDay)
+    if (rentPerDay === undefined || rentPerDay === null || rentPerDay === '' || Number.isNaN(rate) || rate < 0) {
+      return res.status(400).json({ message: 'Enter a valid rent per day.' })
     }
 
     const trimmedDescription = typeof description === 'string' ? description.trim() : ''
@@ -190,10 +207,12 @@ async function createResource(req, res) {
         resource = await Resource.create({
           resourceId,
           resourceName: trimmedResourceName,
+          category,
           departmentId: req.departmentId, // resolved from the logged-in user, never from the client
           districtId: districtDoc._id,
           quantity: qty,
           condition,
+          rentPerDay: rate,
           description: trimmedDescription,
           specifications: trimmedSpecifications,
           contactPerson: {
@@ -234,10 +253,12 @@ async function createResource(req, res) {
         id: populated._id,
         resourceId: populated.resourceId,
         resourceName: populated.resourceName,
+        category: populated.category,
         department: populated.departmentId?.name || '-',
         district: populated.districtId?.name || '-',
         quantity: populated.quantity,
         condition: populated.condition,
+        rentPerDay: populated.rentPerDay,
         description: populated.description,
         specifications: populated.specifications,
         contactPerson: populated.contactPerson,

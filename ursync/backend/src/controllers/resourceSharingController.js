@@ -16,12 +16,18 @@ const Resource = require('../models/Resource')
 // departmentId/districtId are populated refs, so we pull `.name` off
 // them; if population failed for any reason we fall back gracefully
 // instead of throwing.
+//
+// `category` (Heavy/Medium/Low) and `rentPerDay` are real fields on the
+// Resource model (see models/Resource.js) — surfaced here so the View
+// modal on ResourceSharing.jsx can display them.
 function toClientShape(doc) {
   const o = doc.toObject ? doc.toObject() : doc
   return {
     id: o.resourceId,
     _id: o._id,
     name: o.resourceName,
+    category: o.category,
+    rentPerDay: o.rentPerDay,
     department: o.departmentId?.name || '—',
     district: o.districtId?.name || '—',
     quantity: o.quantity,
@@ -42,7 +48,7 @@ function toClientShape(doc) {
 function buildSearchFilter(q) {
   if (!q) return {}
   const rx = new RegExp(q, 'i')
-  return { $or: [{ resourceName: rx }, { resourceId: rx }, { location: rx }] }
+  return { $or: [{ resourceName: rx }, { resourceId: rx }, { category: rx }, { location: rx }] }
 }
 
 /* ---------------------------------------------------------------- */
@@ -113,7 +119,7 @@ exports.getResourceById = async (req, res) => {
 /* are accepted — everything else on the doc is left untouched.      */
 /* ---------------------------------------------------------------- */
 
-const EDITABLE_FIELDS = ['resourceName', 'quantity', 'condition', 'description', 'specifications', 'location']
+const EDITABLE_FIELDS = ['resourceName', 'category', 'quantity', 'condition', 'rentPerDay', 'description', 'specifications', 'location']
 
 exports.updateResource = async (req, res) => {
   try {

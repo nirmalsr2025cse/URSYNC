@@ -1,20 +1,18 @@
 // src/pages/SearchResourcePage.jsx
-// Restyled to match ResourceSharing.jsx's visual language: same CategoryIcon
-// pattern, same card design (color strip, icon badge, meta grid, footer
-// buttons), same result-count pill and search bar. Card markup is inlined
-// here (SearchResourceCard) instead of importing the separate
-// components/ResourceCard.jsx, so this page no longer depends on an
-// external component whose prop contract wasn't visible/verified.
-import React, { useState, useMemo, useEffect } from 'react'
+// Auto-search version, matching CancelledRetendered.jsx's pattern:
+// - No Search button — debounced fetch fires as the user types.
+// - Loads all available resources on mount (page is never blank).
+// - Clear All resets the keyword and refetches everything.
+// - Backend (searchResourcesController.js) already filters
+//   available:true, isDeleted:false, so nothing extra needed here.
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import RESOURCES from '../data/resourceData.js'
+import { useApi } from '../api/client'
 import Pagination from '../components/Pagination'
 
 const PAGE_SIZE = 6
+const SEARCH_DEBOUNCE_MS = 350
 
-/* Category icon mapping — resourceData.js uses different category names
-   than resourceSharingMockData.js, so this map covers this page's own set.
-   Falls back to the Heavy Equipment icon for anything unmapped. */
 function CategoryIcon({ category }) {
   const map = {
     'Heavy Equipment':        'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
@@ -34,12 +32,6 @@ function CategoryIcon({ category }) {
   )
 }
 
-/* ─────────────────────── SearchResourceCard ───────────────────────────
-   Same shape as ResourceSharing.jsx's ResourceCard: color strip, icon
-   badge, name/id header, status badge, meta grid, footer buttons.
-   Footer here is View (secondary) + Get Resource (primary), matching the
-   CTA ordering already used on ResourceDetailPage.jsx.
-──────────────────────────────────────────────────────────────────── */
 function SearchResourceCard({ resource, onView, onGetResource }) {
   return (
     <div className="bg-white rounded-2xl border border-tn-border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden">
@@ -65,8 +57,8 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
           {[
             { label: 'District', value: resource.district },
             { label: 'Owner', value: resource.owner },
-            { label: 'Daily Rate', value: `₹${resource.dailyRate.toLocaleString('en-IN')}` },
-            { label: 'Units', value: `${resource.quantity} available` },
+            { label: 'Daily Rate', value: `₹${(resource.dailyRate ?? 0).toLocaleString('en-IN')}` },
+            { label: 'Units', value: `${resource.quantity ?? 0} available` },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[9px] font-semibold text-tn-muted uppercase tracking-wide">{label}</p>
@@ -110,57 +102,72 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
   )
 }
 
-/* ─────────────────────── Main Page ─────────────────────── */
 export default function SearchResourcePage() {
   const navigate = useNavigate()
+  const { apiFetch } = useApi()
 
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
 
   const [search, setSearch] = useState('')
-  const [appliedSearch, setAppliedSearch] = useState('')
-  const [searching, setSearching] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [hasSearched, setHasSearched] = useState(false)
 
-  const availableResources = useMemo(() => RESOURCES.filter((r) => r.available), [])
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const filtered = useMemo(() => {
-    if (!hasSearched) return []
-    const q = appliedSearch.toLowerCase().trim()
-    if (!q) return availableResources
-    return availableResources.filter((r) =>
-      r.name.toLowerCase().includes(q) ||
-      r.id.toLowerCase().includes(q) ||
-      r.category.toLowerCase().includes(q) ||
-      r.district.toLowerCase().includes(q) ||
-      r.owner.toLowerCase().includes(q)
-    )
-  }, [appliedSearch, hasSearched, availableResources])
+  const debounceRef  = useRef(null)
+  const requestIdRef = useRef(0)
+  const isFirstRun   = useRef(true)
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE
-    return filtered.slice(start, start + PAGE_SIZE)
-  }, [filtered, currentPage])
+  // ── Fetch from backend ───────────────────────────────────────────────
+  const fetchResources = useCallback(async (kw) => {
+    const myRequestId = ++requestIdRef.current
+    setError('')
+    setLoading(true)
+    try {
+      const qs = kw.trim() ? `?q=${encodeURIComponent(kw.trim())}` : ''
+      const data = await apiFetch(`/search-resources${qs}`)
+      if (myRequestId !== requestIdRef.current) return
 
-  function handleSearch() {
-    if (!search.trim()) return
-    setSearching(true)
-    setTimeout(() => {
-      setAppliedSearch(search)
-      setHasSearched(true)
+      setResults(data.resources || [])
       setCurrentPage(1)
-      setSearching(false)
-    }, 400)
-  }
+    } catch (err) {
+      if (myRequestId !== requestIdRef.current) return
+      console.error('Search resource fetch failed:', err)
+      setError(err.message || 'Failed to load resources. Please try again.')
+      setResults([])
+    } finally {
+      if (myRequestId === requestIdRef.current) setLoading(false)
+    }
+  }, [apiFetch])
+
+  // ── Initial load: fetch ALL available resources, page is never blank ──
+  useEffect(() => {
+    fetchResources('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Auto-search: debounced, fires on keyword change ───────────────────
+  useEffect(() => {
+    if (isFirstRun.current) {
+      isFirstRun.current = false
+      return
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      fetchResources(search)
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(debounceRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
 
   function handleClear() {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
     setSearch('')
-    setAppliedSearch('')
-    setHasSearched(false)
-    setCurrentPage(1)
+    fetchResources('')
   }
 
   function handleChipClick(chip) {
@@ -171,6 +178,9 @@ export default function SearchResourcePage() {
     window.scrollTo({ top: 0, behavior: 'instant' })
     navigate(path, opts)
   }
+
+  const totalPages = Math.max(1, Math.ceil(results.length / PAGE_SIZE))
+  const paginated = results.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const CHIPS = ['JCB', 'Crane', 'Bulldozer', 'Water Tanker', 'Tipper', 'Generator', 'Roller', 'Paver']
 
@@ -194,7 +204,7 @@ export default function SearchResourcePage() {
         </nav>
       </div>
 
-      {/* ── Search Bar (matches ResourceSharing.jsx exactly) ── */}
+      {/* ── Search Bar (auto-search, no Search button) ── */}
       <div className="bg-white border border-tn-border rounded-2xl p-4 shadow-sm">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -205,40 +215,24 @@ export default function SearchResourcePage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder="e.g. JCB, crane, bulldozer, water tanker…"
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-tn-border rounded-xl bg-white text-tn-navy placeholder-tn-muted focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue transition-all"
             />
+            {loading && (
+              <div className="absolute inset-y-0 right-3 flex items-center">
+                <div className="w-4 h-4 border-2 border-tn-blue border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={handleSearch}
-            disabled={!search.trim() || searching}
-            className="flex items-center justify-center gap-1.5 px-5 py-2.5 text-sm font-semibold whitespace-nowrap rounded-xl bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-50"
-          >
-            {searching ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Searching…
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                Search
-              </>
-            )}
-          </button>
-
-          {appliedSearch && (
-            <button onClick={handleClear} className="text-xs text-tn-muted hover:text-tn-danger underline px-2">
+          {search && (
+            <button onClick={handleClear} className="text-xs text-tn-muted hover:text-tn-danger underline px-2 whitespace-nowrap">
               Clear All
             </button>
           )}
         </div>
 
-        {/* Popular chips — active state matches ResourceSharing's tab pill style */}
+        {/* Popular chips */}
         <div className="mt-3 flex flex-wrap gap-2 items-center">
           <span className="text-[11px] text-tn-muted font-semibold">Popular:</span>
           {CHIPS.map((chip) => (
@@ -258,24 +252,39 @@ export default function SearchResourcePage() {
         </div>
       </div>
 
-      {/* ── Result count row (same pill style as ResourceSharing's tab-bar count) ── */}
-      {hasSearched && (
+      {/* ── Error banner ── */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
+          {error}
+        </div>
+      )}
+
+      {/* ── Result count row ── */}
+      {!error && (
         <div className="flex items-center justify-between flex-wrap gap-3">
           <p className="text-sm font-semibold text-tn-navy">
-            {filtered.length > 0
-              ? `Showing ${filtered.length} available resource${filtered.length !== 1 ? 's' : ''} for "${appliedSearch}"`
-              : `No available resources found for "${appliedSearch}"`}
+            {loading
+              ? 'Loading resources…'
+              : results.length > 0
+                ? search
+                  ? `Showing ${results.length} available resource${results.length !== 1 ? 's' : ''} for "${search}"`
+                  : `Showing all ${results.length} available resource${results.length !== 1 ? 's' : ''}`
+                : search
+                  ? `No available resources found for "${search}"`
+                  : 'No available resources found'}
           </p>
-          <span className="text-xs font-medium text-tn-muted bg-white border border-tn-border px-3 py-1.5 rounded-full">
-            {filtered.length} resource{filtered.length !== 1 ? 's' : ''}
-          </span>
+          {!loading && (
+            <span className="text-xs font-medium text-tn-muted bg-white border border-tn-border px-3 py-1.5 rounded-full">
+              {results.length} resource{results.length !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
       )}
 
       {/* ── Cards grid ── */}
-      {hasSearched && (
+      {!error && (
         <>
-          {paginated.length === 0 ? (
+          {!loading && paginated.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-tn-border border-dashed">
               <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
                 <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -285,11 +294,11 @@ export default function SearchResourcePage() {
               <p className="font-bold text-tn-navy mb-1">No resources found</p>
               <p className="text-sm text-tn-muted">Try a different keyword like "JCB", "crane" or "mixer".</p>
             </div>
-          ) : (
+          ) : !loading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
               {paginated.map((res) => (
                 <SearchResourceCard
-                  key={res.id}
+                  key={res._id || res.id}
                   resource={res}
                   onView={(r) => goTo('/search-resource/details', { state: { resource: r } })}
                   onGetResource={(r) => goTo('/search-resource/get-resource', { state: { resource: r } })}
@@ -298,23 +307,10 @@ export default function SearchResourcePage() {
             </div>
           )}
 
-          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+          {!loading && paginated.length > 0 && (
+            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+          )}
         </>
-      )}
-
-      {/* ── Initial empty state (before any search) ── */}
-      {!hasSearched && (
-        <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl border border-tn-border border-dashed">
-          <div className="w-16 h-16 rounded-full bg-tn-light flex items-center justify-center mb-5 border border-tn-border">
-            <svg className="w-7 h-7 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <p className="font-bold text-tn-navy text-lg">Search for a Resource</p>
-          <p className="text-sm text-tn-muted mt-2 max-w-md text-center">
-            Enter a resource name above to browse available government construction equipment across Tamil Nadu.
-          </p>
-        </div>
       )}
     </div>
   )

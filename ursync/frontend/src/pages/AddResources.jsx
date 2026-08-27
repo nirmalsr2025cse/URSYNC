@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import {
   ChevronRight, Building2, MapPin, Boxes, ClipboardList, FileText,
   User, Phone, Mail, LocateFixed, CheckCircle2, X, AlertTriangle, Loader2, Tag,
+  IndianRupee, LayoutGrid,
 } from "lucide-react";
 import { useApi } from "../api/client";
 
@@ -12,14 +13,26 @@ const CONDITIONS = [
   { value: "Bad", cls: "border-tn-danger text-tn-danger bg-red-50" },
 ];
 
+// Weight/impact classification — drives the category icon on the Search
+// Resource cards. Kept as a simple 3-option pill group, same visual
+// pattern as CONDITIONS above, rather than a native <select>, for
+// consistency with the rest of this form.
+const CATEGORIES = [
+  { value: "Heavy", cls: "border-tn-danger text-tn-danger bg-red-50" },
+  { value: "Medium", cls: "border-tn-warn text-tn-warn bg-orange-50" },
+  { value: "Low", cls: "border-tn-success text-tn-success bg-green-50" },
+];
+
 const PHONE_REGEX = /^[6-9]\d{9}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const initialForm = {
   resourceName: "",
+  category: "Heavy",
   districtId: "",
   quantity: "",
   condition: "Good",
+  rentPerDay: "",
   description: "",
   specifications: "",
   contactName: "",
@@ -111,6 +124,8 @@ export default function AddResources() {
     if (!form.resourceName.trim()) next.resourceName = "Resource name is required.";
     if (!form.districtId) next.districtId = "Select a district.";
     if (!form.quantity || Number(form.quantity) <= 0) next.quantity = "Enter a valid quantity.";
+    if (form.rentPerDay === "" || Number(form.rentPerDay) < 0 || Number.isNaN(Number(form.rentPerDay)))
+      next.rentPerDay = "Enter a valid rent per day.";
     if (!form.description.trim()) next.description = "Description is required.";
     if (!form.specifications.trim()) next.specifications = "Specifications are required.";
     if (!form.contactName.trim()) next.contactName = "Contact person name is required.";
@@ -132,9 +147,11 @@ export default function AddResources() {
 
     const payload = {
       resourceName: form.resourceName.trim(),
+      category: form.category,
       districtId: form.districtId,
       quantity: Number(form.quantity),
       condition: form.condition,
+      rentPerDay: Number(form.rentPerDay),
       description: form.description.trim(),
       specifications: form.specifications.trim(),
       contactPerson: {
@@ -274,6 +291,44 @@ export default function AddResources() {
               className={`${inputCls} ${borderCls("quantity")}`}
             />
             <ErrorText>{errors.quantity}</ErrorText>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <FieldLabel icon={LayoutGrid} required>Category</FieldLabel>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map((c) => {
+                const isActive = form.category === c.value;
+                return (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => update("category", c.value)}
+                    className={[
+                      "px-4 py-2.5 rounded-lg text-xs font-semibold border transition-all",
+                      isActive ? c.cls : "border-tn-border text-tn-muted bg-white hover:bg-tn-cream",
+                    ].join(" ")}
+                  >
+                    {c.value}
+                  </button>
+                );
+              })}
+            </div>
+            <ErrorText>{errors.category}</ErrorText>
+          </div>
+
+          <div>
+            <FieldLabel icon={IndianRupee} required>Rent Per Day</FieldLabel>
+            <input
+              type="number"
+              min="0"
+              value={form.rentPerDay}
+              onChange={(e) => update("rentPerDay", e.target.value)}
+              placeholder="e.g. 1500"
+              className={`${inputCls} ${borderCls("rentPerDay")}`}
+            />
+            <ErrorText>{errors.rentPerDay}</ErrorText>
           </div>
         </div>
 

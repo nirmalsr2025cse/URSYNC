@@ -45,6 +45,16 @@ function pluralizeUnit(unit, quantity) {
   return singular.endsWith('s') ? singular : `${singular}s`
 }
 
+/* Formats a rupee amount for display, e.g. 1500 -> "₹1,500". Guards
+   against undefined/null for any older resources created before the
+   rentPerDay field existed. */
+function formatRate(value) {
+  if (value === undefined || value === null || value === '') return '—'
+  const n = Number(value)
+  if (Number.isNaN(n)) return '—'
+  return `₹${n.toLocaleString('en-IN')}`
+}
+
 /* Category icon mapping */
 function CategoryIcon({ category }) {
   const map = {
@@ -55,6 +65,12 @@ function CategoryIcon({ category }) {
     'Utilities':             'M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4',
     'Boring & Drilling':     'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z',
     'Power Equipment':       'M13 10V3L4 14h7v7l9-11h-7z',
+    // New Heavy/Medium/Low category enum (see models/Resource.js). Kept
+    // alongside the older named categories above so this icon map still
+    // works for both the legacy mock data and the live Resource schema.
+    'Heavy':  'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
+    'Medium': 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+    'Low':    'M13 10V3L4 14h7v7l9-11h-7z',
   }
   const d = map[category] || map['Heavy Machinery']
   return (
@@ -123,10 +139,12 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {[
-              { label: 'Department', value: resource.department },
-              { label: 'District',   value: resource.district   },
-              { label: 'Quantity',   value: `${resource.quantity} ${pluralizeUnit(resource.unit, resource.quantity)}` },
-              { label: 'Condition',  value: resource.condition  },
+              { label: 'Department',  value: resource.department },
+              { label: 'District',    value: resource.district   },
+              { label: 'Category',    value: resource.category || '—' },
+              { label: 'Quantity',    value: `${resource.quantity} ${pluralizeUnit(resource.unit, resource.quantity)}` },
+              { label: 'Condition',   value: resource.condition  },
+              { label: 'Rent / Day',  value: formatRate(resource.rentPerDay) },
               ...(isAvailable
                 ? [
                     { label: 'Available From', value: resource.availableFrom ? new Date(resource.availableFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
@@ -197,6 +215,10 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
 // read-only label right next to Quantity, and it automatically
 // switches between singular and plural as the user types a new
 // Quantity (via pluralizeUnit above). This only affects this page.
+//
+// Category is a dropdown (Heavy/Medium/Low, matches the enum on
+// models/Resource.js) rather than a free-text input, and Rent Per Day
+// is a plain number input next to Quantity.
 function EditResourceModal({ resource, onClose, onSave, saving }) {
   const [form, setForm] = useState({ ...resource })
   const isAvailable = resource.status === 'Available'
@@ -237,7 +259,11 @@ function EditResourceModal({ resource, onClose, onSave, saving }) {
             </div>
             <div>
               <label className={labelClass}>Category</label>
-              <input name="category" value={form.category || ''} onChange={handleChange} className={inputClass} />
+              <select name="category" value={form.category || ''} onChange={handleChange} className={inputClass}>
+                {['Heavy', 'Medium', 'Low'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className={labelClass}>
@@ -249,6 +275,10 @@ function EditResourceModal({ resource, onClose, onSave, saving }) {
                 )}
               </label>
               <input name="quantity" type="number" value={form.quantity} onChange={handleChange} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Rent Per Day (₹)</label>
+              <input name="rentPerDay" type="number" min="0" value={form.rentPerDay ?? ''} onChange={handleChange} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Condition</label>
@@ -488,6 +518,8 @@ function ResourceCard({ resource, onView, onEdit, onDelete }) {
             { label: 'District',  value: resource.district   },
             { label: 'Qty',       value: `${resource.quantity} ${pluralizeUnit(resource.unit, resource.quantity)}` },
             { label: 'Condition', value: resource.condition  },
+            { label: 'Category',  value: resource.category || '—' },
+            { label: 'Rent/Day',  value: formatRate(resource.rentPerDay) },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[9px] font-semibold text-tn-muted uppercase tracking-wide">{label}</p>

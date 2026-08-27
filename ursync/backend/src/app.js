@@ -23,6 +23,7 @@ const financialChangeRoutes = require('./routes/financialChangeRoutes') // NEW �
 const financialChangingRoutes = require('./routes/financialChangingRoutes')
 const resourceRoutes = require('./routes/resourceRoutes')
 const resourceSharingRoutes = require('./routes/resourceSharingRoutes')
+const searchResourceRoutes = require('./routes/searchResourceRoutes')
 
 const app = express()
 app.use(
@@ -75,6 +76,7 @@ app.use('/api/financial-changes', financialChangeRoutes) // NEW — Tender Finan
 app.use('/api/financial-changing', financialChangingRoutes)
 app.use('/api/resources', resourceRoutes) // NEW — Resource Sharing pages
 app.use('/api/resource-sharing', resourceSharingRoutes)
+app.use('/api/search-resources', searchResourceRoutes)
 
 
 
