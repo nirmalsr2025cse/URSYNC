@@ -163,25 +163,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── Department notice (only for restricted roles) ────────────────── */}
-      {isDeptRole && deptName && (
-        <div className="flex items-center gap-3 bg-[#FFF2DB] border border-[#FFE5BF]
-                        rounded-xl px-4 py-3">
-          <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none"
-               stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="text-xs text-amber-800 font-medium">
-            Showing tenders for <span className="font-bold">{deptName}</span> only.
-            {' '}
-            <span className="text-amber-600">
-              Backend will automatically filter by your department when connected.
-            </span>
-          </p>
-        </div>
-      )}
-
       {/* ── Search + Filter ─────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-3">
         {/* Search */}

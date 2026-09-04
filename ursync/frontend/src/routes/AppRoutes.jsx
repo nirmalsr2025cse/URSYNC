@@ -45,13 +45,14 @@ import TenderFinancialReviewPage from '../pages/TenderFinancialReviewPage'
 import TenderFinancialChangesPage from '../pages/TenderFinancialChangesPage'
 import Conflicts from '../pages/Conflicts'
 import ConflictDetails from '../pages/ConflictDetails'
-import SearchResourcePage from '../pages/SearchResourcepage'
+import SearchResourcePage from '../pages/Searchresourcepage'
 import ResourceSharing from '../pages/ResourceSharing'
 import GetResourcePage from '../pages/GetResourcePage'
 import ResourceDetailPage from '../pages/ResourceDetailPage'
 import AppliedTenders from '../pages/AppliedTenders'
 import Approved from '../pages/Approved'
 import AddResources from '../pages/AddResources'
+import AppliedResourcesPage from '../pages/AppliedResourcesPage'
 
 
 export default function AppRoutes() {
@@ -152,6 +153,7 @@ export default function AppRoutes() {
         <Route path="/applied-tenders" element={<AppliedTenders />} />
         <Route path="/approved" element={<Approved />} /> 
         <Route path="/add-resources" element={<AddResources />} />
+        <Route path="/applied-resources" element={<AppliedResourcesPage />} />
       </Route>
 
       {/* Wildcard MUST stay last. It was previously listed first — with

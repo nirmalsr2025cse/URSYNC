@@ -6,7 +6,7 @@ import {
   Building2, MapPin, FileText, Phone, Hash, AlertCircle,
   ClipboardList, Tag,
 } from 'lucide-react'
-import RESOURCES from '../data/resourceData.js'
+import { useApi } from '../api/client'
 
 const FIELDS = [
   { id:'applicantName', label:'Applicant Full Name',   icon:User,         type:'text',     placeholder:'Enter your full name',                         required:true },
@@ -14,6 +14,7 @@ const FIELDS = [
   { id:'department',    label:'Department',            icon:Building2,    type:'select',   options:['Public Works Department','Highways Department','Rural Development','TANGEDCO','TWAD Board','Chennai Corporation','Health Department','Education Department'], required:true },
   { id:'organization',  label:'Organization / Board',  icon:Building2,    type:'text',     placeholder:'e.g. Tamil Nadu PWD',                           required:true },
   { id:'district',      label:'District of Use',       icon:MapPin,       type:'select',   options:['Chennai','Coimbatore','Salem','Madurai','Tiruchirappalli','Erode','Vellore','Thanjavur','Tirunelveli','Cuddalore'], required:true },
+  { id:'requiredQuantity', label:'Resources Required', icon:ClipboardList, type:'number', placeholder:'Enter quantity', required:true },
   { id:'projectName',   label:'Project Name',          icon:ClipboardList,type:'text',     placeholder:'Name of the project',                           required:true },
   { id:'projectId',     label:'Tender / Project ID',   icon:Hash,         type:'text',     placeholder:'e.g. TN/PWD/2026/045',                          required:true },
   { id:'purpose',       label:'Purpose of Use',        icon:FileText,     type:'textarea', placeholder:'Briefly describe how this resource will be used...', required:true },
@@ -23,19 +24,51 @@ const FIELDS = [
   { id:'remarks',       label:'Additional Remarks',    icon:FileText,     type:'textarea', placeholder:'Any additional notes (optional)',                required:false },
 ]
 
+// Returns tomorrow's date (current date + 1) in YYYY-MM-DD format, suitable for an <input type="date"> min attribute.
+const toISODate = (d) => d.toISOString().split('T')[0]
+
+const getMinStartDate = () => {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return toISODate(d)
+}
+
+// The earliest valid "Required Until" date is the day after the chosen "Required From" date.
+const getMinEndDate = (startDate) => {
+  if (!startDate) return undefined
+  const d = new Date(startDate)
+  d.setDate(d.getDate() + 1)
+  return toISODate(d)
+}
+
 export default function GetResourcePage() {
   const { state }  = useLocation()
   const navigate   = useNavigate()
-  const resource   = state?.resource || RESOURCES[0]
+  const { apiFetch } = useApi()
+  const resource   = state?.resource
+  const district = resource?.district?.name || resource?.district?.code || resource?.district || 'Not specified'
+  const availableUnits = Math.max(0, (resource?.available || 0) - (resource?.booked || 0))
 
   // Always open at the very top of the page
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
 
+  useEffect(() => {
+    if (!resource) navigate('/search-resource', { replace: true })
+  }, [navigate, resource])
+
   const [form,      setForm]      = useState({})
-  const [submitted, setSubmitted] = useState(false)
   const [errors,    setErrors]    = useState({})
+  const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [requestId, setRequestId] = useState('')
+
+  if (!resource) return null
+
+  const minStartDate = getMinStartDate()
+  const minEndDate = getMinEndDate(form.startDate)
 
   const allFilled = FIELDS.filter(f => f.required).every(f => {
     const val = form[f.id]
@@ -43,7 +76,20 @@ export default function GetResourcePage() {
   })
 
   const handleChange = (id, value) => {
-    setForm(prev => ({ ...prev, [id]: value }))
+    setForm(prev => {
+      const next = { ...prev, [id]: value }
+      // If the "from" date changes, clear an "until" date that no longer comes after it.
+      if (id === 'startDate' && prev.endDate) {
+        const newMinEnd = getMinEndDate(value)
+        if (newMinEnd && prev.endDate < newMinEnd) next.endDate = ''
+      }
+      // Clamp quantity so it can never exceed what's available.
+      if (id === 'requiredQuantity' && value !== '' && availableUnits > 0) {
+        const num = Number(value)
+        if (!Number.isNaN(num) && num > availableUnits) next.requiredQuantity = String(availableUnits)
+      }
+      return next
+    })
     if (errors[id]) setErrors(prev => ({ ...prev, [id]: false }))
   }
 
@@ -52,13 +98,48 @@ export default function GetResourcePage() {
     FIELDS.filter(f => f.required).forEach(f => {
       if (!form[f.id] || !String(form[f.id]).trim()) newErrors[f.id] = true
     })
-    if (form.startDate && form.endDate && form.endDate < form.startDate) newErrors.endDate = true
+    if (form.startDate && form.startDate < minStartDate) newErrors.startDate = true
+    if (form.startDate && form.endDate && form.endDate <= form.startDate) newErrors.endDate = true
     if (form.contactNumber && !/^\d{10}$/.test(form.contactNumber.replace(/\s/g, ''))) newErrors.contactNumber = true
+    if (!Number.isInteger(Number(form.requiredQuantity)) || Number(form.requiredQuantity) < 1 || Number(form.requiredQuantity) > availableUnits) {
+      newErrors.requiredQuantity = true
+    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-  const handleApply = () => { if (validate()) setSubmitted(true) }
+  const handleApply = async () => {
+    if (!validate() || submitting) return
+
+    setSubmitError('')
+    setSubmitting(true)
+    try {
+      const data = await apiFetch(`/resources/${resource._id || resource.id}/apply`, {
+        method: 'POST',
+        body: JSON.stringify({
+          requiredFrom: form.startDate,
+          requiredTo: form.endDate,
+          requiredQuantity: Number(form.requiredQuantity),
+          applicantName: form.applicantName.trim(),
+          designation: form.designation.trim(),
+          department: form.department,
+          organization: form.organization.trim(),
+          district: form.district,
+          projectName: form.projectName.trim(),
+          projectId: form.projectId.trim(),
+          purpose: form.purpose.trim(),
+          contactNumber: form.contactNumber.replace(/\s/g, ''),
+          remarks: (form.remarks || '').trim(),
+        }),
+      })
+      setRequestId(data.requestId || '')
+      setSubmitted(true)
+    } catch (err) {
+      setSubmitError(err.message || 'Failed to submit the resource request.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const goBack = () => {
     window.scrollTo({ top: 0, behavior: 'instant' })
@@ -72,7 +153,6 @@ export default function GetResourcePage() {
 
   /* ── Success screen ── */
   if (submitted) {
-    const refNo = `REQ/${new Date().getFullYear()}/${Math.floor(Math.random() * 90000) + 10000}`
     return (
       <div className="min-h-screen bg-tn-cream flex items-center justify-center p-4 animate-fade-in">
         <div className="bg-white rounded-2xl border border-tn-border shadow-sm p-8 sm:p-12 text-center max-w-[600px] w-full">
@@ -85,7 +165,7 @@ export default function GetResourcePage() {
           </p>
           <div className="bg-tn-cream rounded-xl border border-tn-border p-5 mb-6 text-left space-y-3">
             {[
-              ['Reference Number', refNo,              true],
+              ['Request ID',         requestId,         true],
               ['Resource',         resource.name,      false],
               ['Applicant',        form.applicantName, false],
               ['Department',       form.department,    false],
@@ -140,21 +220,21 @@ export default function GetResourcePage() {
         </button>
         <div className="mt-1 pl-1">
           <h1 className="text-lg font-extrabold text-tn-navy leading-tight">Get Resource</h1>
-          <p className="text-xs text-tn-muted mt-0.5">{resource.id} · {resource.name}</p>
+          <p className="text-xs text-tn-muted mt-0.5">{resource._id || resource.id} · {resource.name}</p>
         </div>
       </div>
 
       {/* ── Full-width resource banner (same as ResourceDetailPage) ── */}
       <div className="relative w-full h-40 sm:h-52 overflow-hidden bg-tn-navy">
         <img
-          src={resource.image}
+          src={resource.image || ''}
           alt={resource.name}
           className="w-full h-full object-cover opacity-40"
         />
         <div className="absolute inset-0 flex items-center px-4 sm:px-8">
           <div className="flex items-center gap-4 sm:gap-5">
             <img
-              src={resource.image}
+              src={resource.image || ''}
               alt={resource.name}
               className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover flex-shrink-0 border-2 border-white/30 shadow-lg"
             />
@@ -170,10 +250,10 @@ export default function GetResourcePage() {
                   <Tag size={11} />{resource.category}
                 </span>
                 <span className="flex items-center gap-1">
-                  <MapPin size={11} />{resource.district}
+                  <MapPin size={11} />{district}
                 </span>
                 <span className="font-bold text-yellow-300">
-                  ₹{resource.dailyRate.toLocaleString('en-IN')}/day
+                  Daily rate not specified
                 </span>
               </div>
             </div>
@@ -200,10 +280,15 @@ export default function GetResourcePage() {
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {FIELDS.map(field => (
+            {FIELDS.map(field => {
+              const isEndDate = field.id === 'endDate'
+              const isStartDate = field.id === 'startDate'
+              const endDateLocked = isEndDate && !form.startDate
+
+              return (
               <div key={field.id} className={field.type === 'textarea' ? 'sm:col-span-2' : ''}>
                 <label className="block text-[10px] font-bold text-tn-muted uppercase tracking-widest mb-1.5">
-                  {field.label}
+                  {field.id === 'requiredQuantity' ? `${field.label} (${availableUnits} available)` : field.label}
                   {field.required && <span className="text-red-500 ml-1">*</span>}
                 </label>
 
@@ -235,21 +320,39 @@ export default function GetResourcePage() {
                       value={form[field.id] || ''}
                       onChange={e => handleChange(field.id, e.target.value)}
                       placeholder={field.placeholder}
-                      className={inputClass(field.id)}
+                      min={
+                        field.id === 'requiredQuantity' ? 1
+                          : isStartDate ? minStartDate
+                          : isEndDate ? minEndDate
+                          : undefined
+                      }
+                      max={field.id === 'requiredQuantity' ? availableUnits : undefined}
+                      disabled={endDateLocked}
+                      title={endDateLocked ? 'Please choose the "Required From" date first' : undefined}
+                      className={inputClass(field.id) + (endDateLocked ? ' opacity-50 cursor-not-allowed' : '')}
                     />
                   </div>
+                )}
+
+                {isEndDate && endDateLocked && !errors[field.id] && (
+                  <p className="text-[11px] text-tn-muted mt-1 flex items-center gap-1">
+                    <AlertCircle size={11} />
+                    Choose the "Required From" date first.
+                  </p>
                 )}
 
                 {errors[field.id] && (
                   <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
                     <AlertCircle size={11} />
-                    {field.id === 'endDate'       ? 'End date must be after start date.'
+                    {field.id === 'requiredQuantity' ? `Enter a quantity from 1 to ${availableUnits}.`
+                      : field.id === 'startDate'     ? 'Choose a date from tomorrow onwards.'
+                      : field.id === 'endDate'       ? 'End date must be after the start date.'
                       : field.id === 'contactNumber' ? 'Enter a valid 10-digit number.'
                       : `${field.label} is required.`}
                   </p>
                 )}
               </div>
-            ))}
+            )})}
           </div>
 
           {/* Declaration */}
@@ -263,18 +366,21 @@ export default function GetResourcePage() {
           </div>
 
           {/* Submit */}
+          {submitError && (
+            <p className="mt-4 text-sm text-red-600 text-center">{submitError}</p>
+          )}
           <div className="mt-6 flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleApply}
-              disabled={!allFilled}
+              disabled={!allFilled || submitting}
               className={[
                 'flex-1 py-3.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2',
-                allFilled
+                allFilled && !submitting
                   ? 'bg-tn-blue hover:bg-tn-navy text-white shadow-md hover:shadow-lg active:scale-[0.98]'
                   : 'bg-tn-blue text-white opacity-30 blur-[1px] cursor-not-allowed pointer-events-none select-none',
               ].join(' ')}
             >
-              <CheckCircle size={16} /> Apply for Resource
+              <CheckCircle size={16} /> {submitting ? 'Submitting...' : 'Apply for Resource'}
             </button>
             <button
               onClick={goBack}

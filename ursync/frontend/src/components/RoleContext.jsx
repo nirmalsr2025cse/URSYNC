@@ -110,6 +110,7 @@ export const NAV_CONFIG = {
     { label: 'Your Tenders',       path: '/your-tenders',        icon: 'mytenders'    },
     { label: 'Cancelled Tenders',  path: '/cancelled',           icon: 'retender'     },
     { label: 'Search Resource',    path: '/search-resource',     icon: 'search'       },
+    { label: 'Applied Resources',  path: '/applied-resources',   icon: 'clipboard'    },
     { label: 'Tender Cum Auction', path: '/auction',             icon: 'gavel'        },
   ],
 }

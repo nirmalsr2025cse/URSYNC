@@ -11,6 +11,9 @@ export default function ResourceDetailPage() {
   const { state }  = useLocation()
   const navigate   = useNavigate()
   const resource   = state?.resource || RESOURCES[0]
+  const district = resource.district?.name || resource.district?.code || resource.district || 'Not specified'
+  const department = resource.departmentId?.name || resource.departmentId?.code || resource.owner || 'Not specified'
+  const available = resource.available ?? resource.quantity ?? 0
 
   // Always open at the very top of the page
   useEffect(() => {
@@ -19,11 +22,11 @@ export default function ResourceDetailPage() {
 
   const infoRows = [
     { icon: Tag,        label: 'Category',        value: resource.category },
-    { icon: MapPin,     label: 'District',         value: resource.district },
-    { icon: Building2,  label: 'Owner Department', value: resource.owner },
-    { icon: Package,    label: 'Specifications',   value: resource.specs },
-    { icon: DollarSign, label: 'Daily Rate',       value: `₹${resource.dailyRate.toLocaleString('en-IN')} per day` },
-    { icon: Package,    label: 'Units Available',  value: `${resource.quantity} unit${resource.quantity > 1 ? 's' : ''}` },
+    { icon: MapPin,     label: 'District',         value: district },
+    { icon: Building2,  label: 'Owner Department', value: department },
+    { icon: Package,    label: 'Specifications',   value: resource.description || 'Not specified' },
+    { icon: DollarSign, label: 'Daily Rate',       value: 'Not specified' },
+    { icon: Package,    label: 'Units Available',  value: `${available} unit${available !== 1 ? 's' : ''}` },
   ]
 
   const goBack = () => {
@@ -51,7 +54,7 @@ export default function ResourceDetailPage() {
         </button>
         <div className="mt-1 pl-1">
           <h1 className="text-lg font-extrabold text-tn-navy leading-tight">{resource.name}</h1>
-          <p className="text-xs text-tn-muted mt-0.5">{resource.id}</p>
+          <p className="text-xs text-tn-muted mt-0.5">{resource._id || resource.id}</p>
         </div>
       </div>
 

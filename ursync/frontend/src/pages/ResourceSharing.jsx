@@ -1,13 +1,11 @@
 // src/pages/ResourceSharing.jsx
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useMemo } from 'react'
 import Pagination from '../components/Pagination'
-import { useApi } from '../api/client'
-import { RESOURCE_REQUESTS } from '../data/resourceSharingMockData'
-// NOTE: AVAILABLE_RESOURCES / UNAVAILABLE_RESOURCES mocks are no longer
-// imported — those two tabs are now backed by the resourceSharing API
-// (src/controllers/resourceSharingController.js). RESOURCE_REQUESTS
-// (Request / Approved / Rejected tabs) still uses mock data — no backend
-// was built for that yet.
+import {
+  AVAILABLE_RESOURCES,
+  UNAVAILABLE_RESOURCES,
+  RESOURCE_REQUESTS,
+} from '../data/resourceSharingMockData'
 
 /* ─────────────────────── helpers ─────────────────────── */
 const TABS = [
@@ -30,31 +28,6 @@ const STATUS_STYLE = {
   Rejected: 'bg-red-50 text-red-700 border-red-200',
 }
 
-const SEARCH_DEBOUNCE_MS = 350
-
-/* Naive singular/plural helper for the unit label.
-   Derives a singular base (strips a trailing "s" if present) then
-   re-pluralizes based on the current quantity — so editing the
-   Quantity field alone keeps "1 Unit" vs "5 Units" correct without a
-   separate editable Unit box. */
-function pluralizeUnit(unit, quantity) {
-  if (!unit) return unit
-  const n = Number(quantity)
-  const singular = unit.endsWith('s') ? unit.slice(0, -1) : unit
-  if (n === 1) return singular
-  return singular.endsWith('s') ? singular : `${singular}s`
-}
-
-/* Formats a rupee amount for display, e.g. 1500 -> "₹1,500". Guards
-   against undefined/null for any older resources created before the
-   rentPerDay field existed. */
-function formatRate(value) {
-  if (value === undefined || value === null || value === '') return '—'
-  const n = Number(value)
-  if (Number.isNaN(n)) return '—'
-  return `₹${n.toLocaleString('en-IN')}`
-}
-
 /* Category icon mapping */
 function CategoryIcon({ category }) {
   const map = {
@@ -65,12 +38,6 @@ function CategoryIcon({ category }) {
     'Utilities':             'M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4',
     'Boring & Drilling':     'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z',
     'Power Equipment':       'M13 10V3L4 14h7v7l9-11h-7z',
-    // New Heavy/Medium/Low category enum (see models/Resource.js). Kept
-    // alongside the older named categories above so this icon map still
-    // works for both the legacy mock data and the live Resource schema.
-    'Heavy':  'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
-    'Medium': 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
-    'Low':    'M13 10V3L4 14h7v7l9-11h-7z',
   }
   const d = map[category] || map['Heavy Machinery']
   return (
@@ -139,19 +106,17 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {[
-              { label: 'Department',  value: resource.department },
-              { label: 'District',    value: resource.district   },
-              { label: 'Category',    value: resource.category || '—' },
-              { label: 'Quantity',    value: `${resource.quantity} ${pluralizeUnit(resource.unit, resource.quantity)}` },
-              { label: 'Condition',   value: resource.condition  },
-              { label: 'Rent / Day',  value: formatRate(resource.rentPerDay) },
+              { label: 'Department', value: resource.department },
+              { label: 'District',   value: resource.district   },
+              { label: 'Quantity',   value: `${resource.quantity} ${resource.unit}` },
+              { label: 'Condition',  value: resource.condition  },
               ...(isAvailable
                 ? [
-                    { label: 'Available From', value: resource.availableFrom ? new Date(resource.availableFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
-                    { label: 'Available To',   value: resource.availableTo ? new Date(resource.availableTo).toLocaleDateString('en-IN',   { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
+                    { label: 'Available From', value: new Date(resource.availableFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
+                    { label: 'Available To',   value: new Date(resource.availableTo).toLocaleDateString('en-IN',   { day: '2-digit', month: 'short', year: 'numeric' }) },
                   ]
                 : [
-                    { label: 'Expected Availability', value: resource.expectedAvailability ? new Date(resource.expectedAvailability).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
+                    { label: 'Expected Availability', value: new Date(resource.expectedAvailability).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
                   ]
               ),
             ].map(({ label, value }) => (
@@ -209,17 +174,7 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
 }
 
 /* ─────────────────────── EditResourceModal ─────────────────────── */
-// NOTE: the "Unit" input box has been removed on purpose. The unit
-// (e.g. "Unit" / "Units") is still stored on the resource, but it is no
-// longer directly editable here — instead it's shown as a small
-// read-only label right next to Quantity, and it automatically
-// switches between singular and plural as the user types a new
-// Quantity (via pluralizeUnit above). This only affects this page.
-//
-// Category is a dropdown (Heavy/Medium/Low, matches the enum on
-// models/Resource.js) rather than a free-text input, and Rent Per Day
-// is a plain number input next to Quantity.
-function EditResourceModal({ resource, onClose, onSave, saving }) {
+function EditResourceModal({ resource, onClose, onSave }) {
   const [form, setForm] = useState({ ...resource })
   const isAvailable = resource.status === 'Available'
 
@@ -229,6 +184,7 @@ function EditResourceModal({ resource, onClose, onSave, saving }) {
 
   function handleSave() {
     onSave(form)
+    onClose()
   }
 
   const labelClass = 'text-[10px] font-semibold text-tn-muted uppercase tracking-wide mb-1 block'
@@ -259,54 +215,43 @@ function EditResourceModal({ resource, onClose, onSave, saving }) {
             </div>
             <div>
               <label className={labelClass}>Category</label>
-              <select name="category" value={form.category || ''} onChange={handleChange} className={inputClass}>
-                {['Heavy', 'Medium', 'Low'].map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+              <input name="category" value={form.category} onChange={handleChange} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>
-                Quantity
-                {form.unit && (
-                  <span className="normal-case font-medium text-tn-muted ml-1">
-                    ({pluralizeUnit(form.unit, form.quantity)})
-                  </span>
-                )}
-              </label>
+              <label className={labelClass}>Quantity</label>
               <input name="quantity" type="number" value={form.quantity} onChange={handleChange} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>Rent Per Day (₹)</label>
-              <input name="rentPerDay" type="number" min="0" value={form.rentPerDay ?? ''} onChange={handleChange} className={inputClass} />
+              <label className={labelClass}>Unit</label>
+              <input name="unit" value={form.unit} onChange={handleChange} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Condition</label>
               <select name="condition" value={form.condition} onChange={handleChange} className={inputClass}>
-                {['Good', 'Average', 'Bad'].map(c => (
+                {['Excellent', 'Good', 'Fair', 'Under Repair', 'In Use'].map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
             <div>
               <label className={labelClass}>District</label>
-              <input name="district" value={form.district} onChange={handleChange} className={inputClass} disabled />
+              <input name="district" value={form.district} onChange={handleChange} className={inputClass} />
             </div>
             {isAvailable ? (
               <>
                 <div>
                   <label className={labelClass}>Available From</label>
-                  <input type="date" name="availableFrom" value={form.availableFrom || ''} onChange={handleChange} className={inputClass} />
+                  <input type="date" name="availableFrom" value={form.availableFrom} onChange={handleChange} className={inputClass} />
                 </div>
                 <div>
                   <label className={labelClass}>Available To</label>
-                  <input type="date" name="availableTo" value={form.availableTo || ''} onChange={handleChange} className={inputClass} />
+                  <input type="date" name="availableTo" value={form.availableTo} onChange={handleChange} className={inputClass} />
                 </div>
               </>
             ) : (
               <div>
                 <label className={labelClass}>Expected Availability</label>
-                <input type="date" name="expectedAvailability" value={form.expectedAvailability || ''} onChange={handleChange} className={inputClass} />
+                <input type="date" name="expectedAvailability" value={form.expectedAvailability} onChange={handleChange} className={inputClass} />
               </div>
             )}
           </div>
@@ -337,12 +282,8 @@ function EditResourceModal({ resource, onClose, onSave, saving }) {
           <button onClick={onClose} className="px-5 py-2 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors">
             Cancel
           </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-5 py-2 rounded-xl text-sm font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save Changes'}
+          <button onClick={handleSave} className="px-5 py-2 rounded-xl text-sm font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors">
+            Save Changes
           </button>
         </div>
       </div>
@@ -457,16 +398,13 @@ function RequestDetailModal({ request, onClose, onApprove, onReject }) {
 
 /* ─────────────────────── ResourceCard ─────────────────────────────
    Available / Not-Available tabs:
+   SWAPPED (per latest request) vs the previous version:
      First  button  → Edit   (blue, primary, opens edit modal)
      Second button  → View   (white/border, opens detail modal)
-
-   Trash icon:
-     A small standalone trash/delete icon button is shown ONLY when the
-     card belongs to the Available tab (isAvailable === true). It sits
-     next to the status badge, top-right of the card. Clicking it calls
-     onDelete(resource) — it does not open the Edit or View modal.
+   i.e. label, color, position AND the handler each button calls have
+   all been swapped relative to the previous ResourceCard.
 ──────────────────────────────────────────────────────────────────── */
-function ResourceCard({ resource, onView, onEdit, onDelete }) {
+function ResourceCard({ resource, onView, onEdit }) {
   const isAvailable = resource.status === 'Available'
 
   return (
@@ -487,39 +425,20 @@ function ResourceCard({ resource, onView, onEdit, onDelete }) {
               <p className="text-[10px] text-tn-muted">{resource.id}</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
-            <span className={[
-              'text-[10px] font-bold px-2 py-0.5 rounded-full border',
-              isAvailable ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200',
-            ].join(' ')}>
-              {isAvailable ? 'Available' : 'Not Available'}
-            </span>
-
-            {/* Trash icon — Available tab only */}
-            {isAvailable && (
-              <button
-                id={`delete-${resource.id}`}
-                onClick={() => onDelete(resource)}
-                title="Delete resource"
-                className="w-6 h-6 flex items-center justify-center rounded-md text-red-400 hover:text-white hover:bg-red-500 transition-colors"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            )}
-          </div>
+          <span className={[
+            'text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 mt-0.5',
+            isAvailable ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200',
+          ].join(' ')}>
+            {isAvailable ? 'Available' : 'Not Available'}
+          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
           {[
             { label: 'Dept',      value: resource.department },
             { label: 'District',  value: resource.district   },
-            { label: 'Qty',       value: `${resource.quantity} ${pluralizeUnit(resource.unit, resource.quantity)}` },
+            { label: 'Qty',       value: `${resource.quantity} ${resource.unit}` },
             { label: 'Condition', value: resource.condition  },
-            { label: 'Category',  value: resource.category || '—' },
-            { label: 'Rent/Day',  value: formatRate(resource.rentPerDay) },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[9px] font-semibold text-tn-muted uppercase tracking-wide">{label}</p>
@@ -533,19 +452,16 @@ function ResourceCard({ resource, onView, onEdit, onDelete }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           {isAvailable
-            ? (resource.availableFrom && resource.availableTo
-                ? `${new Date(resource.availableFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(resource.availableTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
-                : 'Available now')
-            : (resource.expectedAvailability
-                ? `Expected: ${new Date(resource.expectedAvailability).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
-                : 'Expected date not set')
+            ? `${new Date(resource.availableFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(resource.availableTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
+            : `Expected: ${new Date(resource.expectedAvailability).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
           }
         </div>
 
         <div className="flex-1" />
 
-        {/* Edit (blue, primary) first, then View (white) second */}
+        {/* SWAPPED: Edit (blue, primary) first, then View (white) second */}
         <div className="flex items-center gap-2 mt-auto pt-3 border-t border-tn-border">
+          {/* Edit — now primary blue, first position */}
           <button
             id={`edit-${resource.id}`}
             onClick={() => onEdit(resource)}
@@ -556,6 +472,7 @@ function ResourceCard({ resource, onView, onEdit, onDelete }) {
             </svg>
             Edit
           </button>
+          {/* View — now secondary white/border, second position */}
           <button
             id={`view-${resource.id}`}
             onClick={() => onView(resource)}
@@ -685,145 +602,54 @@ function RequestCard({ request, onView, onApprove, onReject, activeTab }) {
 const PAGE_SIZE = 6
 
 export default function ResourceSharing() {
-  const { apiFetch } = useApi()
-
   const [activeTab,     setActiveTab]     = useState('Available')
   const [animating,     setAnimating]     = useState(false)
   const [currentPage,   setCurrentPage]   = useState(1)
+  const [search,        setSearch]        = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const [searching,     setSearching]     = useState(false)
 
-  // Search is now auto-search (debounced), same pattern as
-  // CancelledRetendered.jsx — "keyword" drives the request directly,
-  // there's no separate applied/staged search state or Search button.
-  const [keyword, setKeyword] = useState('')
-
-  // Available / Not-Available are now fetched from the API (see
-  // fetchResources below). requestList (Request/Approved/Rejected)
-  // still runs on mock data — no backend was requested for those tabs.
-  const [availableList,   setAvailableList]   = useState([])
-  const [unavailableList, setUnavailableList] = useState([])
+  const [availableList,   setAvailableList]   = useState(AVAILABLE_RESOURCES)
+  const [unavailableList, setUnavailableList] = useState(UNAVAILABLE_RESOURCES)
   const [requestList,     setRequestList]     = useState(RESOURCE_REQUESTS)
 
-  const [resourcesLoading, setResourcesLoading] = useState(false)
-  const [resourcesTotal,   setResourcesTotal]   = useState(0) // server-side total, for pagination on resource tabs
-  const [savingEdit,       setSavingEdit]       = useState(false)
-
-  const [viewResource,   setViewResource]   = useState(null)
-  const [editResource,   setEditResource]   = useState(null)
-  const [deleteResource, setDeleteResource] = useState(null)
-  const [viewRequest,    setViewRequest]    = useState(null)
-  const [toast,          setToast]          = useState(null)
-
-  const debounceRef = useRef(null)
-  const isFirstRun  = useRef(true)
+  const [viewResource, setViewResource] = useState(null)
+  const [editResource, setEditResource] = useState(null)
+  const [viewRequest,  setViewRequest]  = useState(null)
+  const [toast,        setToast]        = useState(null)
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
   }
 
-  const isResourceTab = activeTab === 'Available' || activeTab === 'Not-Available'
-  const isRequestTab  = activeTab === 'Request' || activeTab === 'Approved' || activeTab === 'Rejected'
-
-  /* ── Fetch Available / Not-Available from the API ──
-     Re-runs whenever the active resource tab, keyword, or page
-     changes. No-ops (and clears loading) when on a request tab. */
-  const fetchResources = useCallback(async (tab, kw, page) => {
-    if (tab !== 'Available' && tab !== 'Not-Available') return
-    setResourcesLoading(true)
-    try {
-      const endpoint = tab === 'Available' ? '/resource-sharing/available' : '/resource-sharing/unavailable'
-      const params = new URLSearchParams({
-        search: kw,
-        page: String(page),
-        limit: String(PAGE_SIZE),
-      })
-      const res = await apiFetch(`${endpoint}?${params.toString()}`)
-      if (tab === 'Available') setAvailableList(res.data)
-      else setUnavailableList(res.data)
-      setResourcesTotal(res.pagination.total)
-    } catch (err) {
-      showToast(err.message || 'Failed to load resources', 'error')
-    } finally {
-      setResourcesLoading(false)
-    }
-  }, [apiFetch])
-
-  // ── Initial load ──────────────────────────────────────────────────
-  useEffect(() => {
-    fetchResources(activeTab, '', 1)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // ── Auto-search: debounced, fires on keyword change ────────────────
-  useEffect(() => {
-    if (isFirstRun.current) {
-      isFirstRun.current = false
-      return
-    }
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      setCurrentPage(1)
-      if (isResourceTab) fetchResources(activeTab, keyword, 1)
-    }, SEARCH_DEBOUNCE_MS)
-
-    return () => clearTimeout(debounceRef.current)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyword])
-
   function switchTab(id) {
     if (id === activeTab) return
-    if (debounceRef.current) clearTimeout(debounceRef.current)
     setAnimating(true)
     setCurrentPage(1)
-    setKeyword('')
-    setTimeout(() => {
-      setActiveTab(id)
-      setAnimating(false)
-      if (id === 'Available' || id === 'Not-Available') fetchResources(id, '', 1)
-    }, 150)
+    setSearch('')
+    setAppliedSearch('')
+    setTimeout(() => { setActiveTab(id); setAnimating(false) }, 150)
+  }
+
+  function handleSearch() {
+    setSearching(true)
+    setTimeout(() => { setAppliedSearch(search); setCurrentPage(1); setSearching(false) }, 500)
   }
 
   function handleClear() {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    setKeyword('')
+    setSearch('')
+    setAppliedSearch('')
     setCurrentPage(1)
-    if (isResourceTab) fetchResources(activeTab, '', 1)
   }
 
-  function handlePageChange(page) {
-    setCurrentPage(page)
-    if (isResourceTab) fetchResources(activeTab, keyword, page)
-  }
-
-  async function handleSaveEdit(updatedResource) {
-    setSavingEdit(true)
-    try {
-      await apiFetch(`/resource-sharing/${updatedResource.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(updatedResource),
-      })
-      showToast('Resource updated successfully')
-      setEditResource(null)
-      fetchResources(activeTab, keyword, currentPage)
-    } catch (err) {
-      showToast(err.message || 'Failed to update resource', 'error')
-    } finally {
-      setSavingEdit(false)
+  function handleSaveEdit(updatedResource) {
+    if (updatedResource.status === 'Available') {
+      setAvailableList(prev => prev.map(r => r.id === updatedResource.id ? updatedResource : r))
+    } else {
+      setUnavailableList(prev => prev.map(r => r.id === updatedResource.id ? updatedResource : r))
     }
-  }
-
-  // Only reachable from the Available tab (trash icon is only rendered
-  // there). Soft-deletes server-side, then refetches the current page.
-  async function confirmDelete(resource) {
-    try {
-      await apiFetch(`/resource-sharing/${resource.id}`, { method: 'DELETE' })
-      showToast('Resource deleted successfully', 'error')
-      fetchResources(activeTab, keyword, currentPage)
-    } catch (err) {
-      showToast(err.message || 'Failed to delete resource', 'error')
-    } finally {
-      setDeleteResource(null)
-    }
+    showToast('Resource updated successfully')
   }
 
   function handleApprove(reqId) {
@@ -836,12 +662,23 @@ export default function ResourceSharing() {
     showToast('Request Rejected', 'error')
   }
 
-  // Request/Approved/Rejected tabs still filter+paginate client-side
-  // (mock data). Available/Not-Available are already the current
-  // page's worth of server-filtered data — nothing more to slice.
-  const filteredRequests = useMemo(() => {
-    if (!isRequestTab) return []
-    const q = keyword.toLowerCase().trim()
+  // Filter logic
+  const filtered = useMemo(() => {
+    const q = appliedSearch.toLowerCase().trim()
+
+    if (activeTab === 'Available') {
+      return availableList.filter(r =>
+        !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
+        r.department.toLowerCase().includes(q) || r.district.toLowerCase().includes(q) || r.category.toLowerCase().includes(q)
+      )
+    }
+    if (activeTab === 'Not-Available') {
+      return unavailableList.filter(r =>
+        !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
+        r.department.toLowerCase().includes(q) || r.district.toLowerCase().includes(q)
+      )
+    }
+    // Request / Approved / Rejected tabs all use requestList, filtered by status
     const statusMap = { Request: 'Pending', Approved: 'Approved', Rejected: 'Rejected' }
     const statusFilter = statusMap[activeTab]
     return requestList
@@ -850,17 +687,16 @@ export default function ResourceSharing() {
         !q || r.resourceName.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
         r.requestedBy.toLowerCase().includes(q) || r.user.name.toLowerCase().includes(q)
       )
-  }, [isRequestTab, activeTab, keyword, requestList])
+  }, [activeTab, appliedSearch, availableList, unavailableList, requestList])
 
-  const paginatedRequests = useMemo(() => {
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated  = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE
-    return filteredRequests.slice(start, start + PAGE_SIZE)
-  }, [filteredRequests, currentPage])
+    return filtered.slice(start, start + PAGE_SIZE)
+  }, [filtered, currentPage])
 
-  const currentResourceList = activeTab === 'Available' ? availableList : unavailableList
-  const totalCount = isResourceTab ? resourcesTotal : filteredRequests.length
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
-  const paginated   = isResourceTab ? currentResourceList : paginatedRequests
+  const isResourceTab = activeTab === 'Available' || activeTab === 'Not-Available'
+  const isRequestTab  = activeTab === 'Request' || activeTab === 'Approved' || activeTab === 'Rejected'
 
   const EMPTY_TEXT = {
     'Available':     'No available resources found.',
@@ -887,7 +723,6 @@ export default function ResourceSharing() {
           resource={editResource}
           onClose={() => setEditResource(null)}
           onSave={handleSaveEdit}
-          saving={savingEdit}
         />
       )}
       {viewRequest && (
@@ -897,32 +732,6 @@ export default function ResourceSharing() {
           onApprove={handleApprove}
           onReject={handleReject}
         />
-      )}
-      {deleteResource && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteResource(null)}>
-          <div
-            className="bg-white rounded-2xl shadow-2xl border border-tn-border w-full max-w-sm p-6 animate-fade-in"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="w-11 h-11 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-4">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </div>
-            <h3 className="text-base font-bold text-tn-navy mb-1">Delete this resource?</h3>
-            <p className="text-sm text-tn-muted mb-5">
-              "{deleteResource.name}" ({deleteResource.id}) will be permanently removed from the Available list.
-            </p>
-            <div className="flex items-center justify-end gap-3">
-              <button onClick={() => setDeleteResource(null)} className="px-4 py-2 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors">
-                Cancel
-              </button>
-              <button onClick={() => confirmDelete(deleteResource)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors">
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Header */}
@@ -940,42 +749,48 @@ export default function ResourceSharing() {
         </nav>
       </div>
 
-      {/* Search Bar — auto-search, debounced, no Search button */}
+      {/* Search Bar */}
       <div className="bg-white border border-tn-border rounded-2xl p-4 shadow-sm">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
-              value={keyword}
-              onChange={e => setKeyword(e.target.value)}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder={
                 isResourceTab
                   ? 'Search by name, ID, department, district…'
                   : 'Search by request ID, resource, requester…'
               }
-              className="w-full pl-10 pr-10 py-2.5 text-sm border border-tn-border rounded-xl bg-white text-tn-navy placeholder-tn-muted focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue transition-all"
+              className="w-full pl-10 pr-4 py-2.5 text-sm border border-tn-border rounded-xl bg-white text-tn-navy placeholder-tn-muted focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue transition-all"
             />
-            {resourcesLoading && isResourceTab && (
-              <div className="absolute inset-y-0 right-3 flex items-center">
-                <div className="w-4 h-4 border-2 border-tn-blue border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
           </div>
-          {keyword && (
-            <button
-              onClick={handleClear}
-              className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap flex-shrink-0"
-            >
-              Clear all
+          <button
+            onClick={handleSearch}
+            disabled={searching}
+            className="flex items-center justify-center gap-1.5 px-5 py-2.5 text-sm font-semibold whitespace-nowrap rounded-xl bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-50"
+          >
+            {searching ? (
+              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Searching…</>
+            ) : (
+              <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>Search</>
+            )}
+          </button>
+          {appliedSearch && (
+            <button onClick={handleClear} className="text-xs text-tn-muted hover:text-tn-danger underline px-2">
+              Clear
             </button>
           )}
         </div>
       </div>
 
-      {/* Tab Bar */}
+      {/* Tab Bar — white rounded-full outer pill; active tab is a solid
+          navy filled pill, inactive tabs are plain blue text with no fill,
+          matching the reference "Cancelled / Retendered" style exactly. */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="inline-flex items-center bg-white border border-tn-border rounded-full p-1 shadow-sm flex-wrap gap-1">
           {TABS.map(tab => {
@@ -997,12 +812,12 @@ export default function ResourceSharing() {
           })}
         </div>
         <span className="text-xs font-medium text-tn-muted bg-white border border-tn-border px-3 py-1.5 rounded-full">
-          {totalCount} {isResourceTab ? 'resource' : 'request'}{totalCount !== 1 ? 's' : ''}
+          {filtered.length} {isResourceTab ? 'resource' : 'request'}{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Cards Grid */}
-      <div className={['transition-opacity duration-150', (animating || resourcesLoading) ? 'opacity-0' : 'opacity-100'].join(' ')}>
+      <div className={['transition-opacity duration-150', animating ? 'opacity-0' : 'opacity-100'].join(' ')}>
         {paginated.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-tn-border border-dashed">
             <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
@@ -1022,7 +837,6 @@ export default function ResourceSharing() {
                     resource={res}
                     onView={setViewResource}
                     onEdit={setEditResource}
-                    onDelete={setDeleteResource}
                   />
                 ))
               : paginated.map(req => (
@@ -1040,7 +854,7 @@ export default function ResourceSharing() {
         )}
       </div>
 
-      <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={handlePageChange} />
+      <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
     </div>
   )
 }
