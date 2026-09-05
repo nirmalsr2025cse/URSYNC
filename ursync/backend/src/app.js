@@ -22,6 +22,7 @@ const applicationApplicantsRoutes = require('./routes/applicationApplicantsRoute
 const financialChangeRoutes = require('./routes/financialChangeRoutes') // NEW — Tender Financial Changes page (Apply/Applied)
 const financialChangingRoutes = require('./routes/financialChangingRoutes')
 const resourceRoutes = require('./routes/resourceRoutes')
+const dashboardRoutes = require('./routes/dashboardRoutes')
 
 const app = express()
 app.use(
@@ -73,6 +74,7 @@ app.use('/api/tenders/applications/applicants', applicationApplicantsRoutes) // 
 app.use('/api/financial-changes', financialChangeRoutes) // NEW — Tender Financial Changes page (Apply/Applied tabs)
 app.use('/api/financial-changing', financialChangingRoutes)
 app.use('/api', resourceRoutes)
+app.use('/api/dashboard', dashboardRoutes)
 
 
 

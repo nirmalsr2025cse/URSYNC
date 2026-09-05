@@ -3,17 +3,13 @@
 // Self-contained: owns its own sub-tab state (Tenders Published / Category
 // Wise / Type Wise / Stage Wise) and reads the FY range from props so the
 // sidebar's Financial Year Filter can drive it from Dashboard.jsx.
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
-import { useThemeColors, toRgba, sliceByFyRange } from '../../utils/dashboardChartUtils'
-import {
-  TENDERS_PUBLISHED_BY_FY,
-  TENDERS_CATEGORY_WISE,
-  TENDERS_TYPE_WISE,
-  TENDERS_STAGE_WISE,
-} from '../../data/dashboardMockData'
+import { useThemeColors, toRgba } from '../../utils/dashboardChartUtils'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TABS = [
   { id: 'tendersPublished', tag: 'TR1', label: '# Tenders Published' },
@@ -31,22 +27,54 @@ const CHART_TITLES = {
 
 export default function NumberWiseAnalysis({ fyFrom, fyTo }) {
   const colors = useThemeColors()
+  const { apiFetch } = useApi()
   const [activeSubTab, setActiveSubTab] = useState('tendersPublished')
+  const [loading, setLoading] = useState(false)
+  const [analysisData, setAnalysisData] = useState({
+    tendersPublished: [],
+    categoryWise: [],
+    typeWise: [],
+    stageWise: [],
+  })
 
-  const filteredPublished = useMemo(() => sliceByFyRange(TENDERS_PUBLISHED_BY_FY, fyFrom, fyTo), [fyFrom, fyTo])
-  const filteredCategory = useMemo(() => sliceByFyRange(TENDERS_CATEGORY_WISE, fyFrom, fyTo), [fyFrom, fyTo])
-  const filteredType = useMemo(() => sliceByFyRange(TENDERS_TYPE_WISE, fyFrom, fyTo), [fyFrom, fyTo])
-  const filteredStage = useMemo(() => sliceByFyRange(TENDERS_STAGE_WISE, fyFrom, fyTo), [fyFrom, fyTo])
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const defaultFy = getDefaultRollingFyRange(6)
+        const from = fyFrom || defaultFy.fyFrom
+        const to = fyTo || defaultFy.fyTo
+        const res = await apiFetch(`/dashboard/number-wise?fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && res.data) {
+          setAnalysisData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch number-wise analysis data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, fyFrom, fyTo])
 
   const chartConfig = useMemo(() => {
+    const published = analysisData.tendersPublished || []
+    const category = analysisData.categoryWise || []
+    const type = analysisData.typeWise || []
+    const stage = analysisData.stageWise || []
+
     if (activeSubTab === 'tendersPublished') {
       return {
-        labels: filteredPublished.map((r) => r.fy),
+        labels: published.map((r) => r.fy),
         stacked: false,
         yAxisLabel: 'No. of Tenders',
         datasets: [{
           label: 'Tenders Published',
-          data: filteredPublished.map((r) => r.count),
+          data: published.map((r) => r.count),
           backgroundColor: toRgba(colors.blue, 0.85),
           borderRadius: 4,
           maxBarThickness: 46,
@@ -57,12 +85,12 @@ export default function NumberWiseAnalysis({ fyFrom, fyTo }) {
       const keys = ['Works', 'Goods', 'Services', 'Consultancy']
       const palette = [colors.blue, colors.navy, colors.emerald, colors.amber]
       return {
-        labels: filteredCategory.map((r) => r.fy),
+        labels: category.map((r) => r.fy),
         stacked: true,
         yAxisLabel: 'No. of Tenders',
         datasets: keys.map((k, i) => ({
           label: k,
-          data: filteredCategory.map((r) => r[k]),
+          data: category.map((r) => r[k] || 0),
           backgroundColor: toRgba(palette[i], 0.85),
           borderRadius: 3,
         })),
@@ -72,33 +100,32 @@ export default function NumberWiseAnalysis({ fyFrom, fyTo }) {
       const keys = ['Open Tender', 'Limited Tender', 'Single Tender', 'EOI']
       const palette = [colors.blue, colors.emerald, colors.amber, colors.red]
       return {
-        labels: filteredType.map((r) => r.fy),
+        labels: type.map((r) => r.fy),
         stacked: true,
         yAxisLabel: 'No. of Tenders',
         datasets: keys.map((k, i) => ({
           label: k,
-          data: filteredType.map((r) => r[k]),
+          data: type.map((r) => r[k] || 0),
           backgroundColor: toRgba(palette[i], 0.85),
           borderRadius: 3,
         })),
       }
     }
-    // stageWise — grouped (not stacked): each stage is a count in its own
-    // right, not an additive slice of the same total.
+    // stageWise — grouped (not stacked)
     const keys = ['Published', 'Bid Submission', 'Technical Evaluation', 'Financial Evaluation', 'Awarded']
     const palette = [colors.navy, colors.blue, colors.amber, colors.emerald, colors.red]
     return {
-      labels: filteredStage.map((r) => r.fy),
+      labels: stage.map((r) => r.fy),
       stacked: false,
       yAxisLabel: 'No. of Tenders',
       datasets: keys.map((k, i) => ({
         label: k,
-        data: filteredStage.map((r) => r[k]),
+        data: stage.map((r) => r[k] || 0),
         backgroundColor: toRgba(palette[i], 0.85),
         borderRadius: 3,
       })),
     }
-  }, [activeSubTab, filteredPublished, filteredCategory, filteredType, filteredStage, colors])
+  }, [activeSubTab, analysisData, colors])
 
   return (
     <div className="space-y-5">
@@ -108,7 +135,12 @@ export default function NumberWiseAnalysis({ fyFrom, fyTo }) {
 
       <TabBar tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />
 
-      <div className="bg-white rounded-2xl border border-tn-border p-5">
+      <div className="bg-white rounded-2xl border border-tn-border p-5 relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
+            <span className="text-xs text-tn-muted font-medium animate-pulse">Loading analysis data...</span>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h3 className="font-bold text-tn-navy text-sm flex items-center gap-1.5">
             <Icon name="doc" className="w-4 h-4 text-tn-blue" />

@@ -24,8 +24,9 @@
 // component is resolved directly instead of going through
 // GROUP_METRIC_COMPONENTS/GROUP_COMPONENTS, and it reads msrYear/msrMonth
 // instead of fyFrom/fyTo.
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
+import { useApi } from '../api/client'
 import DashboardSidebar, { DESCRIPTIVE_GROUPS, KPI_GROUPS, DISTRIBUTION_GROUPS } from '../components/DashboardSidebar'
 import Icon from '../components/Icon'
 import NumberWiseAnalysis from './dashboard/NumberWiseAnalysis'
@@ -50,7 +51,16 @@ import NumberWisePercentageDistribution from './dashboard/NumberWisePercentageDi
 import ValueWisePercentageDistribution from './dashboard/ValueWisePercentageDistribution'
 import BidderDistributionAnalysis from './dashboard/BidderDistributionAnalysis'
 import MsrReport from './dashboard/MsrReport'
-import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, OVERVIEW_STATS, MSR_MONTHS } from '../data/dashboardMockData'
+import { FINANCIAL_YEARS, YEAR_RANGE_OPTIONS, MSR_MONTHS, getDefaultRollingFyRange } from '../utils/financialYearUtils'
+
+const DEFAULT_OVERVIEW_STATS = [
+  { label: 'Tenders Published', value: '-', sub: '2007 – Till Date', icon: 'doc', tone: 'blue' },
+  { label: 'Tender Value (Approx.)', value: '-', sub: 'Cumulative Value', icon: 'rupee', tone: 'emerald' },
+  { label: 'Bids Received', value: '-', sub: 'Cumulative', icon: 'inbox', tone: 'amber' },
+  { label: 'Organizations', value: '-', sub: 'Registered', icon: 'building', tone: 'navy' },
+  { label: 'Bidders', value: '-', sub: 'Registered', icon: 'users', tone: 'red' },
+  { label: 'Dept. Users', value: '-', sub: 'Active Users', icon: 'usercheck', tone: 'slate' },
+]
 
 const TOP_NAV_ITEMS = [
   { id: 'descriptive', label: 'Descriptive Analysis' },
@@ -126,14 +136,41 @@ export default function Dashboard() {
   const [activeTopNav, setActiveTopNav] = useState('descriptive')
   const [activeGroup, setActiveGroup] = useState('tenderAnalysis')
   const [activeMetric, setActiveMetric] = useState('numberWise')
-  const [fyFrom, setFyFrom] = useState('2021-22')
-  const [fyTo, setFyTo] = useState('2026-27')
+  const defaultFy = getDefaultRollingFyRange(6)
+  const [fyFrom, setFyFrom] = useState(defaultFy.fyFrom)
+  const [fyTo, setFyTo] = useState(defaultFy.fyTo)
   const [yearRange, setYearRange] = useState(YEAR_RANGE_OPTIONS[0])
 
   // Monthly Report (MSR Report) filter state — controlled by
   // DashboardSidebar's 'monthly' branch, consumed by MsrReport.
   const [msrYear, setMsrYear] = useState('2026-27')
   const [msrMonth, setMsrMonth] = useState('June')
+
+  const { apiFetch } = useApi()
+  const [overviewStats, setOverviewStats] = useState(DEFAULT_OVERVIEW_STATS)
+  const [statsLoading, setStatsLoading] = useState(false)
+
+  // Fetch real-time portal overview stats
+  useEffect(() => {
+    let isMounted = true
+    async function fetchStats() {
+      try {
+        setStatsLoading(true)
+        const res = await apiFetch('/dashboard/overview-stats')
+        if (isMounted && res?.success && Array.isArray(res.stats)) {
+          setOverviewStats(res.stats)
+        }
+      } catch (err) {
+        console.error('Failed to fetch dashboard overview stats:', err)
+      } finally {
+        if (isMounted) setStatsLoading(false)
+      }
+    }
+    fetchStats()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch])
 
   function handleTopNavChange(id) {
     setActiveTopNav(id)
@@ -222,8 +259,8 @@ export default function Dashboard() {
 
           {/* Overview stat cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
-            {OVERVIEW_STATS.map((stat) => (
-              <StatCard key={stat.label} {...stat} />
+            {overviewStats.map((stat) => (
+              <StatCard key={stat.label} {...stat} loading={statsLoading} />
             ))}
           </div>
 
@@ -291,19 +328,32 @@ function TopNav({ activeTopNav, onChange }) {
   )
 }
 
-function StatCard({ label, value, sub, icon, tone }) {
+function StatCard({ label, value, sub, icon, tone, loading }) {
   const toneMap = {
     blue: 'bg-tn-blue', navy: 'bg-tn-navy', emerald: 'bg-emerald-500',
     amber: 'bg-amber-500', red: 'bg-red-500', slate: 'bg-slate-500',
   }
+  const displayVal = loading ? '...' : value
+  const isLong = String(displayVal).length > 13
+  const isMedium = String(displayVal).length > 8
+
   return (
-    <div className={`rounded-2xl ${toneMap[tone] || 'bg-tn-blue'} text-white p-4 shadow-sm`}>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-lg sm:text-xl font-bold leading-tight truncate" title={value}>{value}</p>
-        <Icon name={icon} className="w-5 h-5 text-white/70 flex-shrink-0" />
+    <div className={`rounded-2xl ${toneMap[tone] || 'bg-tn-blue'} text-white p-3.5 sm:p-4 shadow-sm flex flex-col justify-between min-h-[92px]`}>
+      <div className="flex items-start justify-between gap-1 mb-1.5">
+        <p
+          className={`font-bold leading-tight break-words ${
+            isLong ? 'text-sm sm:text-base' : isMedium ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'
+          }`}
+          title={value}
+        >
+          {displayVal}
+        </p>
+        <Icon name={icon} className="w-5 h-5 text-white/70 flex-shrink-0 mt-0.5" />
       </div>
-      <p className="text-[11px] text-white/80 font-medium leading-snug">{label}</p>
-      {sub && <p className="text-[10px] text-white/60 mt-0.5">{sub}</p>}
+      <div>
+        <p className="text-[11px] text-white/80 font-medium leading-snug">{label}</p>
+        {sub && <p className="text-[10px] text-white/60 mt-0.5">{sub}</p>}
+      </div>
     </div>
   )
 }

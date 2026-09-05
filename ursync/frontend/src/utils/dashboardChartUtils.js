@@ -3,7 +3,7 @@
 // ValueWiseAnalysis, and whichever ones come after). No JSX here on
 // purpose — this file also gets imported by things that don't need React.
 import { useState, useEffect } from 'react'
-import { FINANCIAL_YEARS } from '../data/dashboardMockData'
+import { FINANCIAL_YEARS } from './financialYearUtils'
 
 // Reads the project's actual Tailwind colors at runtime (via a hidden
 // probe element) so charts stay in sync with the real tn-* palette instead
