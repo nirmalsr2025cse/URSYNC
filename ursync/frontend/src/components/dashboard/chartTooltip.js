@@ -59,7 +59,21 @@ export function externalTooltipHandler(context, config = {}) {
         }))
 
     const rows = rowsData
-      .map((r) => `
+      .map((r) => {
+        let displayVal = r.display
+        if (displayVal === undefined || displayVal === null) {
+          if (typeof r.value === 'number') {
+            displayVal = Number.isFinite(r.value) ? r.value.toLocaleString('en-IN') : '0'
+          } else if (typeof r.value === 'string') {
+            displayVal = r.value
+          } else if (r.value === undefined || r.value === null) {
+            displayVal = '0'
+          } else {
+            const num = Number(r.value)
+            displayVal = Number.isFinite(num) ? num.toLocaleString('en-IN') : String(r.value)
+          }
+        }
+        return `
         <tr>
           <td style="padding:4px 10px;">
             <span style="display:inline-flex;align-items:center;gap:6px;">
@@ -67,8 +81,9 @@ export function externalTooltipHandler(context, config = {}) {
               ${r.label}
             </span>
           </td>
-          <td style="padding:4px 10px;text-align:right;font-weight:700;">${r.display ?? Number(r.value).toLocaleString('en-IN')}</td>
-        </tr>`)
+          <td style="padding:4px 10px;text-align:right;font-weight:700;">${displayVal}</td>
+        </tr>`
+      })
       .join('')
 
     const caption = config.caption

@@ -344,39 +344,46 @@ export default function DashboardSidebar({
                           </div>
                         )}
 
-                        {group.filter === 'range' && (
-                          <div className="bg-tn-navy/5 rounded-lg p-2.5 space-y-2">
-                            <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide">
-                              Financial Year Filter
-                            </p>
-                            <label className="block text-[11px] text-tn-muted">
-                              From:
-                              <select
-                                value={fyFrom}
-                                onChange={(e) => onFyFromChange?.(e.target.value)}
-                                disabled={!isActiveGroup}
-                                className="mt-1 w-full bg-white border border-tn-border rounded-md px-2 py-1 text-xs text-tn-navy focus:outline-none focus:ring-1 focus:ring-tn-blue/50 disabled:opacity-50"
-                              >
-                                {financialYears.map((fy) => (
-                                  <option key={fy} value={fy}>{fy}</option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="block text-[11px] text-tn-muted">
-                              To:
-                              <select
-                                value={fyTo}
-                                onChange={(e) => onFyToChange?.(e.target.value)}
-                                disabled={!isActiveGroup}
-                                className="mt-1 w-full bg-white border border-tn-border rounded-md px-2 py-1 text-xs text-tn-navy focus:outline-none focus:ring-1 focus:ring-tn-blue/50 disabled:opacity-50"
-                              >
-                                {financialYears.map((fy) => (
-                                  <option key={fy} value={fy}>{fy}</option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                        )}
+                        {group.filter === 'range' && (() => {
+                          const fromIndex = financialYears.indexOf(fyTo)
+                          const toIndex = financialYears.indexOf(fyFrom)
+                          const fromOptions = fromIndex !== -1 ? financialYears.slice(0, fromIndex + 1) : financialYears
+                          const toOptions = toIndex !== -1 ? financialYears.slice(toIndex) : financialYears
+
+                          return (
+                            <div className="bg-tn-navy/5 rounded-lg p-2.5 space-y-2">
+                              <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide">
+                                Financial Year Filter
+                              </p>
+                              <label className="block text-[11px] text-tn-muted">
+                                From:
+                                <select
+                                  value={fyFrom}
+                                  onChange={(e) => onFyFromChange?.(e.target.value)}
+                                  disabled={!isActiveGroup}
+                                  className="mt-1 w-full bg-white border border-tn-border rounded-md px-2 py-1 text-xs text-tn-navy focus:outline-none focus:ring-1 focus:ring-tn-blue/50 disabled:opacity-50"
+                                >
+                                  {fromOptions.map((fy) => (
+                                    <option key={fy} value={fy}>{fy}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="block text-[11px] text-tn-muted">
+                                To:
+                                <select
+                                  value={fyTo}
+                                  onChange={(e) => onFyToChange?.(e.target.value)}
+                                  disabled={!isActiveGroup}
+                                  className="mt-1 w-full bg-white border border-tn-border rounded-md px-2 py-1 text-xs text-tn-navy focus:outline-none focus:ring-1 focus:ring-tn-blue/50 disabled:opacity-50"
+                                >
+                                  {toOptions.map((fy) => (
+                                    <option key={fy} value={fy}>{fy}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                          )
+                        })()}
 
                         {group.filter === 'singleRange' && (
                           <div className="bg-tn-navy/5 rounded-lg p-2.5 space-y-1.5">

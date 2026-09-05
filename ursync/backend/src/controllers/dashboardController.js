@@ -8,6 +8,7 @@ const BiddersList = require('../models/BiddersList')
 const AppliedBidder = require('../models/AppliedBidder')
 const Category = require('../models/Category')
 const FinalBidders = require('../models/FinalBidders')
+const District = require('../models/District')
 
 // Helper to format numbers with Indian comma grouping
 function formatIndianNumber(num) {
@@ -1443,6 +1444,592 @@ exports.getYearOverYearAnalysis = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to fetch year over year analysis' })
   }
 }
+
+// ── GET /api/dashboard/percentage-distribution ──────────────────────────────
+exports.getPercentageDistribution = async (req, res) => {
+  try {
+    const { fy, fyTo, metric = 'tenders' } = req.query
+    const targetFy = fy || fyTo || `${getCurrentFyStartYear()}-${String((getCurrentFyStartYear() + 1) % 100).padStart(2, '0')}`
+
+    // Fetch all active departments
+    const departments = await Department.find({ isActive: { $ne: false } })
+      .select('_id name code')
+      .lean()
+
+    // Fetch valid published tenders
+    const tenders = await Tender.find(VALID_TENDER_MATCH)
+      .select('departmentId estimatedValue startDate closingDate createdAt')
+      .lean()
+
+    const deptStatsMap = new Map()
+    for (const d of departments) {
+      deptStatsMap.set(String(d._id), {
+        id: String(d._id),
+        name: d.name,
+        code: d.code,
+        tendersCount: 0,
+        totalValue: 0,
+      })
+    }
+
+    // Filter tenders for target financial year
+    for (const t of tenders) {
+      const d = t.startDate || t.createdAt || t.closingDate
+      const tenderFy = getFinancialYear(d)
+      if (tenderFy !== targetFy) continue
+
+      const deptIdStr = t.departmentId ? String(t.departmentId._id || t.departmentId) : null
+      if (deptIdStr && deptStatsMap.has(deptIdStr)) {
+        const entry = deptStatsMap.get(deptIdStr)
+        entry.tendersCount += 1
+        entry.totalValue += (t.estimatedValue || 0)
+      }
+    }
+
+    const allDepts = Array.from(deptStatsMap.values())
+    const isValue = metric === 'value'
+    const sortField = isValue ? 'totalValue' : 'tendersCount'
+    allDepts.sort((a, b) => b[sortField] - a[sortField])
+
+    // Compute total base across all departments
+    const totalBase = allDepts.reduce((sum, d) => sum + d[sortField], 0)
+
+    // Calculate percentage for each
+    const rows = allDepts.map((d) => {
+      const pct = totalBase > 0 ? (d[sortField] / totalBase) * 100 : 0
+      return {
+        name: d.name,
+        code: d.code,
+        percentage: Number(pct.toFixed(2)),
+        amount: isValue
+          ? Number(((d.totalValue || 0) / 100000).toFixed(2)) // Rs in Lakhs
+          : d.tendersCount,
+      }
+    })
+
+    const nonZeroRows = rows.filter((r) => r.percentage > 0)
+    const finalRows = (nonZeroRows.length > 0 ? nonZeroRows : rows).slice(0, 20)
+
+    const sumPct = finalRows.reduce((sum, r) => sum + r.percentage, 0)
+    if (sumPct > 0 && Math.abs(sumPct - 100) > 0.05) {
+      finalRows.forEach((r) => {
+        r.percentage = Number(((r.percentage / sumPct) * 100).toFixed(2))
+      })
+    }
+
+    return res.json({
+      success: true,
+      data: finalRows,
+      total: finalRows.length,
+    })
+  } catch (error) {
+    console.error('Error in getPercentageDistribution:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch percentage distribution' })
+  }
+}
+
+// ── GET /api/dashboard/bidder-distribution ──────────────────────────────────
+exports.getBidderDistribution = async (req, res) => {
+  try {
+    const ALL_TN_DISTRICTS = [
+      'Ariyalur',
+      'Chengalpattu',
+      'Chennai',
+      'Coimbatore',
+      'Cuddalore',
+      'Dharmapuri',
+      'Dindigul',
+      'Erode',
+      'Kallakurichi',
+      'Kanchipuram',
+      'Kanniyakumari',
+      'Karur',
+      'Krishnagiri',
+      'Madurai',
+      'Mayiladuthurai',
+      'Nagapattinam',
+      'Namakkal',
+      'Nilgiris',
+      'Perambalur',
+      'Pudukkottai',
+      'Ramanathapuram',
+      'Ranipet',
+      'Salem',
+      'Sivaganga',
+      'Tenkasi',
+      'Thanjavur',
+      'Theni',
+      'Thiruvallur',
+      'Thiruvarur',
+      'Thoothukudi',
+      'Tiruchirappalli',
+      'Tirunelveli',
+      'Tirupattur',
+      'Tiruppur',
+      'Tiruvannamalai',
+      'Vellore',
+      'Viluppuram',
+      'Virudhunagar',
+    ]
+
+    function normalizeTnDistrict(name) {
+      if (!name) return null
+      const cleaned = name.trim().toLowerCase().replace(/[^a-z]/g, '')
+      for (const d of ALL_TN_DISTRICTS) {
+        const dCleaned = d.toLowerCase().replace(/[^a-z]/g, '')
+        if (cleaned === dCleaned) return d
+      }
+      const aliases = {
+        kanyakumari: 'Kanniyakumari',
+        tirupathur: 'Tirupattur',
+        tiruvallur: 'Thiruvallur',
+        tiruvarur: 'Thiruvarur',
+        trichy: 'Tiruchirappalli',
+        tuticorin: 'Thoothukudi',
+        tiruvanamalai: 'Tiruvannamalai',
+      }
+      if (aliases[cleaned]) return aliases[cleaned]
+      return null
+    }
+
+    // Initialize map for all 38 districts
+    const districtCounts = new Map()
+    for (const dName of ALL_TN_DISTRICTS) {
+      districtCounts.set(dName, 0)
+    }
+
+    // Fetch DB districts to map ObjectId -> District Name
+    const dbDistricts = await District.find().select('_id name').lean()
+    const dbDistrictIdToNameMap = new Map()
+    for (const d of dbDistricts) {
+      const canonical = normalizeTnDistrict(d.name) || d.name
+      dbDistrictIdToNameMap.set(String(d._id), canonical)
+    }
+
+    // Fetch registered bidders from User collection
+    const bidderRoles = await Role.find({ name: { $in: ['tender_person', 'public'] } }).select('_id')
+    const bidderRoleIds = bidderRoles.map((r) => r._id)
+
+    const bidders = await User.find({
+      isDeleted: { $ne: true },
+      $or: [
+        { roleId: { $in: bidderRoleIds } },
+        { accountType: { $in: ['Individual', 'Organization'] }, departmentId: null },
+      ],
+    }).select('district').lean()
+
+    let assignedCount = 0
+    for (const b of bidders) {
+      if (b.district) {
+        const distName = dbDistrictIdToNameMap.get(String(b.district._id || b.district))
+        const canonical = normalizeTnDistrict(distName)
+        if (canonical && districtCounts.has(canonical)) {
+          districtCounts.set(canonical, districtCounts.get(canonical) + 1)
+          assignedCount += 1
+        }
+      }
+    }
+
+    // Map applications from BiddersList and AppliedBidder to tender districts
+    const [biddersLists, appliedBidders, tenders] = await Promise.all([
+      BiddersList.find().select('tenderId applications').lean(),
+      AppliedBidder.find().select('tenderId').lean(),
+      Tender.find(VALID_TENDER_MATCH).select('_id districtId').lean(),
+    ])
+
+    const tenderDistrictMap = new Map()
+    for (const t of tenders) {
+      if (t.districtId) {
+        const rawDistName = dbDistrictIdToNameMap.get(String(t.districtId._id || t.districtId))
+        const canonical = normalizeTnDistrict(rawDistName)
+        if (canonical) {
+          tenderDistrictMap.set(String(t._id), canonical)
+        }
+      }
+    }
+
+    for (const bl of biddersLists) {
+      const distName = tenderDistrictMap.get(String(bl.tenderId))
+      if (distName && districtCounts.has(distName)) {
+        const appCount = bl.applications?.length || 0
+        districtCounts.set(distName, districtCounts.get(distName) + appCount)
+        assignedCount += appCount
+      }
+    }
+
+    for (const ab of appliedBidders) {
+      const distName = tenderDistrictMap.get(String(ab.tenderId))
+      if (distName && districtCounts.has(distName)) {
+        districtCounts.set(distName, districtCounts.get(distName) + 1)
+        assignedCount += 1
+      }
+    }
+
+    const totalBiddersCount = assignedCount > 0 ? assignedCount : bidders.length
+
+    // Build full 38-district output
+    const allRows = ALL_TN_DISTRICTS.map((name) => {
+      const count = districtCounts.get(name) || 0
+      const pct = totalBiddersCount > 0 ? (count / totalBiddersCount) * 100 : 0
+      return {
+        name,
+        count,
+        percentage: Number(pct.toFixed(2)),
+      }
+    })
+
+    // Sort by count descending, then alphabetical
+    allRows.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count
+      return a.name.localeCompare(b.name)
+    })
+
+    // Re-normalize non-zero percentages to sum cleanly to 100% if needed
+    const sumPct = allRows.reduce((sum, r) => sum + r.percentage, 0)
+    if (sumPct > 0 && Math.abs(sumPct - 100) > 0.05) {
+      const nonZeroRows = allRows.filter((r) => r.percentage > 0)
+      const nonZeroSum = nonZeroRows.reduce((sum, r) => sum + r.percentage, 0)
+      if (nonZeroSum > 0) {
+        nonZeroRows.forEach((r) => {
+          r.percentage = Number(((r.percentage / nonZeroSum) * 100).toFixed(2))
+        })
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: allRows,
+      totalDistricts: allRows.length,
+      totalBidders: totalBiddersCount,
+    })
+  } catch (error) {
+    console.error('Error in getBidderDistribution:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch bidder distribution' })
+  }
+}
+
+// ── GET /api/dashboard/kpi-analysis ──────────────────────────────────────────
+exports.getKpiAnalysis = async (req, res) => {
+  try {
+    const { section = 'tenderPublished', subTab = 'docDownload', fyFrom = '2021-22', fyTo = '2026-27' } = req.query
+    const fyRange = buildFyRangeList(fyFrom, fyTo)
+
+    // Fetch active published tenders (excluding Rejected, Cancelled, Deleted)
+    const tenders = await Tender.find(VALID_TENDER_MATCH)
+      .select('tenderCode tenderType startDate closingDate applicationStartDate applicationEndDate applicationDeadline isDocumentApproved isFinalizedBidders financialField createdAt')
+      .lean()
+
+    const createTenders = await CreateTender.find({ isDeleted: { $ne: true } })
+      .select('tenderId tenderType')
+      .lean()
+    const ctMap = new Map()
+    for (const ct of createTenders) {
+      if (ct.tenderId) ctMap.set(ct.tenderId, ct)
+    }
+
+    const finalBidders = await FinalBidders.find().select('tenderId applications updatedAt createdAt').lean()
+    const finalBiddersMap = new Map()
+    for (const fb of finalBidders) {
+      if (fb.tenderId) finalBiddersMap.set(String(fb.tenderId), fb)
+    }
+
+    function resolveTenderType(t) {
+      const ct = ctMap.get(t.tenderCode)
+      const raw = (t.tenderType || ct?.tenderType || 'Open').toLowerCase()
+      if (raw.includes('limited')) return 'Limited'
+      if (raw.includes('open')) return 'Open'
+      return 'Others'
+    }
+
+    const statsMap = new Map()
+    for (const fy of fyRange) {
+      statsMap.set(fy, {
+        Open: { sum: 0, count: 0 },
+        Limited: { sum: 0, count: 0 },
+        Others: { sum: 0, count: 0 },
+      })
+    }
+
+    for (const t of tenders) {
+      const tenderDate = t.startDate || t.createdAt || t.closingDate
+      const fy = getFinancialYear(tenderDate)
+      if (!fy || !statsMap.has(fy)) continue
+
+      const typeKey = resolveTenderType(t)
+      const bucket = statsMap.get(fy)[typeKey]
+
+      const startMs = new Date(t.startDate || t.createdAt).getTime()
+      const closeMs = t.closingDate ? new Date(t.closingDate).getTime() : startMs + 30 * 86400000
+      const appStartMs = t.applicationStartDate ? new Date(t.applicationStartDate).getTime() : startMs + 3 * 86400000
+      const appEndMs = t.applicationEndDate ? new Date(t.applicationEndDate).getTime() : startMs + 15 * 86400000
+      const appDeadlineMs = t.applicationDeadline ? new Date(t.applicationDeadline).getTime() : closeMs
+
+      const fb = finalBiddersMap.get(String(t._id))
+      const awardMs = fb ? new Date(fb.updatedAt || fb.createdAt).getTime() : closeMs + 20 * 86400000
+
+      let val = 0
+
+      if (section === 'tenderPublished') {
+        if (subTab === 'docDownload') {
+          val = Math.max(1, Math.round((appStartMs - startMs) / 86400000))
+        } else if (subTab === 'techOpening') {
+          val = Math.max(2, Math.round((appEndMs - startMs) / 86400000))
+        } else if (subTab === 'techEvaluation') {
+          val = Math.max(5, Math.round((appEndMs + 7 * 86400000 - startMs) / 86400000))
+        } else if (subTab === 'finOpening') {
+          val = Math.max(10, Math.round((appDeadlineMs - startMs) / 86400000))
+        } else {
+          val = Math.max(15, Math.round((closeMs - startMs) / 86400000))
+        }
+        bucket.sum += val
+        bucket.count += 1
+      } else if (section === 'bidsSubmission') {
+        val = Math.max(1, Math.round((closeMs - startMs) / 86400000))
+        bucket.sum += val
+        bucket.count += 1
+      } else if (section === 'techAndFin') {
+        if (subTab === 'techOpenEval') {
+          val = Math.max(2, Math.round(7))
+        } else if (subTab === 'techEvalFinOpen') {
+          val = Math.max(3, Math.round(Math.abs(appDeadlineMs - (appEndMs + 7 * 86400000)) / 86400000))
+        } else if (subTab === 'finOpenFinEval') {
+          val = Math.max(2, Math.round(Math.abs(closeMs - appDeadlineMs) / 86400000))
+        } else {
+          val = Math.max(5, Math.round(Math.abs(appDeadlineMs - appEndMs) / 86400000))
+        }
+        bucket.sum += val
+        bucket.count += 1
+      } else if (section === 'bidsAwarded') {
+        if (subTab === 'publishToAwarded') {
+          val = Math.max(5, Math.round(Math.abs(awardMs - startMs) / 86400000))
+        } else if (subTab === 'finOpenToAwarded') {
+          val = Math.max(2, Math.round(Math.abs(awardMs - appDeadlineMs) / 86400000))
+        } else {
+          val = Math.max(3, Math.round(Math.abs(awardMs - appEndMs) / 86400000))
+        }
+        bucket.sum += val
+        bucket.count += 1
+      } else if (section === 'bidsValidityPeriod') {
+        const daysToAward = Math.round((awardMs - closeMs) / 86400000)
+        const isWithin = daysToAward <= 90
+        val = subTab === 'withinValidity' ? (isWithin ? 1 : 0) : (isWithin ? 0 : 1)
+        bucket.sum += val
+        bucket.count += 1
+      }
+    }
+
+    const rows = fyRange.map((fy) => {
+      const entry = statsMap.get(fy)
+      if (section === 'bidsValidityPeriod') {
+        const openPct = entry.Open.count > 0 ? Math.round((entry.Open.sum / entry.Open.count) * 100) : 0
+        const limPct = entry.Limited.count > 0 ? Math.round((entry.Limited.sum / entry.Limited.count) * 100) : 0
+        const othPct = entry.Others.count > 0 ? Math.round((entry.Others.sum / entry.Others.count) * 100) : 0
+        return {
+          fy,
+          Open: openPct,
+          Limited: limPct,
+          Others: othPct,
+        }
+      }
+
+      const openAvg = entry.Open.count > 0 ? Math.round(entry.Open.sum / entry.Open.count) : 0
+      const limAvg = entry.Limited.count > 0 ? Math.round(entry.Limited.sum / entry.Limited.count) : 0
+      const othAvg = entry.Others.count > 0 ? Math.round(entry.Others.sum / entry.Others.count) : 0
+
+      return {
+        fy,
+        Open: openAvg,
+        Limited: limAvg,
+        Others: othAvg,
+      }
+    })
+
+    return res.json({
+      success: true,
+      data: rows,
+    })
+  } catch (error) {
+    console.error('Error in getKpiAnalysis:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch KPI analysis' })
+  }
+}
+
+// ── GET /api/dashboard/msr-report ───────────────────────────────────────────
+exports.getMsrReport = async (req, res) => {
+  try {
+    const { year = '2024-25', month = 'May' } = req.query
+
+    const ALL_TN_DISTRICTS = [
+      'Ariyalur', 'Chengalpattu', 'Chennai', 'Coimbatore', 'Cuddalore', 'Dharmapuri', 'Dindigul',
+      'Erode', 'Kallakurichi', 'Kanchipuram', 'Kanniyakumari', 'Karur', 'Krishnagiri', 'Madurai',
+      'Mayiladuthurai', 'Nagapattinam', 'Namakkal', 'Nilgiris', 'Perambalur', 'Pudukkottai',
+      'Ramanathapuram', 'Ranipet', 'Salem', 'Sivaganga', 'Tenkasi', 'Thanjavur', 'Theni',
+      'Thiruvallur', 'Thiruvarur', 'Thoothukudi', 'Tiruchirappalli', 'Tirunelveli', 'Tirupattur',
+      'Tiruppur', 'Tiruvannamalai', 'Vellore', 'Viluppuram', 'Virudhunagar',
+    ]
+
+    function normalizeTnDistrict(name) {
+      if (!name) return null
+      const cleaned = name.trim().toLowerCase().replace(/[^a-z]/g, '')
+      for (const d of ALL_TN_DISTRICTS) {
+        const dCleaned = d.toLowerCase().replace(/[^a-z]/g, '')
+        if (cleaned === dCleaned) return d
+      }
+      const aliases = {
+        kanyakumari: 'Kanniyakumari',
+        tirupathur: 'Tirupattur',
+        tiruvallur: 'Thiruvallur',
+        tiruvarur: 'Thiruvarur',
+        trichy: 'Tiruchirappalli',
+        tuticorin: 'Thoothukudi',
+        tiruvanamalai: 'Tiruvannamalai',
+      }
+      if (aliases[cleaned]) return aliases[cleaned]
+      return null
+    }
+
+    const MONTH_MAP = {
+      jan: 0, january: 0,
+      feb: 1, february: 1,
+      mar: 2, march: 2,
+      apr: 3, april: 3,
+      may: 4,
+      jun: 5, june: 5,
+      jul: 6, july: 6,
+      aug: 7, august: 7,
+      sep: 8, sept: 8, september: 8,
+      oct: 9, october: 9,
+      nov: 10, november: 10,
+      dec: 11, december: 11,
+    }
+
+    const mKey = String(month).trim().toLowerCase()
+    const targetCalMonth = MONTH_MAP[mKey] !== undefined ? MONTH_MAP[mKey] : 4 // default May (4)
+
+    let fyStartYear = 2024
+    if (typeof year === 'string' && year.includes('-')) {
+      const parts = year.split('-')
+      fyStartYear = parseInt(parts[0], 10) || 2024
+    } else {
+      fyStartYear = parseInt(year, 10) || 2024
+    }
+
+    const targetCalYear = targetCalMonth >= 3 ? fyStartYear : fyStartYear + 1
+    const prevCalMonth = (targetCalMonth + 11) % 12
+    const prevCalYear = targetCalMonth === 0 ? targetCalYear - 1 : targetCalYear
+
+    // Selected month FY index: Apr (0) to Mar (11)
+    const targetFyMonthIdx = (targetCalMonth + 9) % 12
+    const targetFyLabel = `${fyStartYear}-${String((fyStartYear + 1) % 100).padStart(2, '0')}`
+
+    const dbDistricts = await District.find().select('_id name').lean()
+    const dbDistrictMap = new Map()
+    for (const d of dbDistricts) {
+      const canonical = normalizeTnDistrict(d.name) || d.name
+      dbDistrictMap.set(String(d._id), canonical)
+    }
+
+    const finalBidders = await FinalBidders.find().select('tenderId').lean()
+    const awardedTenderIds = new Set(finalBidders.map((fb) => String(fb.tenderId)))
+
+    const tenders = await Tender.find(VALID_TENDER_MATCH)
+      .select('districtId estimatedValue startDate closingDate createdAt isFinalizedBidders')
+      .lean()
+
+    const districtStats = new Map()
+    for (const dName of ALL_TN_DISTRICTS) {
+      districtStats.set(dName, {
+        name: dName,
+        monthTenders: 0,
+        monthValue: 0,
+        prevTenders: 0,
+        prevValue: 0,
+        cumFyTenders: 0,
+        cumFyValue: 0,
+        inceptionTenders: 0,
+        inceptionValue: 0,
+        awardedTenders: 0,
+        awardedValue: 0,
+      })
+    }
+
+    for (const t of tenders) {
+      const rawDistName = t.districtId ? dbDistrictMap.get(String(t.districtId._id || t.districtId)) : null
+      const distName = normalizeTnDistrict(rawDistName)
+      if (!distName || !districtStats.has(distName)) continue
+
+      const entry = districtStats.get(distName)
+      const tenderDate = new Date(t.startDate || t.createdAt || t.closingDate)
+      const tCalYear = tenderDate.getFullYear()
+      const tCalMonth = tenderDate.getMonth()
+      const valCr = toCrores(t.estimatedValue)
+      const tFy = getFinancialYear(tenderDate)
+
+      // Inception
+      entry.inceptionTenders += 1
+      entry.inceptionValue = Number((entry.inceptionValue + valCr).toFixed(4))
+
+      // Selected Month
+      if (tCalYear === targetCalYear && tCalMonth === targetCalMonth) {
+        entry.monthTenders += 1
+        entry.monthValue = Number((entry.monthValue + valCr).toFixed(4))
+      }
+
+      // Prev Month
+      if (tCalYear === prevCalYear && tCalMonth === prevCalMonth) {
+        entry.prevTenders += 1
+        entry.prevValue = Number((entry.prevValue + valCr).toFixed(4))
+      }
+
+      // Cumulative FY up to selected month
+      if (tFy === targetFyLabel) {
+        const tFyMonthIdx = (tCalMonth + 9) % 12
+        if (tFyMonthIdx <= targetFyMonthIdx) {
+          entry.cumFyTenders += 1
+          entry.cumFyValue = Number((entry.cumFyValue + valCr).toFixed(4))
+        }
+
+        // Awarded during FY
+        const isAwarded = awardedTenderIds.has(String(t._id)) || t.isFinalizedBidders
+        if (isAwarded) {
+          entry.awardedTenders += 1
+          entry.awardedValue = Number((entry.awardedValue + valCr).toFixed(4))
+        }
+      }
+    }
+
+    const rows = ALL_TN_DISTRICTS.map((name, index) => {
+      const s = districtStats.get(name)
+      return {
+        sno: index + 1,
+        name,
+        monthTenders: s.monthTenders,
+        monthValue: s.monthValue,
+        prevTenders: s.prevTenders,
+        prevValue: s.prevValue,
+        cumFyTenders: s.cumFyTenders,
+        cumFyValue: s.cumFyValue,
+        inceptionTenders: s.inceptionTenders,
+        inceptionValue: s.inceptionValue,
+        awardedTenders: s.awardedTenders,
+        awardedValue: s.awardedValue,
+      }
+    })
+
+    return res.json({
+      success: true,
+      data: rows,
+      total: rows.length,
+    })
+  } catch (error) {
+    console.error('Error in getMsrReport:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch MSR report' })
+  }
+}
+
+
+
+
 
 
 

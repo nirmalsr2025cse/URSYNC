@@ -1,15 +1,12 @@
 // src/pages/dashboard/KpiTenderPublishedAnalysis.jsx
 // Key Performance Indicators → Analysis on → Tender Published.
-// Five sub-tabs, each the same shape: avg. no. of days between "Tender
-// Published" and a downstream milestone, split by tender type (Open /
-// Limited / Others). K5 (Published to Fin. Evaluation) is the default,
-// matching the reference mock.
-import React, { useState, useMemo } from 'react'
+// Five sub-tabs: avg. no. of days between "Tender Published" and downstream milestones.
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
-import { sliceByFyRange } from '../../utils/dashboardChartUtils'
-import { getKpiTenderPublishedStage } from '../../data/dashboardMockData'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TABS = [
   { id: 'docDownload', tag: 'K1', label: 'Published to Doc. Download' },
@@ -27,24 +24,38 @@ const STAGE_TITLE = {
   finEvaluation: 'Financial Evaluation',
 }
 
-// Purple / magenta / indigo, matching the reference mock's Open / Limited /
-// Others bar colors — distinct from the blue/emerald/amber palette used
-// elsewhere so KPI charts read as their own visual family.
-//
-// Passed straight to Chart.js as backgroundColor (NOT run through
-// toRgba()): that helper expects an {r,g,b}-style value (as returned by
-// useThemeColors()), and silently produces black when handed a raw hex
-// string like '#9575CD' instead — which is why every bar was rendering
-// black despite these three colors being distinct.
 const SERIES_COLORS = { Open: '#9575CD', Limited: '#C2185B', Others: '#303F9F' }
 
 export default function KpiTenderPublishedAnalysis({ fyFrom, fyTo }) {
+  const { apiFetch } = useApi()
   const [activeSubTab, setActiveSubTab] = useState('docDownload')
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
 
-  const rows = useMemo(
-    () => sliceByFyRange(getKpiTenderPublishedStage(activeSubTab), fyFrom, fyTo),
-    [activeSubTab, fyFrom, fyTo]
-  )
+  const defaultFy = getDefaultRollingFyRange(6)
+  const from = fyFrom || defaultFy.fyFrom
+  const to = fyTo || defaultFy.fyTo
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const res = await apiFetch(`/dashboard/kpi-analysis?section=tenderPublished&subTab=${activeSubTab}&fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && Array.isArray(res.data)) {
+          setRows(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch KPI tender published data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, activeSubTab, from, to])
 
   const chartConfig = useMemo(() => {
     const keys = ['Open', 'Limited', 'Others']
@@ -86,18 +97,25 @@ export default function KpiTenderPublishedAnalysis({ fyFrom, fyTo }) {
           {activeTag} Avg days between Tender Published And {STAGE_TITLE[activeSubTab]}
         </h3>
 
-        <BarChartCanvas
-          labels={chartConfig.labels}
-          datasets={chartConfig.datasets}
-          yAxisLabel="No. of Days"
-          height={420}
-          richTooltip={{
-            titlePrefix: 'For the Fin Year',
-            leftHeader: 'Category',
-            rightHeader: 'No. of Days',
-            rows: buildTooltipRows,
-          }}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center h-[420px] text-tn-muted text-sm">
+            <div className="w-6 h-6 border-2 border-tn-blue border-t-transparent rounded-full animate-spin mr-2" />
+            Loading KPI data…
+          </div>
+        ) : (
+          <BarChartCanvas
+            labels={chartConfig.labels}
+            datasets={chartConfig.datasets}
+            yAxisLabel="No. of Days"
+            height={420}
+            richTooltip={{
+              titlePrefix: 'For the Fin Year',
+              leftHeader: 'Category',
+              rightHeader: 'No. of Days',
+              rows: buildTooltipRows,
+            }}
+          />
+        )}
       </div>
     </div>
   )

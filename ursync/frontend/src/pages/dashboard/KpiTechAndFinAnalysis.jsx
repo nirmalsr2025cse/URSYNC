@@ -1,15 +1,10 @@
 // src/pages/dashboard/KpiTechAndFinAnalysis.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
-import { sliceByFyRange } from '../../utils/dashboardChartUtils'
-import {
-  KPI_TECH_OPEN_EVAL,
-  KPI_TECH_EVAL_FIN_OPEN,
-  KPI_FIN_OPEN_FIN_EVAL,
-  KPI_TECH_OPEN_FIN_OPEN,
-} from '../../data/dashboardMockData'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TABS = [
   { id: 'techOpenEval', tag: 'K7', label: 'Tech. Opening And Evaluation' },
@@ -25,40 +20,67 @@ const CHART_TITLES = {
   techOpenFinOpen: 'Avg.Days taken From Technical Opening to Financial Opening in 2 Packet System',
 }
 
-const DATA_BY_TAB = {
-  techOpenEval: KPI_TECH_OPEN_EVAL,
-  techEvalFinOpen: KPI_TECH_EVAL_FIN_OPEN,
-  finOpenFinEval: KPI_FIN_OPEN_FIN_EVAL,
-  techOpenFinOpen: KPI_TECH_OPEN_FIN_OPEN,
-}
-
 // Fixed series colors, independent of the app theme — these match the
 // legacy dashboard's Limited/Open/Others bar coloring exactly, so this
 // chart doesn't shift color when the theme palette changes.
 const SERIES_COLORS = { Limited: '#C2185B', Open: '#9575CD', Others: '#303F9F' }
+const SERIES_KEYS = ['Limited', 'Open', 'Others']
 
 export default function KpiTechAndFinAnalysis({ fyFrom, fyTo }) {
-  const [activeSubTab, setActiveSubTab] = useState('techOpenEval') // K10 default, matches screenshot
+  const { apiFetch } = useApi()
+  const [activeSubTab, setActiveSubTab] = useState('techOpenEval')
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
 
-  const filtered = useMemo(
-    () => sliceByFyRange(DATA_BY_TAB[activeSubTab], fyFrom, fyTo),
-    [activeSubTab, fyFrom, fyTo]
-  )
+  const defaultFy = getDefaultRollingFyRange(6)
+  const from = fyFrom || defaultFy.fyFrom
+  const to = fyTo || defaultFy.fyTo
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const res = await apiFetch(`/dashboard/kpi-analysis?section=techAndFin&subTab=${activeSubTab}&fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && Array.isArray(res.data)) {
+          setRows(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch KPI tech and fin data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, activeSubTab, from, to])
 
   const chartConfig = useMemo(() => {
-    const keys = ['Limited', 'Open', 'Others']
     return {
-      labels: filtered.map((r) => r.fy),
+      labels: rows.map((r) => r.fy),
       stacked: false,
       yAxisLabel: 'No. of Days',
-      datasets: keys.map((k) => ({
+      datasets: SERIES_KEYS.map((k) => ({
         label: k,
-        data: filtered.map((r) => r[k]),
+        data: rows.map((r) => r[k]),
         backgroundColor: SERIES_COLORS[k],
         borderRadius: 3,
+        maxBarThickness: 34,
       })),
     }
-  }, [filtered])
+  }, [rows])
+
+  function buildTooltipRows(dataIndex) {
+    const row = rows[dataIndex]
+    if (!row) return []
+    return SERIES_KEYS.map((k) => ({
+      label: k,
+      value: row[k],
+      color: SERIES_COLORS[k],
+    }))
+  }
 
   const activeTab = SUB_TABS.find((t) => t.id === activeSubTab)
 
@@ -81,13 +103,27 @@ export default function KpiTechAndFinAnalysis({ fyFrom, fyTo }) {
             Drill down is available
           </span>
         </div>
-        <BarChartCanvas
-          labels={chartConfig.labels}
-          datasets={chartConfig.datasets}
-          stacked={chartConfig.stacked}
-          yAxisLabel={chartConfig.yAxisLabel}
-          richTooltip={{ titlePrefix: 'For the Fin Year', leftHeader: 'Series', rightHeader: 'No. of Days' }}
-        />
+
+        {loading ? (
+          <div className="flex items-center justify-center h-[420px] text-tn-muted text-sm">
+            <div className="w-6 h-6 border-2 border-tn-blue border-t-transparent rounded-full animate-spin mr-2" />
+            Loading KPI data…
+          </div>
+        ) : (
+          <BarChartCanvas
+            labels={chartConfig.labels}
+            datasets={chartConfig.datasets}
+            stacked={chartConfig.stacked}
+            yAxisLabel={chartConfig.yAxisLabel}
+            height={420}
+            richTooltip={{
+              titlePrefix: 'For the Fin Year',
+              leftHeader: 'Series',
+              rightHeader: 'No. of Days',
+              rows: buildTooltipRows,
+            }}
+          />
+        )}
       </div>
     </div>
   )

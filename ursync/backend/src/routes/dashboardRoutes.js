@@ -36,4 +36,16 @@ router.get('/last-12-months-trend', dashboardController.getLast12MonthsTrend)
 // GET /api/dashboard/year-over-year
 router.get('/year-over-year', dashboardController.getYearOverYearAnalysis)
 
+// GET /api/dashboard/percentage-distribution
+router.get('/percentage-distribution', dashboardController.getPercentageDistribution)
+
+// GET /api/dashboard/bidder-distribution
+router.get('/bidder-distribution', dashboardController.getBidderDistribution)
+
+// GET /api/dashboard/kpi-analysis
+router.get('/kpi-analysis', dashboardController.getKpiAnalysis)
+
+// GET /api/dashboard/msr-report
+router.get('/msr-report', dashboardController.getMsrReport)
+
 module.exports = router

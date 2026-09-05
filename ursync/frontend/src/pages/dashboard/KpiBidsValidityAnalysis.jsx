@@ -1,18 +1,13 @@
 // src/pages/dashboard/KpiBidsValidityAnalysis.jsx
 // Key Performance Indicators → Analysis on → Bids Validity period.
 // Self-contained: owns its own sub-tab state (K14/K15) and reads the FY
-// range from props, same pattern as KpiBidsAwardedAnalysis.jsx. Values are
-// percentages, and value labels are shown above each bar (unlike the
-// Bids Awarded page), matching the reference dashboard.
-import React, { useState, useMemo } from 'react'
+// range from props. Values are percentages.
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
-import { sliceByFyRange } from '../../utils/dashboardChartUtils'
-import {
-  KPI_AWARDED_WITHIN_VALIDITY,
-  KPI_AWARDED_BEYOND_VALIDITY,
-} from '../../data/dashboardMockData'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TABS = [
   { id: 'withinValidity', tag: 'K14', label: 'Tenders Awarded within Specified Bid Validity Period' },
@@ -24,41 +19,70 @@ const CHART_TITLES = {
   beyondValidity: 'Percentage of Tenders Awarded beyond Bid Validity Period',
 }
 
-const DATA_BY_TAB = {
-  withinValidity: KPI_AWARDED_WITHIN_VALIDITY,
-  beyondValidity: KPI_AWARDED_BEYOND_VALIDITY,
-}
-
 // Fixed series colors, independent of the app theme — legend order here is
 // Open / Others / Limited, matching the reference dashboard.
 const SERIES_COLORS = { Open: '#9575CD', Others: '#303F9F', Limited: '#C2185B' }
-
-// Values are 0-100 percentages, not counts — format them with a trailing
-// "%" instead of the default en-IN number grouping.
-const formatPercent = (v) => `${v}%`
+const SERIES_KEYS = ['Open', 'Others', 'Limited']
 
 export default function KpiBidsValidityAnalysis({ fyFrom, fyTo }) {
-  const [activeSubTab, setActiveSubTab] = useState('withinValidity') // K14 default, matches screenshot
+  const { apiFetch } = useApi()
+  const [activeSubTab, setActiveSubTab] = useState('withinValidity')
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
 
-  const filtered = useMemo(
-    () => sliceByFyRange(DATA_BY_TAB[activeSubTab], fyFrom, fyTo),
-    [activeSubTab, fyFrom, fyTo]
-  )
+  const defaultFy = getDefaultRollingFyRange(6)
+  const from = fyFrom || defaultFy.fyFrom
+  const to = fyTo || defaultFy.fyTo
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const res = await apiFetch(`/dashboard/kpi-analysis?section=bidsValidityPeriod&subTab=${activeSubTab}&fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && Array.isArray(res.data)) {
+          setRows(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch KPI bids validity data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, activeSubTab, from, to])
 
   const chartConfig = useMemo(() => {
-    const keys = ['Open', 'Others', 'Limited']
     return {
-      labels: filtered.map((r) => r.fy),
+      labels: rows.map((r) => r.fy),
       stacked: false,
       yAxisLabel: 'Percentage of Awarded Tenders',
-      datasets: keys.map((k) => ({
+      datasets: SERIES_KEYS.map((k) => ({
         label: k,
-        data: filtered.map((r) => r[k]),
+        data: rows.map((r) => r[k]),
         backgroundColor: SERIES_COLORS[k],
         borderRadius: 3,
+        maxBarThickness: 34,
       })),
     }
-  }, [filtered])
+  }, [rows])
+
+  function buildTooltipRows(dataIndex) {
+    const row = rows[dataIndex]
+    if (!row) return []
+    return SERIES_KEYS.map((k) => {
+      const val = row[k] ?? 0
+      return {
+        label: k,
+        value: val,
+        display: `${val}%`,
+        color: SERIES_COLORS[k],
+      }
+    })
+  }
 
   const activeTab = SUB_TABS.find((t) => t.id === activeSubTab)
 
@@ -81,13 +105,27 @@ export default function KpiBidsValidityAnalysis({ fyFrom, fyTo }) {
             Drill down is available
           </span>
         </div>
-        <BarChartCanvas
-          labels={chartConfig.labels}
-          datasets={chartConfig.datasets}
-          stacked={chartConfig.stacked}
-          yAxisLabel={chartConfig.yAxisLabel}
-          richTooltip={{ titlePrefix: 'For the Fin Year', leftHeader: 'Series', rightHeader: '% Awarded' }}
-        />
+
+        {loading ? (
+          <div className="flex items-center justify-center h-[420px] text-tn-muted text-sm">
+            <div className="w-6 h-6 border-2 border-tn-blue border-t-transparent rounded-full animate-spin mr-2" />
+            Loading KPI data…
+          </div>
+        ) : (
+          <BarChartCanvas
+            labels={chartConfig.labels}
+            datasets={chartConfig.datasets}
+            stacked={chartConfig.stacked}
+            yAxisLabel={chartConfig.yAxisLabel}
+            height={420}
+            richTooltip={{
+              titlePrefix: 'For the Fin Year',
+              leftHeader: 'Series',
+              rightHeader: '% Awarded',
+              rows: buildTooltipRows,
+            }}
+          />
+        )}
       </div>
     </div>
   )

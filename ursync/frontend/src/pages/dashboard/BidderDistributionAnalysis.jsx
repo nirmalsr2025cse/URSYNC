@@ -1,21 +1,11 @@
 // src/pages/dashboard/BidderDistributionAnalysis.jsx
 // Distribution Analysis (top nav) → Bidder Distribution (sidebar group).
-// No sub-metrics and no FY filter for this one — a single cumulative
-// district-wise view, so unlike PercentageDistributionBase this file isn't
-// parameterized by metric and Dashboard.jsx wires it straight off
-// activeGroup (see GROUP_COMPONENTS), the same way BidderWiseAnalysis /
-// BidAnalysis / YearOverYearAnalysis are.
-//
-// Self-contained rather than sharing PercentageDistributionBase.jsx —
-// that base is specifically about Central Organisations Top 20 (with a
-// Number/Value metric toggle); this page is district-wise bidder counts
-// with no toggle, so keeping it separate avoids threading unrelated
-// options through a shared component.
-import React, { useMemo, useRef, useEffect } from 'react'
+// Single cumulative district-wise view of registered bidders across Tamil Nadu.
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { Chart as ChartJS, PieController, ArcElement, Tooltip, Legend } from 'chart.js'
 import Icon from '../../components/Icon'
 import { externalTooltipHandler, removeRichTooltipEls } from '../../components/dashboard/chartTooltip'
-import { getBidderDistributionByDistrict } from '../../data/dashboardMockData'
+import { useApi } from '../../api/client'
 
 ChartJS.register(PieController, ArcElement, Tooltip, Legend)
 
@@ -122,7 +112,30 @@ function DistrictPieChart({ rows }) {
 }
 
 export default function BidderDistributionAnalysis() {
-  const rows = useMemo(() => getBidderDistributionByDistrict(), [])
+  const { apiFetch } = useApi()
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const res = await apiFetch('/dashboard/bidder-distribution')
+        if (isMounted && res?.success && Array.isArray(res.data)) {
+          setRows(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch bidder distribution:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch])
 
   return (
     <div className="space-y-5">
@@ -137,34 +150,41 @@ export default function BidderDistributionAnalysis() {
           Registered Bidders - Cumulative - Tamil Nadu
         </h3>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Legend list */}
-          <div className="lg:col-span-2 max-h-[440px] overflow-y-auto pr-2">
-            <h3 className="font-bold text-tn-navy text-sm mb-3 flex items-center gap-1.5">
-              <Icon name="barChart" className="w-4 h-4 text-tn-blue" />
-              Districts
-            </h3>
-            <ul className="space-y-2">
-              {rows.map((row, i) => (
-                <li key={row.name} className="flex items-start gap-2 text-xs text-tn-navy">
-                  <span
-                    className="w-2.5 h-2.5 rounded-sm flex-shrink-0 mt-0.5"
-                    style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }}
-                  />
-                  <span>
-                    {row.name}
-                    <span className="font-semibold">({row.percentage.toFixed(2)}%)</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+        {loading ? (
+          <div className="flex items-center justify-center h-[440px] text-tn-muted text-sm">
+            <div className="w-6 h-6 border-2 border-tn-blue border-t-transparent rounded-full animate-spin mr-2" />
+            Loading bidder distribution…
           </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Legend list */}
+            <div className="lg:col-span-2 max-h-[440px] overflow-y-auto pr-2">
+              <h3 className="font-bold text-tn-navy text-sm mb-3 flex items-center gap-1.5">
+                <Icon name="barChart" className="w-4 h-4 text-tn-blue" />
+                Districts
+              </h3>
+              <ul className="space-y-2">
+                {rows.map((row, i) => (
+                  <li key={row.name} className="flex items-start gap-2 text-xs text-tn-navy">
+                    <span
+                      className="w-2.5 h-2.5 rounded-sm flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }}
+                    />
+                    <span>
+                      {row.name}
+                      <span className="font-semibold ml-1">({row.percentage.toFixed(2)}%)</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-          {/* Pie chart */}
-          <div className="lg:col-span-3">
-            <DistrictPieChart rows={rows} />
+            {/* Pie chart */}
+            <div className="lg:col-span-3">
+              <DistrictPieChart rows={rows} />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

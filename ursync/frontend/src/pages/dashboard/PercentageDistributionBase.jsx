@@ -1,14 +1,14 @@
 // src/pages/dashboard/PercentageDistributionBase.jsx
 // Shared implementation behind NumberWisePercentageDistribution.jsx and
 // ValueWisePercentageDistribution.jsx — same tab bar / pie chart / legend
-// list, parameterized by which field to distribute on. Mirrors the
-// Top10AnalysisBase.jsx pattern used for the Top 10 Analysis pages.
-import React, { useMemo, useRef, useEffect } from 'react'
+// list, parameterized by which field to distribute on.
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { Chart as ChartJS, PieController, ArcElement, Tooltip, Legend } from 'chart.js'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import { externalTooltipHandler, removeRichTooltipEls } from '../../components/dashboard/chartTooltip'
-import { getCentralOrganisationsDistribution } from '../../data/dashboardMockData'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 ChartJS.register(PieController, ArcElement, Tooltip, Legend)
 
@@ -117,10 +117,32 @@ function PieChart({ rows }) {
 }
 
 export default function PercentageDistributionBase({ fyTo, metricKey, unitLabel }) {
-  const rows = useMemo(
-    () => getCentralOrganisationsDistribution(fyTo, metricKey),
-    [fyTo, metricKey]
-  )
+  const { apiFetch } = useApi()
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const targetFy = fyTo || getDefaultRollingFyRange(6).fyTo
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const res = await apiFetch(`/dashboard/percentage-distribution?fy=${targetFy}&metric=${metricKey}`)
+        if (isMounted && res?.success && Array.isArray(res.data)) {
+          setRows(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch percentage distribution:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, targetFy, metricKey])
 
   const orgTabLabel = `Central Organizations (Top 20) - ${unitLabel}`
   const orgTabs = useMemo(() => [{ id: 'centralOrganisations', label: orgTabLabel }], [orgTabLabel])
@@ -131,43 +153,48 @@ export default function PercentageDistributionBase({ fyTo, metricKey, unitLabel 
         Percentage Distribution
       </div>
 
-      {/* Single-tab bar — intentionally only one entry (Central
-          Organisations); no "States/UTs" option per current scope. */}
       <TabBar tabs={orgTabs} activeTab="centralOrganisations" onChange={() => {}} />
 
       <div className="bg-white rounded-2xl border border-tn-border p-5">
         <h3 className="font-bold text-tn-navy text-sm mb-4">
-          Central Organisations (Top 20) - {unitLabel} - Fin Year {fyTo}
+          Central Organisations (Top 20) - {unitLabel} - Fin Year {targetFy}
         </h3>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Legend list */}
-          <div className="lg:col-span-2 max-h-[440px] overflow-y-auto pr-2">
-            <h3 className="font-bold text-tn-navy text-sm mb-3 flex items-center gap-1.5">
-              <Icon name="barChart" className="w-4 h-4 text-tn-blue" />
-              Central Organisations
-            </h3>
-            <ul className="space-y-2">
-              {rows.map((row, i) => (
-                <li key={row.name} className="flex items-start gap-2 text-xs text-tn-navy">
-                  <span
-                    className="w-2.5 h-2.5 rounded-sm flex-shrink-0 mt-0.5"
-                    style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }}
-                  />
-                  <span>
-                    {row.name}
-                    <span className="font-semibold">({row.percentage.toFixed(2)}%)</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+        {loading ? (
+          <div className="flex items-center justify-center h-[440px] text-tn-muted text-sm">
+            <div className="w-6 h-6 border-2 border-tn-blue border-t-transparent rounded-full animate-spin mr-2" />
+            Loading percentage distribution…
           </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Legend list */}
+            <div className="lg:col-span-2 max-h-[440px] overflow-y-auto pr-2">
+              <h3 className="font-bold text-tn-navy text-sm mb-3 flex items-center gap-1.5">
+                <Icon name="barChart" className="w-4 h-4 text-tn-blue" />
+                Central Organisations
+              </h3>
+              <ul className="space-y-2">
+                {rows.map((row, i) => (
+                  <li key={row.name} className="flex items-start gap-2 text-xs text-tn-navy">
+                    <span
+                      className="w-2.5 h-2.5 rounded-sm flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }}
+                    />
+                    <span>
+                      {row.name}
+                      <span className="font-semibold ml-1">({row.percentage.toFixed(2)}%)</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-          {/* Pie chart */}
-          <div className="lg:col-span-3">
-            <PieChart rows={rows} />
+            {/* Pie chart */}
+            <div className="lg:col-span-3">
+              <PieChart rows={rows} />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

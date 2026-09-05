@@ -42,12 +42,14 @@ function Input({ placeholder, value, onChange }) {
   )
 }
 
-function DateInput({ value, onChange }) {
+function DateInput({ value, onChange, min, max }) {
   return (
     <input
       type="date"
       value={value}
       onChange={onChange}
+      min={min}
+      max={max}
       className="w-full border border-tn-border rounded-md px-3 py-2 text-sm
                  text-tn-navy focus:outline-none focus:ring-2
                 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] bg-white"
@@ -260,6 +262,24 @@ function SearchTab() {
   const [error, setError] = useState(null)
   const [validationError, setValidationError] = useState(null)
 
+  function handleFromDateChange(e) {
+    const val = e.target.value
+    setFromDate(val)
+    if (val && toDate && val > toDate) {
+      setToDate(val)
+    }
+    if (validationError) setValidationError(null)
+  }
+
+  function handleToDateChange(e) {
+    const val = e.target.value
+    setToDate(val)
+    if (val && fromDate && val < fromDate) {
+      setFromDate(val)
+    }
+    if (validationError) setValidationError(null)
+  }
+
   function handleClear() {
     setDateCriteria(''); setFromDate(''); setToDate('')
     setOrganisation(''); setSearchId(''); setProductCategory('')
@@ -328,13 +348,21 @@ function SearchTab() {
           <label className="block text-xs text-tn-muted mb-1">
             From Date <span className="text-tn-danger">*</span>
           </label>
-          <DateInput value={fromDate} onChange={e => setFromDate(e.target.value)} />
+          <DateInput
+            value={fromDate}
+            onChange={handleFromDateChange}
+            max={toDate || undefined}
+          />
         </div>
         <div>
           <label className="block text-xs text-tn-muted mb-1">
             To Date <span className="text-tn-danger">*</span>
           </label>
-          <DateInput value={toDate} onChange={e => setToDate(e.target.value)} />
+          <DateInput
+            value={toDate}
+            onChange={handleToDateChange}
+            min={fromDate || undefined}
+          />
         </div>
 
         <div>

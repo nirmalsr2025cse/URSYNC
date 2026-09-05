@@ -220,6 +220,24 @@ export default function Dashboard() {
     return group?.label || 'This section'
   }
 
+  function handleFyFromChange(newFrom) {
+    setFyFrom(newFrom)
+    const fromIdx = FINANCIAL_YEARS.indexOf(newFrom)
+    const toIdx = FINANCIAL_YEARS.indexOf(fyTo)
+    if (fromIdx !== -1 && toIdx !== -1 && fromIdx > toIdx) {
+      setFyTo(newFrom)
+    }
+  }
+
+  function handleFyToChange(newTo) {
+    setFyTo(newTo)
+    const fromIdx = FINANCIAL_YEARS.indexOf(fyFrom)
+    const toIdx = FINANCIAL_YEARS.indexOf(newTo)
+    if (fromIdx !== -1 && toIdx !== -1 && toIdx < fromIdx) {
+      setFyFrom(newTo)
+    }
+  }
+
   return (
     <div className="h-full flex overflow-hidden bg-tn-cream">
       <DashboardSidebar
@@ -233,8 +251,8 @@ export default function Dashboard() {
         financialYears={FINANCIAL_YEARS}
         fyFrom={fyFrom}
         fyTo={fyTo}
-        onFyFromChange={setFyFrom}
-        onFyToChange={setFyTo}
+        onFyFromChange={handleFyFromChange}
+        onFyToChange={handleFyToChange}
         yearRangeOptions={YEAR_RANGE_OPTIONS}
         yearRange={yearRange}
         onYearRangeChange={(val) => {

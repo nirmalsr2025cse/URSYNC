@@ -6,12 +6,12 @@
 // FY range), but with only one tab — TabBar still used (single entry) for
 // visual consistency with every other KPI/Distribution page's red pill
 // header, per the reference mock.
-import React, { useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
-import { sliceByFyRange } from '../../utils/dashboardChartUtils'
-import { getKpiBidsSubmissionByFy } from '../../data/dashboardMockData'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 // Order and colors intentionally match the reference mock's legend order
 // for this specific chart (Limited, Open, Others) — note this is a
@@ -23,10 +23,34 @@ const SERIES_KEYS = ['Limited', 'Open', 'Others']
 const TABS = [{ id: 'allowedYearWise', label: 'Allowed for Bid Submission Year Wise' }]
 
 export default function KpiBidsSubmissionAnalysis({ fyFrom, fyTo }) {
-  const rows = useMemo(
-    () => sliceByFyRange(getKpiBidsSubmissionByFy(), fyFrom, fyTo),
-    [fyFrom, fyTo]
-  )
+  const { apiFetch } = useApi()
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const defaultFy = getDefaultRollingFyRange(6)
+  const from = fyFrom || defaultFy.fyFrom
+  const to = fyTo || defaultFy.fyTo
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const res = await apiFetch(`/dashboard/kpi-analysis?section=bidsSubmission&subTab=allowedYearWise&fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && Array.isArray(res.data)) {
+          setRows(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch KPI bids submission data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, from, to])
 
   const chartConfig = useMemo(() => ({
     labels: rows.map((r) => r.fy),
@@ -63,18 +87,25 @@ export default function KpiBidsSubmissionAnalysis({ fyFrom, fyTo }) {
           K6. Average Days Allowed for Bid Submission - Year wise
         </h3>
 
-        <BarChartCanvas
-          labels={chartConfig.labels}
-          datasets={chartConfig.datasets}
-          yAxisLabel="No. of Days"
-          height={420}
-          richTooltip={{
-            titlePrefix: 'For the Fin Year',
-            leftHeader: 'Category',
-            rightHeader: 'No. of Days',
-            rows: buildTooltipRows,
-          }}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center h-[420px] text-tn-muted text-sm">
+            <div className="w-6 h-6 border-2 border-tn-blue border-t-transparent rounded-full animate-spin mr-2" />
+            Loading KPI data…
+          </div>
+        ) : (
+          <BarChartCanvas
+            labels={chartConfig.labels}
+            datasets={chartConfig.datasets}
+            yAxisLabel="No. of Days"
+            height={420}
+            richTooltip={{
+              titlePrefix: 'For the Fin Year',
+              leftHeader: 'Category',
+              rightHeader: 'No. of Days',
+              rows: buildTooltipRows,
+            }}
+          />
+        )}
       </div>
     </div>
   )
