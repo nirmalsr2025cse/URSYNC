@@ -5,11 +5,10 @@ import { useApi } from '../api/client'
 
 /* ─────────────────────── helpers ─────────────────────── */
 const TABS = [
-  { id: 'Available',     label: 'Available'     },
-  { id: 'Not-Available', label: 'Not Available' },
-  { id: 'Request',       label: 'Requests'      },
-  { id: 'Approved',      label: 'Approved'      },
-  { id: 'Rejected',      label: 'Rejected'      },
+  { id: 'Resources', label: 'Resources' },
+  { id: 'Request',   label: 'Requests'  },
+  { id: 'Approved',  label: 'Approved'  },
+  { id: 'Rejected',  label: 'Rejected'  },
 ]
 
 const URGENCY_STYLE = {
@@ -599,12 +598,11 @@ const PAGE_SIZE = 6
 
 export default function ResourceSharing() {
   const { apiFetch } = useApi()
-  const [activeTab,     setActiveTab]     = useState('Available')
+  const [activeTab,     setActiveTab]     = useState('Resources')
   const [animating,     setAnimating]     = useState(false)
   const [currentPage,   setCurrentPage]   = useState(1)
   const [search,        setSearch]        = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
-  const [searching,     setSearching]     = useState(false)
 
   const [resourceList,    setResourceList]    = useState([])
   const [requestList,     setRequestList]     = useState([])
@@ -614,6 +612,15 @@ export default function ResourceSharing() {
   const [editResource, setEditResource] = useState(null)
   const [viewRequest,  setViewRequest]  = useState(null)
   const [toast,        setToast]        = useState(null)
+
+  // Debounced auto-search (400ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAppliedSearch(search)
+      setCurrentPage(1)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [search])
 
   async function loadData() {
     try {
@@ -625,7 +632,7 @@ export default function ResourceSharing() {
       setResourceList((resourceData.resources || []).map(resource => ({
         ...resource,
         id: resource._id,
-        status: resource.available > 0 ? 'Available' : 'Not Available',
+        status: resource.available > 0 ? 'Available' : 'Unavailable',
         department: resource.departmentId?.name || resource.departmentId?.code || 'Not specified',
         district: resource.district?.name || resource.district?.code || 'Not specified',
         quantity: resource.available,
@@ -676,11 +683,6 @@ export default function ResourceSharing() {
     setTimeout(() => { setActiveTab(id); setAnimating(false) }, 150)
   }
 
-  function handleSearch() {
-    setSearching(true)
-    setTimeout(() => { setAppliedSearch(search); setCurrentPage(1); setSearching(false) }, 500)
-  }
-
   function handleClear() {
     setSearch('')
     setAppliedSearch('')
@@ -715,17 +717,21 @@ export default function ResourceSharing() {
     showToast('Resource updated locally. Persisted editing is not available yet.')
   }
 
-  // Filter logic
+  const isResourceTab = activeTab === 'Resources' || activeTab === 'Available'
+  const isRequestTab  = activeTab === 'Request' || activeTab === 'Approved' || activeTab === 'Rejected'
+
+  // Filter logic: resources remain visible even if quantity is 0
   const filtered = useMemo(() => {
     const q = appliedSearch.toLowerCase().trim()
 
-    if (activeTab === 'Available' || activeTab === 'Not-Available') {
-      return resourceList
-        .filter(r => activeTab === 'Available' ? r.available > 0 : r.available === 0)
-        .filter(r =>
-        !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
-        (r.departmentId?.name || '').toLowerCase().includes(q) ||
-        (r.district?.name || '').toLowerCase().includes(q) || r.category.toLowerCase().includes(q)
+    if (isResourceTab) {
+      return resourceList.filter(r =>
+        !q ||
+        (r.name || '').toLowerCase().includes(q) ||
+        (r.id || '').toLowerCase().includes(q) ||
+        (r.department || '').toLowerCase().includes(q) ||
+        (r.district || '').toLowerCase().includes(q) ||
+        (r.category || '').toLowerCase().includes(q)
       )
     }
     /* Requests are read from resourcerequests and grouped by status. */
@@ -740,7 +746,7 @@ export default function ResourceSharing() {
         (r.resourceId || '').toLowerCase().includes(q) ||
         (r.applicantName || '').toLowerCase().includes(q)
       )
-  }, [activeTab, appliedSearch, resourceList, requestList])
+  }, [activeTab, appliedSearch, resourceList, requestList, isResourceTab])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated  = useMemo(() => {
@@ -748,12 +754,9 @@ export default function ResourceSharing() {
     return filtered.slice(start, start + PAGE_SIZE)
   }, [filtered, currentPage])
 
-  const isResourceTab = activeTab === 'Available' || activeTab === 'Not-Available'
-  const isRequestTab  = activeTab === 'Request' || activeTab === 'Approved' || activeTab === 'Rejected'
-
   const EMPTY_TEXT = {
-    'Available':     'No available resources found.',
-    'Not-Available': 'No unavailable resources found.',
+    'Resources':     'No resources found.',
+    'Available':     'No resources found.',
     'Request':       'No pending requests found.',
     'Approved':      'No approved requests found.',
     'Rejected':      'No rejected requests found.',
@@ -802,10 +805,10 @@ export default function ResourceSharing() {
         </nav>
       </div>
 
-      {/* Search Bar */}
+      {/* Search Bar with auto-search and conditional Clear All button */}
       <div className="bg-white border border-tn-border rounded-2xl p-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row gap-3 items-center">
+          <div className="relative flex-1 w-full">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
@@ -813,7 +816,6 @@ export default function ResourceSharing() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder={
                 isResourceTab
                   ? 'Search by name, ID, department, district…'
@@ -822,20 +824,12 @@ export default function ResourceSharing() {
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-tn-border rounded-xl bg-white text-tn-navy placeholder-tn-muted focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue transition-all"
             />
           </div>
-          <button
-            onClick={handleSearch}
-            disabled={searching}
-            className="flex items-center justify-center gap-1.5 px-5 py-2.5 text-sm font-semibold whitespace-nowrap rounded-xl bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-50"
-          >
-            {searching ? (
-              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Searching…</>
-            ) : (
-              <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>Search</>
-            )}
-          </button>
-          {appliedSearch && (
-            <button onClick={handleClear} className="text-xs text-tn-muted hover:text-tn-danger underline px-2">
-              Clear
+          {search.trim() !== '' && (
+            <button
+              onClick={handleClear}
+              className="px-4 py-2.5 text-xs font-semibold text-tn-navy bg-white hover:bg-tn-light border border-tn-border rounded-xl transition-colors whitespace-nowrap"
+            >
+              Clear All
             </button>
           )}
         </div>

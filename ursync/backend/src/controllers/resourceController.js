@@ -7,23 +7,18 @@ const ResourceRequest = require('../models/ResourceRequest')
 const Department = require('../models/Department')
 const District = require('../models/District')
 
-// ── Helpers ────────────────────────────────────────────────────────────
-
-// Recompute `booked` from the applications array so it can never drift
-// out of sync (e.g. if an approval is later reversed).
-function recomputeBooked(resource) {
-  return resource
-}
-
 function parseDateRange(requiredFrom, requiredTo) {
   if (!requiredFrom || !requiredTo) {
-    return { valid: false, message: 'Please select a valid date range.' }
+    return { valid: false, message: 'Please select both Required From and Required To dates.' }
   }
 
   const from = new Date(requiredFrom)
   const to = new Date(requiredTo)
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
     return { valid: false, message: 'Please select a valid date range.' }
+  }
+  if (from > to) {
+    return { valid: false, message: 'Required From date cannot be after Required To date.' }
   }
 
   return { valid: true, from, to }
@@ -50,15 +45,6 @@ function overlapQuery(resourceId, from, to, extra = {}) {
     requiredFrom: { $lte: to },
     requiredTo: { $gte: from },
   }
-}
-
-function findApprovedConflict(resourceId, from, to, session) {
-  const query = ResourceRequest.findOne(
-    overlapQuery(resourceId, from, to, { status: 'Approved' })
-  )
-    .sort({ requiredFrom: 1 })
-  if (session) query.session(session)
-  return query.lean()
 }
 
 // ── Admin / general listing ────────────────────────────────────────────
@@ -220,9 +206,9 @@ async function listDistricts(req, res) {
 // ── Applying (waiting list) ─────────────────────────────────────────────
 
 // POST /api/resources/:id/apply
-// Body: { requiredFrom, requiredTo }
-// Adds the requesting user to the resource's waiting list as a Pending
-// application. Does NOT touch `booked` — that only changes on approval.
+// Body: { requiredFrom, requiredTo, requiredQuantity, ... }
+// Adds the requesting user's resource request with status 'Pending'.
+// `available` is never modified. Date-range availability is calculated dynamically.
 async function applyForResource(req, res) {
   try {
     const { id } = req.params
@@ -249,8 +235,9 @@ async function applyForResource(req, res) {
         !organization || !district || !projectName || !projectId || !purpose || !contactNumber) {
       return res.status(400).json({ message: 'All required resource request fields must be provided.' })
     }
-    if (!Number.isInteger(Number(requiredQuantity)) || Number(requiredQuantity) < 1) {
-      return res.status(400).json({ message: 'requiredQuantity must be at least 1.' })
+    const qty = Number(requiredQuantity)
+    if (!Number.isInteger(qty) || qty <= 0) {
+      return res.status(400).json({ message: 'Quantity must be a positive number.' })
     }
 
     const dateRange = parseDateRange(requiredFrom, requiredTo)
@@ -259,6 +246,10 @@ async function applyForResource(req, res) {
 
     const resource = await Resource.findOne({ _id: id, isDeleted: false, isActive: true })
     if (!resource) return res.status(404).json({ message: 'Resource not found.' })
+
+    if (qty > resource.available) {
+      return res.status(400).json({ message: 'Requested quantity exceeds the total resource quantity.' })
+    }
 
     const pendingRequest = await ResourceRequest.findOne(
       overlapQuery(resource._id, from, to, {
@@ -287,7 +278,7 @@ async function applyForResource(req, res) {
     const approvedQuantities = await getApprovedQuantities([resource._id], from, to)
     const approvedQuantity = approvedQuantities.get(resource._id.toString()) || 0
     const availableQuantity = Math.max(0, resource.available - approvedQuantity)
-    if (Number(requiredQuantity) > availableQuantity) {
+    if (qty > availableQuantity) {
       return res.status(409).json({
         message: `Only ${availableQuantity} resources are available for the selected date range.`,
       })
@@ -298,7 +289,7 @@ async function applyForResource(req, res) {
       resourceId: resource.resourceId || resource._id.toString(),
       resourceName: resource.name,
       departmentId: resource.departmentId || req.departmentId || null,
-      requiredQuantity: Number(requiredQuantity),
+      requiredQuantity: qty,
       applicantName,
       designation,
       department,
@@ -317,7 +308,7 @@ async function applyForResource(req, res) {
     resource.applications.push({
       userId: req.user._id,
       requestId: resourceRequest._id,
-      requiredQuantity: Number(requiredQuantity),
+      requiredQuantity: qty,
       requiredFrom: from,
       requiredTo: to,
       status: 'Pending',
@@ -330,7 +321,6 @@ async function applyForResource(req, res) {
 
     await resource.save()
 
-    const created = resource.applications[resource.applications.length - 1]
     res.status(201).json({ message: 'Request submitted.', requestId: resourceRequest._id })
   } catch (err) {
     console.error('applyForResource error:', err)
@@ -381,11 +371,11 @@ async function decideApplication(req, res) {
         return res.status(409).json({ message: 'This application is no longer pending.' })
       }
       const approvedQuantities = await getApprovedQuantities(
-        [resource._id], application.requiredFrom, application.requiredTo
+        [resource._id], application.requiredFrom, application.requiredTo, null, application.requestId
       )
       const availableQuantity = Math.max(0, resource.available - (approvedQuantities.get(resource._id.toString()) || 0))
       if ((application.requiredQuantity || 1) > availableQuantity) {
-        return res.status(409).json({ message: `Cannot approve this application. Only ${availableQuantity} resources are available for the selected date range.` })
+        return res.status(409).json({ message: 'Cannot approve this request because there are not enough resources available for the selected date range.' })
       }
     }
 
@@ -570,12 +560,13 @@ async function performResourceDecision(requestId, status, remarks, session) {
       [request.resource],
       request.requiredFrom,
       request.requiredTo,
-      session
+      session,
+      request._id
     )
     const approvedQuantity = approvedQuantities.get(request.resource.toString()) || 0
     const availableQuantity = Math.max(0, resource.available - approvedQuantity)
     if (quantity > availableQuantity) {
-      throw createHttpError(409, `Cannot approve this request. Only ${availableQuantity} resources are available for the selected date range, but this request requires ${quantity}.`)
+      throw createHttpError(409, 'Cannot approve this request because there are not enough resources available for the selected date range.')
     }
   }
 
@@ -648,12 +639,16 @@ function createHttpError(statusCode, message) {
   return error
 }
 
-async function getApprovedQuantities(resourceIds, from, to, session) {
+async function getApprovedQuantities(resourceIds, from, to, session, excludeRequestId = null) {
+  const objectIds = resourceIds.map(id => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id))
   const match = {
-    resource: { $in: resourceIds },
+    resource: { $in: objectIds },
     status: 'Approved',
     requiredFrom: { $lte: to },
     requiredTo: { $gte: from },
+  }
+  if (excludeRequestId) {
+    match._id = { $ne: typeof excludeRequestId === 'string' ? new mongoose.Types.ObjectId(excludeRequestId) : excludeRequestId }
   }
   const aggregate = ResourceRequest.aggregate([
     { $match: match },
@@ -680,10 +675,14 @@ async function getResourceAvailability(req, res) {
 
     const quantities = await getApprovedQuantities([resource._id], parsed.from, parsed.to)
     const approvedQuantity = quantities.get(resource._id.toString()) || 0
+    const remainingAvailable = Math.max(0, resource.available - approvedQuantity)
     res.json({
+      resourceId: resource._id,
       totalQuantity: resource.available,
+      totalAvailable: resource.available,
       approvedQuantity,
-      availableQuantity: Math.max(0, resource.available - approvedQuantity),
+      remainingAvailable,
+      availableQuantity: remainingAvailable,
     })
   } catch (err) {
     console.error('getResourceAvailability error:', err)

@@ -9,6 +9,9 @@ import {
 import { useApi } from '../api/client'
 
 const FIELDS = [
+  { id:'startDate',     label:'Required From Date',    icon:Calendar,     type:'date',     required:true },
+  { id:'endDate',       label:'Required Until Date',   icon:Calendar,     type:'date',     required:true },
+  { id:'requiredQuantity', label:'Resources Required', icon:ClipboardList, type:'number', placeholder:'Enter quantity', required:true },
   { id:'applicantName', label:'Applicant Full Name',   icon:User,         type:'text',     placeholder:'Enter your full name',                         required:true },
   { id:'designation',   label:'Designation',           icon:User,         type:'text',     placeholder:'e.g. Assistant Executive Engineer',             required:true },
   { id:'department',    label:'Department',            icon:Building2,    type:'select',   options:['Public Works Department','Highways Department','Rural Development','TANGEDCO','TWAD Board','Chennai Corporation','Health Department','Education Department'], required:true },
@@ -17,14 +20,11 @@ const FIELDS = [
   { id:'projectName',   label:'Project Name',          icon:ClipboardList,type:'text',     placeholder:'Name of the project',                           required:true },
   { id:'projectId',     label:'Tender / Project ID',   icon:Hash,         type:'text',     placeholder:'e.g. TN/PWD/2026/045',                          required:true },
   { id:'purpose',       label:'Purpose of Use',        icon:FileText,     type:'textarea', placeholder:'Briefly describe how this resource will be used...', required:true },
-  { id:'startDate',     label:'Required From Date',    icon:Calendar,     type:'date',     required:true },
-  { id:'endDate',       label:'Required Until Date',   icon:Calendar,     type:'date',     required:true },
-  { id:'requiredQuantity', label:'Resources Required', icon:ClipboardList, type:'number', placeholder:'Enter quantity', required:true },
   { id:'contactNumber', label:'Contact Number',        icon:Phone,        type:'tel',      placeholder:'10-digit mobile number',                        required:true },
   { id:'remarks',       label:'Additional Remarks',    icon:FileText,     type:'textarea', placeholder:'Any additional notes (optional)',                required:false },
 ]
 
-// Returns tomorrow's date (current date + 1) in YYYY-MM-DD format, suitable for an <input type="date"> min attribute.
+// Returns tomorrow's date in YYYY-MM-DD format
 const toISODate = (d) => d.toISOString().split('T')[0]
 
 const getMinStartDate = () => {
@@ -33,12 +33,9 @@ const getMinStartDate = () => {
   return toISODate(d)
 }
 
-// The earliest valid "Required Until" date is the day after the chosen "Required From" date.
 const getMinEndDate = (startDate) => {
   if (!startDate) return undefined
-  const d = new Date(startDate)
-  d.setDate(d.getDate() + 1)
-  return toISODate(d)
+  return startDate
 }
 
 export default function GetResourcePage() {
@@ -67,7 +64,7 @@ export default function GetResourcePage() {
   const [requestId, setRequestId] = useState('')
 
   const availableUnits = availability?.availableQuantity ?? resource?.available ?? 0
-  const datesValid = Boolean(form.startDate && form.endDate && form.endDate > form.startDate)
+  const datesValid = Boolean(form.startDate && form.endDate && form.startDate <= form.endDate)
 
   useEffect(() => {
     if (!datesValid) {
@@ -95,37 +92,49 @@ export default function GetResourcePage() {
   const allFilled = FIELDS.filter(f => f.required).every(f => {
     const val = form[f.id]
     return val && String(val).trim() !== ''
-  })
+  }) && datesValid
 
   const handleChange = (id, value) => {
     setForm(prev => {
       const next = { ...prev, [id]: value }
-      // If the "from" date changes, clear an "until" date that no longer comes after it.
-      if (id === 'startDate' && prev.endDate) {
-        const newMinEnd = getMinEndDate(value)
-        if (newMinEnd && prev.endDate < newMinEnd) next.endDate = ''
-      }
-      // Clamp quantity so it can never exceed what's available.
-      if (id === 'requiredQuantity' && value !== '' && datesValid && availableUnits > 0) {
-        const num = Number(value)
-        if (!Number.isNaN(num) && num > availableUnits) next.requiredQuantity = String(availableUnits)
+      if (id === 'startDate' && prev.endDate && prev.endDate < value) {
+        next.endDate = ''
       }
       return next
     })
-    if (errors[id]) setErrors(prev => ({ ...prev, [id]: false }))
+    if (errors[id]) setErrors(prev => ({ ...prev, [id]: undefined }))
   }
 
   const validate = () => {
     const newErrors = {}
     FIELDS.filter(f => f.required).forEach(f => {
-      if (!form[f.id] || !String(form[f.id]).trim()) newErrors[f.id] = true
+      if (!form[f.id] || !String(form[f.id]).trim()) {
+        newErrors[f.id] = `${f.label} is required.`
+      }
     })
-    if (form.startDate && form.startDate < minStartDate) newErrors.startDate = true
-    if (form.startDate && form.endDate && form.endDate <= form.startDate) newErrors.endDate = true
-    if (form.contactNumber && !/^\d{10}$/.test(form.contactNumber.replace(/\s/g, ''))) newErrors.contactNumber = true
-    if (!datesValid || !Number.isInteger(Number(form.requiredQuantity)) || Number(form.requiredQuantity) < 1 || Number(form.requiredQuantity) > availableUnits) {
-      newErrors.requiredQuantity = true
+
+    if (!form.startDate) {
+      newErrors.startDate = 'Please select Required From date.'
     }
+    if (!form.endDate) {
+      newErrors.endDate = 'Please select Required To date.'
+    } else if (form.startDate && form.endDate < form.startDate) {
+      newErrors.endDate = 'Required From date cannot be after Required To date.'
+    }
+
+    const qty = Number(form.requiredQuantity)
+    if (!form.requiredQuantity || !Number.isInteger(qty) || qty <= 0) {
+      newErrors.requiredQuantity = 'Quantity must be a positive number.'
+    } else if (qty > (resource.available || 0)) {
+      newErrors.requiredQuantity = 'Requested quantity exceeds the total resource quantity.'
+    } else if (datesValid && availability && qty > availableUnits) {
+      newErrors.requiredQuantity = `Only ${availableUnits} resources are available for the selected date range.`
+    }
+
+    if (form.contactNumber && !/^\d{10}$/.test(form.contactNumber.replace(/\s/g, ''))) {
+      newErrors.contactNumber = 'Enter a valid 10-digit number.'
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -366,11 +375,7 @@ export default function GetResourcePage() {
                 {errors[field.id] && (
                   <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
                     <AlertCircle size={11} />
-                    {field.id === 'requiredQuantity' ? `Enter a quantity from 1 to ${availableUnits}.`
-                      : field.id === 'startDate'     ? 'Choose a date from tomorrow onwards.'
-                      : field.id === 'endDate'       ? 'End date must be after the start date.'
-                      : field.id === 'contactNumber' ? 'Enter a valid 10-digit number.'
-                      : `${field.label} is required.`}
+                    {typeof errors[field.id] === 'string' ? errors[field.id] : `${field.label} is required.`}
                   </p>
                 )}
               </div>

@@ -35,8 +35,8 @@ function CategoryIcon({ category }) {
 function SearchResourceCard({ resource, onView, onGetResource }) {
   const district = resource.district?.name || resource.district?.code || 'Not specified'
   const department = resource.departmentId?.name || resource.departmentId?.code || 'Not specified'
-  const remaining = Math.max(0, (resource.available || 0) - (resource.booked || 0))
-  const availableForDates = resource.availableForDates !== false && resource.available > 0
+  const availableUnits = resource.availableQuantity !== undefined ? resource.availableQuantity : (resource.available || 0)
+  const availableForDates = resource.availableForDates !== false && availableUnits > 0
 
   return (
     <div className="bg-white rounded-2xl border border-tn-border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden">
@@ -63,7 +63,7 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
             { label: 'District', value: district },
             { label: 'Owner Department', value: department },
             { label: 'Total Units', value: resource.available },
-            { label: 'Units Remaining', value: remaining },
+            { label: 'Available Units', value: availableUnits },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[9px] font-semibold text-tn-muted uppercase tracking-wide">{label}</p>

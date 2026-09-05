@@ -72,10 +72,8 @@ const resourceSchema = new Schema(
   { timestamps: true }
 )
 
-// Convenience virtual: units still free to request right now.
-resourceSchema.virtual('remaining').get(function () {
-  return Math.max(0, (this.available || 0) - (this.booked || 0))
-})
+// Note: `available` represents the total physical quantity. Date-wise availability
+// is calculated dynamically from approved ResourceRequest documents.
 resourceSchema.set('toJSON', { virtuals: true })
 resourceSchema.set('toObject', { virtuals: true })
 
