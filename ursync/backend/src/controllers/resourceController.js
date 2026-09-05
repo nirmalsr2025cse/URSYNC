@@ -76,20 +76,26 @@ async function listResources(req, res) {
       .sort({ createdAt: -1 })
       .lean({ virtuals: true })
 
-    const quantities = from && to
-      ? await getApprovedQuantities(resources.map(resource => resource._id), from, to)
-      : new Map()
+    const resourceMap = new Map(resources.map(resource => [resource._id.toString(), resource.available]))
+    const availabilityMap = await calculateResourceAvailability(resourceMap, from, to)
+
     const data = resources.map(resource => {
-      const approvedQuantity = quantities.get(resource._id.toString()) || 0
-      const availableQuantity = Math.max(0, resource.available - approvedQuantity)
+      const avail = availabilityMap.get(resource._id.toString()) || {
+        peakBooked: 0,
+        availableQuantity: resource.available,
+        dateVariations: [],
+        approvedRequests: [],
+      }
       return {
         ...resource,
-        approvedQuantity,
-        availableQuantity,
-        availableForDates: availableQuantity > 0,
-        availabilityMessage: availableQuantity > 0
-          ? null
-          : 'No resources are available for the selected date range.',
+        approvedQuantity: avail.peakBooked,
+        availableQuantity: avail.availableQuantity,
+        availableForDates: avail.availableQuantity > 0,
+        dateVariations: avail.dateVariations,
+        approvedRequests: avail.approvedRequests,
+        availabilityMessage: from && to && avail.availableQuantity === 0
+          ? 'No resources are available for the selected date range.'
+          : null,
       }
     })
 
@@ -373,9 +379,10 @@ async function applyForResource(req, res) {
       })
     }
 
-    const approvedQuantities = await getApprovedQuantities([resource._id], from, to)
-    const approvedQuantity = approvedQuantities.get(resource._id.toString()) || 0
-    const availableQuantity = Math.max(0, resource.available - approvedQuantity)
+    const resourceMap = new Map([[resource._id.toString(), resource.available]])
+    const availabilityMap = await calculateResourceAvailability(resourceMap, from, to)
+    const avail = availabilityMap.get(resource._id.toString())
+    const availableQuantity = avail ? avail.availableQuantity : resource.available
     if (qty > availableQuantity) {
       return res.status(409).json({
         message: `Only ${availableQuantity} resources are available for the selected date range.`,
@@ -468,10 +475,12 @@ async function decideApplication(req, res) {
       if (application.status !== 'Pending') {
         return res.status(409).json({ message: 'This application is no longer pending.' })
       }
-      const approvedQuantities = await getApprovedQuantities(
-        [resource._id], application.requiredFrom, application.requiredTo, null, application.requestId
+      const resourceMap = new Map([[resource._id.toString(), resource.available]])
+      const availabilityMap = await calculateResourceAvailability(
+        resourceMap, application.requiredFrom, application.requiredTo, null, application.requestId
       )
-      const availableQuantity = Math.max(0, resource.available - (approvedQuantities.get(resource._id.toString()) || 0))
+      const avail = availabilityMap.get(resource._id.toString())
+      const availableQuantity = avail ? avail.availableQuantity : resource.available
       if ((application.requiredQuantity || 1) > availableQuantity) {
         return res.status(409).json({ message: 'Cannot approve this request because there are not enough resources available for the selected date range.' })
       }
@@ -545,20 +554,30 @@ async function listSharingResources(req, res) {
       .sort({ createdAt: -1 })
       .lean({ virtuals: true })
 
-    const quantities = from && to
-      ? await getApprovedQuantities(resources.map(resource => resource._id), from, to)
-      : new Map()
-    res.json({ resources: resources.map(resource => {
-      const approvedQuantity = quantities.get(resource._id.toString()) || 0
-      const availableQuantity = Math.max(0, resource.available - approvedQuantity)
-      return {
-        ...resource,
-        approvedQuantity,
-        availableQuantity,
-        availableForDates: availableQuantity > 0,
-        availabilityMessage: availableQuantity > 0 ? null : 'No resources are available for the selected date range.',
-      }
-    }) })
+    const resourceMap = new Map(resources.map(resource => [resource._id.toString(), resource.available]))
+    const availabilityMap = await calculateResourceAvailability(resourceMap, from, to)
+
+    res.json({
+      resources: resources.map(resource => {
+        const avail = availabilityMap.get(resource._id.toString()) || {
+          peakBooked: 0,
+          availableQuantity: resource.available,
+          dateVariations: [],
+          approvedRequests: [],
+        }
+        return {
+          ...resource,
+          approvedQuantity: avail.peakBooked,
+          availableQuantity: avail.availableQuantity,
+          availableForDates: avail.availableQuantity > 0,
+          dateVariations: avail.dateVariations,
+          approvedRequests: avail.approvedRequests,
+          availabilityMessage: from && to && avail.availableQuantity === 0
+            ? 'No resources are available for the selected date range.'
+            : null,
+        }
+      }),
+    })
   } catch (err) {
     console.error('listSharingResources error:', err)
     res.status(500).json({ message: 'Failed to load resources.' })
@@ -654,15 +673,16 @@ async function performResourceDecision(requestId, status, remarks, session) {
   if (!resource) throw createHttpError(404, 'Resource not found.')
 
   if (status === 'Approved') {
-    const approvedQuantities = await getApprovedQuantities(
-      [request.resource],
+    const resourceMap = new Map([[request.resource.toString(), resource.available]])
+    const availabilityMap = await calculateResourceAvailability(
+      resourceMap,
       request.requiredFrom,
       request.requiredTo,
       session,
       request._id
     )
-    const approvedQuantity = approvedQuantities.get(request.resource.toString()) || 0
-    const availableQuantity = Math.max(0, resource.available - approvedQuantity)
+    const avail = availabilityMap.get(request.resource.toString())
+    const availableQuantity = avail ? avail.availableQuantity : resource.available
     if (quantity > availableQuantity) {
       throw createHttpError(409, 'Cannot approve this request because there are not enough resources available for the selected date range.')
     }
@@ -704,7 +724,6 @@ async function decideResourceRequest(req, res) {
     const topologyType = mongoose.connection.getClient()?.topology?.description?.type
     const supportsTransactions = topologyType === 'ReplicaSet' || topologyType === 'Sharded'
     let response
-
     if (supportsTransactions) {
       session = await mongoose.startSession()
       await session.withTransaction(async () => {
@@ -737,24 +756,163 @@ function createHttpError(statusCode, message) {
   return error
 }
 
-async function getApprovedQuantities(resourceIds, from, to, session, excludeRequestId = null) {
-  const objectIds = resourceIds.map(id => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id))
+async function calculateResourceAvailability(resourceMap, from, to, session, excludeRequestId = null) {
+  const objectIds = Array.from(resourceMap.keys()).map(id =>
+    typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id
+  )
+
   const match = {
     resource: { $in: objectIds },
     status: 'Approved',
-    requiredFrom: { $lte: to },
-    requiredTo: { $gte: from },
   }
+  if (from && to) {
+    match.requiredFrom = { $lte: to }
+    match.requiredTo = { $gte: from }
+  } else {
+    match.requiredTo = { $gte: startOfToday() }
+  }
+
   if (excludeRequestId) {
-    match._id = { $ne: typeof excludeRequestId === 'string' ? new mongoose.Types.ObjectId(excludeRequestId) : excludeRequestId }
+    match._id = {
+      $ne: typeof excludeRequestId === 'string' ? new mongoose.Types.ObjectId(excludeRequestId) : excludeRequestId,
+    }
   }
-  const aggregate = ResourceRequest.aggregate([
-    { $match: match },
-    { $group: { _id: '$resource', quantity: { $sum: '$requiredQuantity' } } },
-  ])
-  if (session) aggregate.session(session)
-  const rows = await aggregate
-  return new Map(rows.map(row => [row._id.toString(), row.quantity]))
+
+  let query = ResourceRequest.find(match)
+    .select('resource requiredQuantity requiredFrom requiredTo applicantName projectName')
+    .sort({ requiredFrom: 1 })
+    .lean()
+  if (session) query = query.session(session)
+  const requests = await query
+
+  const requestsByResource = new Map()
+  for (const req of requests) {
+    const rId = req.resource.toString()
+    if (!requestsByResource.has(rId)) requestsByResource.set(rId, [])
+    requestsByResource.get(rId).push(req)
+  }
+
+  const resultMap = new Map()
+
+  for (const [rId, totalAvailable] of resourceMap.entries()) {
+    const resourceRequests = requestsByResource.get(rId.toString()) || []
+
+    if (from && to) {
+      const windowStart = new Date(from)
+      const windowEnd = new Date(to)
+      windowStart.setHours(0, 0, 0, 0)
+      windowEnd.setHours(23, 59, 59, 999)
+
+      const boundaries = new Set()
+      boundaries.add(windowStart.getTime())
+
+      const dayAfterEnd = new Date(windowEnd)
+      dayAfterEnd.setDate(dayAfterEnd.getDate() + 1)
+      dayAfterEnd.setHours(0, 0, 0, 0)
+      boundaries.add(dayAfterEnd.getTime())
+
+      for (const req of resourceRequests) {
+        const reqStart = new Date(req.requiredFrom)
+        reqStart.setHours(0, 0, 0, 0)
+        const reqEndNext = new Date(req.requiredTo)
+        reqEndNext.setDate(reqEndNext.getDate() + 1)
+        reqEndNext.setHours(0, 0, 0, 0)
+
+        if (reqStart.getTime() > windowStart.getTime() && reqStart.getTime() < dayAfterEnd.getTime()) {
+          boundaries.add(reqStart.getTime())
+        }
+        if (reqEndNext.getTime() > windowStart.getTime() && reqEndNext.getTime() < dayAfterEnd.getTime()) {
+          boundaries.add(reqEndNext.getTime())
+        }
+      }
+
+      const sortedTimes = Array.from(boundaries).sort((a, b) => a - b)
+      let peakBooked = 0
+      const intervals = []
+
+      for (let i = 0; i < sortedTimes.length - 1; i++) {
+        const intervalStart = new Date(sortedTimes[i])
+        const intervalEnd = new Date(sortedTimes[i + 1] - 1)
+        intervalEnd.setHours(23, 59, 59, 999)
+
+        let bookedQuantity = 0
+        const activeRequests = []
+        for (const req of resourceRequests) {
+          const reqStart = new Date(req.requiredFrom)
+          reqStart.setHours(0, 0, 0, 0)
+          const reqEnd = new Date(req.requiredTo)
+          reqEnd.setHours(23, 59, 59, 999)
+
+          if (reqStart <= intervalEnd && reqEnd >= intervalStart) {
+            bookedQuantity += (req.requiredQuantity || 0)
+            activeRequests.push(req)
+          }
+        }
+
+        if (bookedQuantity > peakBooked) {
+          peakBooked = bookedQuantity
+        }
+
+        const availableQty = Math.max(0, totalAvailable - bookedQuantity)
+        intervals.push({
+          from: intervalStart,
+          to: intervalEnd,
+          bookedQuantity,
+          availableQuantity: availableQty,
+          totalQuantity: totalAvailable,
+          requests: activeRequests.map(r => ({
+            id: r._id,
+            applicantName: r.applicantName,
+            projectName: r.projectName,
+            quantity: r.requiredQuantity,
+          })),
+        })
+      }
+
+      const mergedVariations = []
+      for (const interval of intervals) {
+        if (
+          mergedVariations.length > 0 &&
+          mergedVariations[mergedVariations.length - 1].bookedQuantity === interval.bookedQuantity
+        ) {
+          mergedVariations[mergedVariations.length - 1].to = interval.to
+        } else {
+          mergedVariations.push({ ...interval })
+        }
+      }
+
+      resultMap.set(rId.toString(), {
+        peakBooked,
+        availableQuantity: Math.max(0, totalAvailable - peakBooked),
+        dateVariations: mergedVariations,
+        approvedRequests: resourceRequests,
+      })
+    } else {
+      const upcomingSchedule = resourceRequests.map(r => {
+        const reqStart = new Date(r.requiredFrom)
+        const reqEnd = new Date(r.requiredTo)
+        const booked = r.requiredQuantity || 0
+        return {
+          from: reqStart,
+          to: reqEnd,
+          bookedQuantity: booked,
+          availableQuantity: Math.max(0, totalAvailable - booked),
+          totalQuantity: totalAvailable,
+          applicantName: r.applicantName,
+          projectName: r.projectName,
+        }
+      })
+
+      resultMap.set(rId.toString(), {
+        peakBooked: 0,
+        availableQuantity: totalAvailable,
+        dateVariations: upcomingSchedule,
+        approvedRequests: resourceRequests,
+      })
+    }
+  }
+
+  return resultMap
 }
 
 async function getResourceAvailability(req, res) {
@@ -771,16 +929,24 @@ async function getResourceAvailability(req, res) {
       .lean()
     if (!resource) return res.status(404).json({ message: 'Resource not found.' })
 
-    const quantities = await getApprovedQuantities([resource._id], parsed.from, parsed.to)
-    const approvedQuantity = quantities.get(resource._id.toString()) || 0
-    const remainingAvailable = Math.max(0, resource.available - approvedQuantity)
+    const resourceMap = new Map([[resource._id.toString(), resource.available]])
+    const availabilityMap = await calculateResourceAvailability(resourceMap, parsed.from, parsed.to)
+    const avail = availabilityMap.get(resource._id.toString()) || {
+      peakBooked: 0,
+      availableQuantity: resource.available,
+      dateVariations: [],
+      approvedRequests: [],
+    }
+
     res.json({
       resourceId: resource._id,
       totalQuantity: resource.available,
       totalAvailable: resource.available,
-      approvedQuantity,
-      remainingAvailable,
-      availableQuantity: remainingAvailable,
+      approvedQuantity: avail.peakBooked,
+      remainingAvailable: avail.availableQuantity,
+      availableQuantity: avail.availableQuantity,
+      dateVariations: avail.dateVariations,
+      approvedRequests: avail.approvedRequests,
     })
   } catch (err) {
     console.error('getResourceAvailability error:', err)

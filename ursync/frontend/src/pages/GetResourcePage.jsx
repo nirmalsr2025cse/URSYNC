@@ -56,7 +56,10 @@ export default function GetResourcePage() {
     if (!resource) navigate('/search-resource', { replace: true })
   }, [navigate, resource])
 
-  const [form,      setForm]      = useState({})
+  const [form,      setForm]      = useState({
+    startDate: state?.startDate || '',
+    endDate: state?.endDate || '',
+  })
   const [errors,    setErrors]    = useState({})
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)

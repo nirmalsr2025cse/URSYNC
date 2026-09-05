@@ -1,6 +1,6 @@
-// src/pages/SearchResourcePage.jsx
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Calendar, Info } from 'lucide-react'
 import { useApi } from '../api/client'
 import Pagination from '../components/Pagination'
 
@@ -26,13 +26,193 @@ function CategoryIcon({ category }) {
   )
 }
 
+/* ─────────────────────── DateVariationsModal ─────────────────────── */
+function DateVariationsModal({ resource, searchFrom, searchTo, onClose, onGetResource }) {
+  if (!resource) return null
+
+  const variations = resource.dateVariations || []
+  const totalUnits = resource.available || 0
+  const availableUnits = resource.availableQuantity !== undefined ? resource.availableQuantity : totalUnits
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return ''
+    return new Date(dateStr).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-tn-border w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-6 border-b border-tn-border">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-tn-light flex items-center justify-center text-tn-blue flex-shrink-0 border border-tn-border">
+              <Calendar size={22} />
+            </div>
+            <div>
+              <h2 className="text-lg font-extrabold text-tn-navy">{resource.name}</h2>
+              <p className="text-xs text-tn-muted mt-0.5">
+                {resource.resourceId || resource._id} · Total Inventory: <span className="font-semibold text-tn-navy">{totalUnits} units</span>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-tn-border text-tn-muted hover:bg-tn-light transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-5">
+          {/* Selected Search Window Banner */}
+          {searchFrom && searchTo ? (
+            <div className="bg-tn-cream border border-tn-border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold text-tn-muted uppercase tracking-wider">Requested Date Range</p>
+                <p className="text-sm font-bold text-tn-navy mt-0.5">
+                  {formatDate(searchFrom)} – {formatDate(searchTo)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-tn-muted font-medium">Minimum Available:</span>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                  availableUnits > 0
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-red-50 text-red-700 border-red-200'
+                }`}>
+                  {availableUnits} of {totalUnits} units
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-tn-cream border border-tn-border rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-tn-navy">Overall Availability Schedule</p>
+                <p className="text-xs text-tn-muted mt-0.5">Showing scheduled bookings and remaining availability by date range.</p>
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                {totalUnits} units in stock
+              </span>
+            </div>
+          )}
+
+          {/* Date Variation Log */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-tn-navy uppercase tracking-wider">
+                Date-wise Availability Variations & Bookings Log
+              </h3>
+              <span className="text-[11px] text-tn-muted font-medium">
+                {variations.length} interval{variations.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {variations.length === 0 ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center">
+                <p className="text-sm font-bold text-emerald-800">Full Availability</p>
+                <p className="text-xs text-emerald-700 mt-1">
+                  All {totalUnits} units are completely free and available with no approved reservations.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {variations.map((slot, index) => {
+                  const avail = slot.availableQuantity !== undefined ? slot.availableQuantity : (totalUnits - (slot.bookedQuantity || 0))
+                  const booked = slot.bookedQuantity || 0
+                  const percentAvail = totalUnits > 0 ? Math.round((avail / totalUnits) * 100) : 0
+
+                  return (
+                    <div
+                      key={index}
+                      className="bg-white border border-tn-border rounded-xl p-4 shadow-sm hover:border-tn-blue/40 transition-colors"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0 bg-tn-blue" />
+                          <span className="text-xs font-bold text-tn-navy">
+                            {formatDate(slot.from)} – {formatDate(slot.to)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            booked > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-50 text-gray-600 border-gray-200'
+                          }`}>
+                            {booked} Booked
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            avail > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
+                          }`}>
+                            {avail} Available
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Visual availability progress bar */}
+                      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden mb-2">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            avail === 0 ? 'bg-red-400' : avail < totalUnits ? 'bg-amber-400' : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${percentAvail}%` }}
+                        />
+                      </div>
+
+                      {/* Request details if present */}
+                      {slot.requests && slot.requests.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-dashed border-tn-border text-[11px] text-tn-muted space-y-1">
+                          {slot.requests.map((r, rIdx) => (
+                            <p key={rIdx}>
+                              • <span className="font-semibold text-tn-navy">{r.quantity} unit(s)</span> approved for <span className="text-tn-navy">{r.applicantName || 'Applicant'}</span> ({r.projectName || 'Project'})
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-tn-border bg-tn-cream rounded-b-2xl">
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors"
+          >
+            Close
+          </button>
+          <button
+            onClick={() => {
+              onClose()
+              onGetResource(resource)
+            }}
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors"
+          >
+            Get Resource
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ─────────────────────── SearchResourceCard ───────────────────────────
-   Same shape as ResourceSharing.jsx's ResourceCard: color strip, icon
-   badge, name/id header, status badge, meta grid, footer buttons.
-   Footer here is View (secondary) + Get Resource (primary), matching the
-   CTA ordering already used on ResourceDetailPage.jsx.
+   Displays resource metadata, availability, Schedule button for date variations,
+   and always-enabled Get Resource button.
 ──────────────────────────────────────────────────────────────────── */
-function SearchResourceCard({ resource, onView, onGetResource }) {
+function SearchResourceCard({ resource, onView, onViewVariations, onGetResource }) {
   const district = resource.district?.name || resource.district?.code || 'Not specified'
   const department = resource.departmentId?.name || resource.departmentId?.code || 'Not specified'
   const availableUnits = resource.availableQuantity !== undefined ? resource.availableQuantity : (resource.available || 0)
@@ -50,7 +230,7 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
             </div>
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-tn-navy leading-snug truncate">{resource.name}</h3>
-              <p className="text-[10px] text-tn-muted">{resource._id}</p>
+              <p className="text-[10px] text-tn-muted">{resource.resourceId || resource._id}</p>
             </div>
           </div>
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 mt-0.5 ${availableForDates ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
@@ -76,7 +256,7 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
           <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          {resource.availabilityMessage || resource.description || 'No description available.'}
+          {resource.availabilityMessage || (availableUnits < resource.available ? `Min. ${availableUnits} of ${resource.available} units available.` : resource.description || 'Full inventory currently available.')}
         </div>
 
         <div className="flex-1" />
@@ -84,7 +264,8 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
         <div className="flex items-center gap-2 mt-auto pt-3 border-t border-tn-border">
           <button
             onClick={() => onView(resource)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-tn-border text-tn-navy bg-white hover:bg-tn-light transition-colors"
+            className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border border-tn-border text-tn-navy bg-white hover:bg-tn-light transition-colors"
+            title="View full resource details"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -93,9 +274,16 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
             View
           </button>
           <button
+            onClick={() => onViewVariations(resource)}
+            className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border border-tn-border text-tn-navy bg-white hover:bg-tn-light transition-colors"
+            title="View multiple date variations schedule"
+          >
+            <Calendar size={13} className="text-tn-blue" />
+            Schedule
+          </button>
+          <button
             onClick={() => onGetResource(resource)}
-            disabled={!availableForDates}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -119,6 +307,7 @@ export default function SearchResourcePage() {
   const [resources, setResources] = useState([])
   const [loadingResources, setLoadingResources] = useState(false)
   const [resourceError, setResourceError] = useState('')
+  const [variationResource, setVariationResource] = useState(null)
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -157,6 +346,7 @@ export default function SearchResourcePage() {
       const searchableText = [
         r.name,
         r._id,
+        r.resourceId,
         r.category,
         r.description,
         r.district?.name,
@@ -210,6 +400,15 @@ export default function SearchResourcePage() {
 
   return (
     <div className="p-4 lg:p-6 space-y-5 min-h-screen animate-fade-in bg-tn-cream">
+      {variationResource && (
+        <DateVariationsModal
+          resource={variationResource}
+          searchFrom={requiredFrom}
+          searchTo={requiredTo}
+          onClose={() => setVariationResource(null)}
+          onGetResource={(r) => goTo('/search-resource/get-resource', { state: { resource: r, startDate: requiredFrom, endDate: requiredTo } })}
+        />
+      )}
 
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -346,7 +545,8 @@ export default function SearchResourcePage() {
                   key={res._id}
                   resource={res}
                   onView={(r) => goTo('/search-resource/details', { state: { resource: r } })}
-                  onGetResource={(r) => goTo('/search-resource/get-resource', { state: { resource: r } })}
+                  onViewVariations={(r) => setVariationResource(r)}
+                  onGetResource={(r) => goTo('/search-resource/get-resource', { state: { resource: r, startDate: requiredFrom, endDate: requiredTo } })}
                 />
               ))}
             </div>
