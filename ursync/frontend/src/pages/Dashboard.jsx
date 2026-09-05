@@ -334,25 +334,31 @@ function StatCard({ label, value, sub, icon, tone, loading }) {
     amber: 'bg-amber-500', red: 'bg-red-500', slate: 'bg-slate-500',
   }
   const displayVal = loading ? '...' : value
-  const isLong = String(displayVal).length > 13
-  const isMedium = String(displayVal).length > 8
+  const len = String(displayVal || '').length
+
+  // Dynamically scale text size using clamp, whitespace-nowrap, and tracking-tight
+  const valueSizeClass =
+    len > 22 ? 'text-[clamp(0.60rem,1.1vw,0.70rem)]' :
+    len > 18 ? 'text-[clamp(0.68rem,1.3vw,0.78rem)]' :
+    len > 14 ? 'text-[clamp(0.78rem,1.5vw,0.90rem)]' :
+    len > 10 ? 'text-[clamp(0.92rem,1.8vw,1.05rem)]' :
+    len > 7  ? 'text-[clamp(1.05rem,2.0vw,1.18rem)]' :
+    'text-[clamp(1.15rem,2.2vw,1.25rem)]'
 
   return (
-    <div className={`rounded-2xl ${toneMap[tone] || 'bg-tn-blue'} text-white p-3.5 sm:p-4 shadow-sm flex flex-col justify-between min-h-[92px]`}>
-      <div className="flex items-start justify-between gap-1 mb-1.5">
+    <div className={`rounded-2xl ${toneMap[tone] || 'bg-tn-blue'} text-white p-3.5 sm:p-4 shadow-sm flex flex-col justify-between min-h-[92px] overflow-hidden`}>
+      <div className="flex items-center justify-between gap-1 mb-1.5 min-w-0">
         <p
-          className={`font-bold leading-tight break-words ${
-            isLong ? 'text-sm sm:text-base' : isMedium ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'
-          }`}
+          className={`font-bold leading-none whitespace-nowrap tracking-tight ${valueSizeClass}`}
           title={value}
         >
           {displayVal}
         </p>
-        <Icon name={icon} className="w-5 h-5 text-white/70 flex-shrink-0 mt-0.5" />
+        <Icon name={icon} className="w-5 h-5 text-white/70 flex-shrink-0 ml-1" />
       </div>
-      <div>
-        <p className="text-[11px] text-white/80 font-medium leading-snug">{label}</p>
-        {sub && <p className="text-[10px] text-white/60 mt-0.5">{sub}</p>}
+      <div className="min-w-0">
+        <p className="text-[11px] text-white/80 font-medium leading-snug truncate">{label}</p>
+        {sub && <p className="text-[10px] text-white/60 mt-0.5 truncate">{sub}</p>}
       </div>
     </div>
   )

@@ -1,24 +1,15 @@
 // src/pages/dashboard/BidsAwardedAnalysis.jsx
 // Descriptive Analysis → Tender Analysis → Bids Awarded.
-// Three of the four sub-tabs are Number/Value bar charts over the FY range
-// (Tenders / Category / Type); "Organization Wise" is the one exception —
-// table only, no chart, per the reference mock. Table's Financial Year is
-// a single year (uses fyTo), same documented approach as
-// PercentageWiseAnalysis for the one sub-tab that isn't a range view.
-import React, { useState, useMemo } from 'react'
+// Three sub-tabs render Number/Value bar charts over the FY range (Tenders / Category / Type),
+// and "Organization Wise" renders a real-time DataTable with department statistics.
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
 import DataTable from '../../components/dashboard/DataTable'
-import { useThemeColors, toRgba, sliceByFyRange } from '../../utils/dashboardChartUtils'
-import {
-  BIDS_AWARDED_BY_FY,
-  BIDS_AWARDED_CATEGORY_WISE_COUNT,
-  BIDS_AWARDED_CATEGORY_WISE_VALUE,
-  BIDS_AWARDED_TYPE_WISE_COUNT,
-  BIDS_AWARDED_TYPE_WISE_VALUE,
-  BIDS_AWARDED_ORGANIZATIONS,
-} from '../../data/dashboardMockData'
+import { useThemeColors, toRgba } from '../../utils/dashboardChartUtils'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TABS = [
   { id: 'tenders', tag: 'TR15', label: 'Bids Awarded Tenders' },
@@ -33,47 +24,66 @@ const CHART_TITLES = {
   type: 'Number/Value of AOC Type Wise - Year Wise',
 }
 
-// Sums a { fy, KeyA, KeyB, ... } row set (already sliced to the FY range)
-// down to one total per key — used for the Category/Type sub-tabs, which
-// compare categories/types over the selected range rather than per-year.
-function sumByKeys(rows, keys) {
-  return keys.map((k) => rows.reduce((total, row) => total + (row[k] || 0), 0))
-}
-
 export default function BidsAwardedAnalysis({ fyFrom, fyTo }) {
   const colors = useThemeColors()
+  const { apiFetch } = useApi()
   const [activeSubTab, setActiveSubTab] = useState('tenders')
+  const [loading, setLoading] = useState(false)
+  const [analysisData, setAnalysisData] = useState({
+    tenders: [],
+    categoryCount: { Works: 0, Goods: 0, Services: 0, Consultancy: 0 },
+    categoryValue: { Works: 0, Goods: 0, Services: 0, Consultancy: 0 },
+    typeCount: { 'Open Tender': 0, 'Limited Tender': 0, 'Single Tender': 0, EOI: 0 },
+    typeValue: { 'Open Tender': 0, 'Limited Tender': 0, 'Single Tender': 0, EOI: 0 },
+    organizations: [],
+  })
 
-  const filteredTenders = useMemo(() => sliceByFyRange(BIDS_AWARDED_BY_FY, fyFrom, fyTo), [fyFrom, fyTo])
-  const filteredCategoryCount = useMemo(
-    () => sliceByFyRange(BIDS_AWARDED_CATEGORY_WISE_COUNT, fyFrom, fyTo), [fyFrom, fyTo]
-  )
-  const filteredCategoryValue = useMemo(
-    () => sliceByFyRange(BIDS_AWARDED_CATEGORY_WISE_VALUE, fyFrom, fyTo), [fyFrom, fyTo]
-  )
-  const filteredTypeCount = useMemo(
-    () => sliceByFyRange(BIDS_AWARDED_TYPE_WISE_COUNT, fyFrom, fyTo), [fyFrom, fyTo]
-  )
-  const filteredTypeValue = useMemo(
-    () => sliceByFyRange(BIDS_AWARDED_TYPE_WISE_VALUE, fyFrom, fyTo), [fyFrom, fyTo]
-  )
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const defaultFy = getDefaultRollingFyRange(6)
+        const from = fyFrom || defaultFy.fyFrom
+        const to = fyTo || defaultFy.fyTo
+        const res = await apiFetch(`/dashboard/bids-awarded?fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && res.data) {
+          setAnalysisData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch bids awarded analysis data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, fyFrom, fyTo])
 
   const chartConfig = useMemo(() => {
+    const tenders = analysisData.tenders || []
+    const categoryCount = analysisData.categoryCount || {}
+    const categoryValue = analysisData.categoryValue || {}
+    const typeCount = analysisData.typeCount || {}
+    const typeValue = analysisData.typeValue || {}
+
     if (activeSubTab === 'tenders') {
       return {
-        labels: filteredTenders.map((r) => r.fy),
+        labels: tenders.map((r) => r.fy),
         stacked: false,
         yAxisLabel: 'Number',
         datasets: [
           {
             label: '# Bids Awarded Tenders',
-            data: filteredTenders.map((r) => r.count),
+            data: tenders.map((r) => r.count || 0),
             backgroundColor: toRgba(colors.blue, 0.85),
             borderRadius: 3,
           },
           {
             label: '₹ Bids Awarded Tenders (Rs. in Crores)',
-            data: filteredTenders.map((r) => r.value),
+            data: tenders.map((r) => r.value || 0),
             backgroundColor: toRgba(colors.amber, 0.85),
             borderRadius: 3,
           },
@@ -87,8 +97,18 @@ export default function BidsAwardedAnalysis({ fyFrom, fyTo }) {
         stacked: false,
         yAxisLabel: 'Number',
         datasets: [
-          { label: '# Bids Awarded (Number)', data: sumByKeys(filteredCategoryCount, keys), backgroundColor: toRgba(colors.blue, 0.85), borderRadius: 3 },
-          { label: '₹ Bids Awarded (Rs. in Crores)', data: sumByKeys(filteredCategoryValue, keys), backgroundColor: toRgba(colors.amber, 0.85), borderRadius: 3 },
+          {
+            label: '# Bids Awarded (Number)',
+            data: keys.map((k) => categoryCount[k] || 0),
+            backgroundColor: toRgba(colors.blue, 0.85),
+            borderRadius: 3,
+          },
+          {
+            label: '₹ Bids Awarded (Rs. in Crores)',
+            data: keys.map((k) => categoryValue[k] || 0),
+            backgroundColor: toRgba(colors.amber, 0.85),
+            borderRadius: 3,
+          },
         ],
       }
     }
@@ -99,19 +119,51 @@ export default function BidsAwardedAnalysis({ fyFrom, fyTo }) {
       stacked: false,
       yAxisLabel: 'Number',
       datasets: [
-        { label: '# Bids Awarded (Number)', data: sumByKeys(filteredTypeCount, keys), backgroundColor: toRgba(colors.blue, 0.85), borderRadius: 3 },
-        { label: '₹ Bids Awarded (Rs. in Crores)', data: sumByKeys(filteredTypeValue, keys), backgroundColor: toRgba(colors.amber, 0.85), borderRadius: 3 },
+        {
+          label: '# Bids Awarded (Number)',
+          data: keys.map((k) => typeCount[k] || 0),
+          backgroundColor: toRgba(colors.blue, 0.85),
+          borderRadius: 3,
+        },
+        {
+          label: '₹ Bids Awarded (Rs. in Crores)',
+          data: keys.map((k) => typeValue[k] || 0),
+          backgroundColor: toRgba(colors.amber, 0.85),
+          borderRadius: 3,
+        },
       ],
     }
-  }, [activeSubTab, filteredTenders, filteredCategoryCount, filteredCategoryValue, filteredTypeCount, filteredTypeValue, colors])
+  }, [activeSubTab, analysisData, colors])
 
   const tableColumns = [
     { key: 'sNo', label: 'S.No' },
     { key: 'name', label: 'Organization Name' },
-    { key: 'noOfTenders', label: 'No. of Tenders', align: 'right', format: (v) => v.toLocaleString('en-IN') },
-    { key: 'valOfTenders', label: 'Val. of Tenders (Rs. in Lakhs)', align: 'right', format: (v) => v.toLocaleString('en-IN', { minimumFractionDigits: 2 }) },
-    { key: 'bidsAwardedCount', label: '#. Bids Awarded Tenders', align: 'right', format: (v) => v.toLocaleString('en-IN') },
-    { key: 'bidsAwardedValue', label: '₹. Bids Awarded Tenders (Rs. in Lakhs)', align: 'right', format: (v) => v.toLocaleString('en-IN', { minimumFractionDigits: 2 }) },
+    {
+      key: 'noOfTenders',
+      label: 'No. of Tenders',
+      align: 'right',
+      format: (v) => (v != null ? Number(v).toLocaleString('en-IN') : '0'),
+    },
+    {
+      key: 'valOfTenders',
+      label: 'Val. of Tenders (Rs. in Lakhs)',
+      align: 'right',
+      format: (v) =>
+        v != null ? Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00',
+    },
+    {
+      key: 'bidsAwardedCount',
+      label: '#. Bids Awarded Tenders',
+      align: 'right',
+      format: (v) => (v != null ? Number(v).toLocaleString('en-IN') : '0'),
+    },
+    {
+      key: 'bidsAwardedValue',
+      label: '₹. Bids Awarded Tenders (Rs. in Lakhs)',
+      align: 'right',
+      format: (v) =>
+        v != null ? Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00',
+    },
   ]
 
   return (
@@ -122,7 +174,12 @@ export default function BidsAwardedAnalysis({ fyFrom, fyTo }) {
 
       <TabBar tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />
 
-      <div className="bg-white rounded-2xl border border-tn-border p-5">
+      <div className="bg-white rounded-2xl border border-tn-border p-5 relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
+            <span className="text-xs text-tn-muted font-medium animate-pulse">Loading bids awarded data...</span>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h3 className="font-bold text-tn-navy text-sm flex items-center gap-1.5">
             <Icon name="doc" className="w-4 h-4 text-tn-blue" />
@@ -136,7 +193,11 @@ export default function BidsAwardedAnalysis({ fyFrom, fyTo }) {
         </div>
 
         {activeSubTab === 'organization' ? (
-          <DataTable columns={tableColumns} rows={BIDS_AWARDED_ORGANIZATIONS} searchKeys={['name']} />
+          <DataTable
+            columns={tableColumns}
+            rows={analysisData.organizations || []}
+            searchKeys={['name']}
+          />
         ) : (
           <BarChartCanvas
             labels={chartConfig.labels}

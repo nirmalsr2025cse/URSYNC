@@ -9,4 +9,16 @@ router.get('/overview-stats', dashboardController.getOverviewStats)
 // GET /api/dashboard/number-wise
 router.get('/number-wise', dashboardController.getNumberWiseAnalysis)
 
+// GET /api/dashboard/value-wise
+router.get('/value-wise', dashboardController.getValueWiseAnalysis)
+
+// GET /api/dashboard/number-value-wise
+router.get('/number-value-wise', dashboardController.getNumberValueWiseAnalysis)
+
+// GET /api/dashboard/percentage-wise
+router.get('/percentage-wise', dashboardController.getPercentageWiseAnalysis)
+
+// GET /api/dashboard/bids-awarded
+router.get('/bids-awarded', dashboardController.getBidsAwardedAnalysis)
+
 module.exports = router

@@ -1,42 +1,65 @@
 // src/pages/dashboard/PercentageWiseAnalysis.jsx
 // Descriptive Analysis → Tender Analysis → Percentage Wise.
-// Unlike the other Tender Analysis metrics this one is a single-year view,
-// not a From–To range — it shows the Valid / Cancelled / Retender split
-// for one financial year as a pie chart. The sidebar's Financial Year
-// Filter is still a From/To pair (shared across the whole Tender Analysis
-// group), so this page uses `fyTo` as the selected year for now. If you'd
-// rather the sidebar show a single year selector specifically for this
-// metric, that's a small follow-up to DashboardSidebar.jsx — say the word
-// and I'll add it.
-import React, { useState, useMemo } from 'react'
+// Shows Valid / Cancelled / Retender split for the selected financial year as a pie chart.
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import PieChartCanvas from '../../components/dashboard/PieChartCanvas'
 import { useThemeColors } from '../../utils/dashboardChartUtils'
-import { TENDERS_PERCENTAGE_BY_FY, TENDERS_VALUE_PERCENTAGE_BY_FY } from '../../data/dashboardMockData'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TABS = [
   { id: 'byNumber', tag: 'TR13', label: 'Valid Tenders,Cancelled & Retenders-by No.' },
   { id: 'byValue', tag: 'TR14', label: 'Valid Tenders,Cancelled & Retenders-by Value' },
 ]
 
-export default function PercentageWiseAnalysis({ fyTo }) {
+export default function PercentageWiseAnalysis({ fyFrom, fyTo }) {
   const colors = useThemeColors()
+  const { apiFetch } = useApi()
   const [activeSubTab, setActiveSubTab] = useState('byNumber')
+  const [loading, setLoading] = useState(false)
+  const [analysisData, setAnalysisData] = useState({
+    byNumber: [],
+    byValue: [],
+  })
 
-  const source = activeSubTab === 'byNumber' ? TENDERS_PERCENTAGE_BY_FY : TENDERS_VALUE_PERCENTAGE_BY_FY
-  const row = useMemo(
-    () => source.find((r) => r.fy === fyTo) || source[source.length - 1],
-    [source, fyTo]
-  )
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const defaultFy = getDefaultRollingFyRange(6)
+        const from = fyFrom || defaultFy.fyFrom
+        const to = fyTo || defaultFy.fyTo
+        const res = await apiFetch(`/dashboard/percentage-wise?fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && res.data) {
+          setAnalysisData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch percentage-wise analysis data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, fyFrom, fyTo])
 
-  const total = row.cancelled + row.retender + row.valid
+  const targetFy = fyTo || getDefaultRollingFyRange(6).fyTo
+  const list = activeSubTab === 'byNumber' ? analysisData.byNumber : analysisData.byValue
+  const row = useMemo(() => {
+    if (!list || list.length === 0) {
+      return { fy: targetFy, cancelled: 0, retender: 0, valid: 0 }
+    }
+    return list.find((r) => r.fy === targetFy) || list[list.length - 1]
+  }, [list, targetFy])
+
+  const total = (row.cancelled || 0) + (row.retender || 0) + (row.valid || 0)
   const pct = (n) => (total ? ((n / total) * 100).toFixed(1) : '0.0')
 
-  // Three clearly distinct colors, chosen for meaning rather than just
-  // matching the reference mock: red = Cancelled (bad), violet = Retender
-  // (needs attention), emerald = Valid (good) — easier to read at a glance
-  // than two similar reds sitting next to each other.
   const sliceColors = ['#EF4444', '#8B5CF6', colors.emerald]
 
   return (
@@ -47,7 +70,12 @@ export default function PercentageWiseAnalysis({ fyTo }) {
 
       <TabBar tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />
 
-      <div className="bg-white rounded-2xl border border-tn-border p-5">
+      <div className="bg-white rounded-2xl border border-tn-border p-5 relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
+            <span className="text-xs text-tn-muted font-medium animate-pulse">Loading percentage analysis...</span>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h3 className="font-bold text-tn-navy text-sm flex items-center gap-1.5">
             <Icon name="doc" className="w-4 h-4 text-tn-blue" />
@@ -62,7 +90,7 @@ export default function PercentageWiseAnalysis({ fyTo }) {
 
         <PieChartCanvas
           labels={['Cancelled', 'Retender', 'Valid Tenders']}
-          data={[row.cancelled, row.retender, row.valid]}
+          data={[row.cancelled || 0, row.retender || 0, row.valid || 0]}
           colors={sliceColors}
           richTooltip={{
             titleOverride: `For the Fin Year ${row.fy}`,
@@ -72,9 +100,9 @@ export default function PercentageWiseAnalysis({ fyTo }) {
         />
 
         <div className="flex flex-wrap justify-center gap-x-6 gap-y-1 mt-2 text-xs font-semibold">
-          <span style={{ color: sliceColors[0] }}>Cancelled: {pct(row.cancelled)}%</span>
-          <span style={{ color: sliceColors[1] }}>Retender: {pct(row.retender)}%</span>
-          <span style={{ color: sliceColors[2] }}>Valid Tenders: {pct(row.valid)}%</span>
+          <span style={{ color: sliceColors[0] }}>Cancelled: {pct(row.cancelled || 0)}%</span>
+          <span style={{ color: sliceColors[1] }}>Retender: {pct(row.retender || 0)}%</span>
+          <span style={{ color: sliceColors[2] }}>Valid Tenders: {pct(row.valid || 0)}%</span>
         </div>
 
         <p className="text-center text-[11px] text-tn-blue font-medium mt-4">

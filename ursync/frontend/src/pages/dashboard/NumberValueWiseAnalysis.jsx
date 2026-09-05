@@ -1,24 +1,13 @@
 // src/pages/dashboard/NumberValueWiseAnalysis.jsx
 // Descriptive Analysis → Tender Analysis → Number / Value Wise.
-// Same shape as NumberWiseAnalysis / ValueWiseAnalysis, but each sub-tab
-// renders BOTH the count chart and the value chart stacked in one card
-// (TR9–TR12), reusing the exact same mock data + split ratios as the two
-// single-metric pages so all three stay numerically consistent.
-import React, { useState, useMemo } from 'react'
+// Renders both count chart and value in Crores chart stacked in one card.
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
-import { useThemeColors, toRgba, sliceByFyRange } from '../../utils/dashboardChartUtils'
-import {
-  TENDERS_PUBLISHED_BY_FY,
-  TENDERS_CATEGORY_WISE,
-  TENDERS_TYPE_WISE,
-  TENDERS_STAGE_WISE,
-  TENDERS_VALUE_BY_FY,
-  TENDERS_VALUE_CATEGORY_WISE,
-  TENDERS_VALUE_TYPE_WISE,
-  TENDERS_VALUE_STAGE_WISE,
-} from '../../data/dashboardMockData'
+import { useThemeColors, toRgba } from '../../utils/dashboardChartUtils'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TABS = [
   { id: 'tendersPublished', tag: 'TR9', label: 'Tenders - by No./Value' },
@@ -37,8 +26,6 @@ const CHART_TITLES = {
 const NUMBER_Y_LABEL = 'No of Tenders'
 const VALUE_Y_LABEL = 'Value of Tenders (Rs. in Crores)'
 
-// Builds one chart config (count or value) for a given sub-tab, sharing the
-// same key/palette logic NumberWiseAnalysis and ValueWiseAnalysis each use.
 function buildChartConfig(subTab, rows, keyField, palette, yAxisLabel) {
   if (subTab === 'tendersPublished') {
     return {
@@ -47,7 +34,7 @@ function buildChartConfig(subTab, rows, keyField, palette, yAxisLabel) {
       yAxisLabel,
       datasets: [{
         label: yAxisLabel === NUMBER_Y_LABEL ? 'Tenders Published' : 'Value of Tenders',
-        data: rows.map((r) => r[keyField]),
+        data: rows.map((r) => r[keyField] || 0),
         backgroundColor: toRgba(palette[0], 0.85),
         borderRadius: 4,
         maxBarThickness: 40,
@@ -62,7 +49,7 @@ function buildChartConfig(subTab, rows, keyField, palette, yAxisLabel) {
       yAxisLabel,
       datasets: keys.map((k, i) => ({
         label: k,
-        data: rows.map((r) => r[k]),
+        data: rows.map((r) => r[k] || 0),
         backgroundColor: toRgba(palette[i], 0.85),
         borderRadius: 3,
       })),
@@ -76,7 +63,7 @@ function buildChartConfig(subTab, rows, keyField, palette, yAxisLabel) {
       yAxisLabel,
       datasets: keys.map((k, i) => ({
         label: k,
-        data: rows.map((r) => r[k]),
+        data: rows.map((r) => r[k] || 0),
         backgroundColor: toRgba(palette[i], 0.85),
         borderRadius: 3,
       })),
@@ -90,7 +77,7 @@ function buildChartConfig(subTab, rows, keyField, palette, yAxisLabel) {
     yAxisLabel,
     datasets: keys.map((k, i) => ({
       label: k,
-      data: rows.map((r) => r[k]),
+      data: rows.map((r) => r[k] || 0),
       backgroundColor: toRgba(palette[i % palette.length], 0.85),
       borderRadius: 3,
     })),
@@ -99,25 +86,57 @@ function buildChartConfig(subTab, rows, keyField, palette, yAxisLabel) {
 
 export default function NumberValueWiseAnalysis({ fyFrom, fyTo }) {
   const colors = useThemeColors()
+  const { apiFetch } = useApi()
   const [activeSubTab, setActiveSubTab] = useState('tendersPublished')
+  const [loading, setLoading] = useState(false)
+  const [analysisData, setAnalysisData] = useState({
+    numberData: {
+      tendersPublished: [],
+      categoryWise: [],
+      typeWise: [],
+      stageWise: [],
+    },
+    valueData: {
+      tendersPublished: [],
+      categoryWise: [],
+      typeWise: [],
+      stageWise: [],
+    },
+  })
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const defaultFy = getDefaultRollingFyRange(6)
+        const from = fyFrom || defaultFy.fyFrom
+        const to = fyTo || defaultFy.fyTo
+        const res = await apiFetch(`/dashboard/number-value-wise?fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && res.data) {
+          setAnalysisData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch number-value-wise analysis data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, fyFrom, fyTo])
 
   const numberRows = useMemo(() => {
-    const source =
-      activeSubTab === 'tendersPublished' ? TENDERS_PUBLISHED_BY_FY :
-      activeSubTab === 'categoryWise' ? TENDERS_CATEGORY_WISE :
-      activeSubTab === 'typeWise' ? TENDERS_TYPE_WISE :
-      TENDERS_STAGE_WISE
-    return sliceByFyRange(source, fyFrom, fyTo)
-  }, [activeSubTab, fyFrom, fyTo])
+    const num = analysisData.numberData || {}
+    return num[activeSubTab] || []
+  }, [activeSubTab, analysisData])
 
   const valueRows = useMemo(() => {
-    const source =
-      activeSubTab === 'tendersPublished' ? TENDERS_VALUE_BY_FY :
-      activeSubTab === 'categoryWise' ? TENDERS_VALUE_CATEGORY_WISE :
-      activeSubTab === 'typeWise' ? TENDERS_VALUE_TYPE_WISE :
-      TENDERS_VALUE_STAGE_WISE
-    return sliceByFyRange(source, fyFrom, fyTo)
-  }, [activeSubTab, fyFrom, fyTo])
+    const val = analysisData.valueData || {}
+    return val[activeSubTab] || []
+  }, [activeSubTab, analysisData])
 
   const numberChart = useMemo(() => {
     const palette =
@@ -145,7 +164,12 @@ export default function NumberValueWiseAnalysis({ fyFrom, fyTo }) {
 
       <TabBar tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />
 
-      <div className="bg-white rounded-2xl border border-tn-border p-5">
+      <div className="bg-white rounded-2xl border border-tn-border p-5 relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
+            <span className="text-xs text-tn-muted font-medium animate-pulse">Loading analysis data...</span>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h3 className="font-bold text-tn-navy text-sm flex items-center gap-1.5">
             <Icon name="doc" className="w-4 h-4 text-tn-blue" />
