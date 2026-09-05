@@ -12,7 +12,53 @@ const District = require('../models/District')
 // Recompute `booked` from the applications array so it can never drift
 // out of sync (e.g. if an approval is later reversed).
 function recomputeBooked(resource) {
-  resource.booked = resource.applications.filter(a => a.status === 'Approved').length
+  return resource
+}
+
+function parseDateRange(requiredFrom, requiredTo) {
+  if (!requiredFrom || !requiredTo) {
+    return { valid: false, message: 'Please select a valid date range.' }
+  }
+
+  const from = new Date(requiredFrom)
+  const to = new Date(requiredTo)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+    return { valid: false, message: 'Please select a valid date range.' }
+  }
+
+  return { valid: true, from, to }
+}
+
+function formatDateForMessage(value) {
+  return new Date(value).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function startOfToday() {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return today
+}
+
+function overlapQuery(resourceId, from, to, extra = {}) {
+  return {
+    resource: resourceId,
+    ...extra,
+    requiredFrom: { $lte: to },
+    requiredTo: { $gte: from },
+  }
+}
+
+function findApprovedConflict(resourceId, from, to, session) {
+  const query = ResourceRequest.findOne(
+    overlapQuery(resourceId, from, to, { status: 'Approved' })
+  )
+    .sort({ requiredFrom: 1 })
+  if (session) query.session(session)
+  return query.lean()
 }
 
 // ── Admin / general listing ────────────────────────────────────────────
@@ -22,18 +68,46 @@ function recomputeBooked(resource) {
 // expose other users' applications — only aggregate counts.
 async function listResources(req, res) {
   try {
+    await expireResourceRequests()
+
+    const { requiredFrom, requiredTo } = req.query
+    let from = null
+    let to = null
+    if (requiredFrom || requiredTo) {
+      const parsed = parseDateRange(requiredFrom, requiredTo)
+      if (!parsed.valid) return res.status(400).json({ message: parsed.message })
+      from = parsed.from
+      to = parsed.to
+    }
+
     const resources = await Resource.find({
       isDeleted: false,
       isActive: true,
-      available: { $gt: 0 },
     })
-      .select('name description category district departmentId available booked createdAt')
+      .select('name description category district departmentId available createdAt')
       .populate('district', 'name code')
       .populate('departmentId', 'name code')
       .sort({ createdAt: -1 })
       .lean({ virtuals: true })
 
-    res.json({ resources })
+    const quantities = from && to
+      ? await getApprovedQuantities(resources.map(resource => resource._id), from, to)
+      : new Map()
+    const data = resources.map(resource => {
+      const approvedQuantity = quantities.get(resource._id.toString()) || 0
+      const availableQuantity = Math.max(0, resource.available - approvedQuantity)
+      return {
+        ...resource,
+        approvedQuantity,
+        availableQuantity,
+        availableForDates: availableQuantity > 0,
+        availabilityMessage: availableQuantity > 0
+          ? null
+          : 'No resources are available for the selected date range.',
+      }
+    })
+
+    res.json({ resources: data })
   } catch (err) {
     console.error('listResources error:', err)
     res.status(500).json({ message: 'Failed to load resources.' })
@@ -49,7 +123,7 @@ async function getResourceById(req, res) {
     }
 
     const resource = await Resource.findOne({ _id: id, isDeleted: false })
-      .select('name description category district departmentId available booked createdAt')
+      .select('name description category district departmentId available createdAt')
       .populate('district', 'name code')
       .populate('departmentId', 'name code')
       .lean({ virtuals: true })
@@ -96,7 +170,6 @@ async function createResource(req, res) {
       district: district || districtId || null,
       departmentId: departmentId || req.departmentId || null,
       available: Number(resourceQuantity),
-      booked: 0,
       applications: [],
       applied: [],
     })
@@ -180,26 +253,44 @@ async function applyForResource(req, res) {
       return res.status(400).json({ message: 'requiredQuantity must be at least 1.' })
     }
 
-    const from = new Date(requiredFrom)
-    const to = new Date(requiredTo)
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) {
-      return res.status(400).json({ message: 'Invalid date range.' })
-    }
+    const dateRange = parseDateRange(requiredFrom, requiredTo)
+    if (!dateRange.valid) return res.status(400).json({ message: dateRange.message })
+    const { from, to } = dateRange
 
     const resource = await Resource.findOne({ _id: id, isDeleted: false, isActive: true })
     if (!resource) return res.status(404).json({ message: 'Resource not found.' })
 
-    if (Number(requiredQuantity) > resource.available - resource.booked) {
-      return res.status(409).json({ message: 'The requested quantity is not available.' })
+    const pendingRequest = await ResourceRequest.findOne(
+      overlapQuery(resource._id, from, to, {
+        requestedBy: req.user._id,
+        status: 'Pending',
+      })
+    ).lean()
+    if (pendingRequest) {
+      return res.status(409).json({
+        message: `You already have a pending request for this resource from ${formatDateForMessage(pendingRequest.requiredFrom)} to ${formatDateForMessage(pendingRequest.requiredTo)}.`,
+      })
     }
 
-    // Prevent the same user from stacking duplicate pending applications
-    // for the same resource.
-    const alreadyPending = resource.applications.some(
-      a => a.userId.toString() === req.user._id.toString() && a.status === 'Pending'
-    )
-    if (alreadyPending) {
-      return res.status(409).json({ message: 'You already have a pending request for this resource.' })
+    const approvedRequestByUser = await ResourceRequest.findOne(
+      overlapQuery(resource._id, from, to, {
+        requestedBy: req.user._id,
+        status: 'Approved',
+      })
+    ).lean()
+    if (approvedRequestByUser) {
+      return res.status(409).json({
+        message: `You already have an approved request for this resource from ${formatDateForMessage(approvedRequestByUser.requiredFrom)} to ${formatDateForMessage(approvedRequestByUser.requiredTo)}.`,
+      })
+    }
+
+    const approvedQuantities = await getApprovedQuantities([resource._id], from, to)
+    const approvedQuantity = approvedQuantities.get(resource._id.toString()) || 0
+    const availableQuantity = Math.max(0, resource.available - approvedQuantity)
+    if (Number(requiredQuantity) > availableQuantity) {
+      return res.status(409).json({
+        message: `Only ${availableQuantity} resources are available for the selected date range.`,
+      })
     }
 
     const resourceRequest = await ResourceRequest.create({
@@ -226,6 +317,7 @@ async function applyForResource(req, res) {
     resource.applications.push({
       userId: req.user._id,
       requestId: resourceRequest._id,
+      requiredQuantity: Number(requiredQuantity),
       requiredFrom: from,
       requiredTo: to,
       status: 'Pending',
@@ -247,37 +339,12 @@ async function applyForResource(req, res) {
 }
 
 // GET /api/resource-requests/mine
-// Flattens every application the logged-in user has made, across all
-// resources, into the shape AppliedResourcesPage.jsx expects:
-//   { _id, resourceId, resourceName, requiredFrom, requiredTo, status }
-// Filtering happens server-side via req.user._id — a user can never see
-// another user's applications.
+// Returns requests from the dedicated resourcerequests collection.
 async function getMyRequests(req, res) {
   try {
-    const resources = await Resource.find({
-      isDeleted: false,
-      'applications.userId': req.user._id,
-    })
-      .select('name applications')
+    const requests = await ResourceRequest.find({ requestedBy: req.user._id })
+      .sort({ createdAt: -1 })
       .lean()
-
-    const requests = []
-    for (const resource of resources) {
-      for (const app of resource.applications) {
-        if (app.userId.toString() !== req.user._id.toString()) continue
-        requests.push({
-          _id: app._id,
-          resourceId: resource._id,
-          resourceName: resource.name,
-          requiredFrom: app.requiredFrom,
-          requiredTo: app.requiredTo,
-          status: app.status,
-        })
-      }
-    }
-
-    // Most recently applied first.
-    requests.sort((a, b) => new Date(b._id.getTimestamp()) - new Date(a._id.getTimestamp()))
 
     res.json({ requests })
   } catch (err) {
@@ -290,7 +357,7 @@ async function getMyRequests(req, res) {
 
 // PATCH /api/resources/:id/applications/:appId
 // Body: { status: 'Approved' | 'Rejected', remarks? }
-// Admin-only (guard in route). Keeps `booked` in sync.
+// Admin-only legacy route. Reservation availability is calculated from requests.
 async function decideApplication(req, res) {
   try {
     const { id, appId } = req.params
@@ -309,8 +376,17 @@ async function decideApplication(req, res) {
     const application = resource.applications.id(appId)
     if (!application) return res.status(404).json({ message: 'Application not found.' })
 
-    if (status === 'Approved' && resource.booked >= resource.available) {
-      return res.status(409).json({ message: 'No units remaining to approve this request.' })
+    if (status === 'Approved') {
+      if (application.status !== 'Pending') {
+        return res.status(409).json({ message: 'This application is no longer pending.' })
+      }
+      const approvedQuantities = await getApprovedQuantities(
+        [resource._id], application.requiredFrom, application.requiredTo
+      )
+      const availableQuantity = Math.max(0, resource.available - (approvedQuantities.get(resource._id.toString()) || 0))
+      if ((application.requiredQuantity || 1) > availableQuantity) {
+        return res.status(409).json({ message: `Cannot approve this application. Only ${availableQuantity} resources are available for the selected date range.` })
+      }
     }
 
     application.status = status
@@ -318,7 +394,6 @@ async function decideApplication(req, res) {
     application.decidedAt = new Date()
     application.decidedBy = req.user._id
 
-    recomputeBooked(resource)
     await resource.save()
 
     if (application.requestId) {
@@ -328,7 +403,14 @@ async function decideApplication(req, res) {
       })
     }
 
-    res.json({ message: `Request ${status.toLowerCase()}.`, booked: resource.booked })
+    if (status === 'Rejected') {
+      resource.applied = (resource.applied || []).filter(
+        userId => userId.toString() !== application.userId.toString()
+      )
+      await resource.save()
+    }
+
+    res.json({ message: `Request ${status.toLowerCase()}.` })
   } catch (err) {
     console.error('decideApplication error:', err)
     res.status(500).json({ message: 'Failed to update application.' })
@@ -337,11 +419,274 @@ async function decideApplication(req, res) {
 
 module.exports = {
   listResources,
+  listSharingResources,
+  listResourceRequests,
+  decideResourceRequest,
+  expireResourceRequests,
   getResourceById,
+  getResourceAvailability,
   createResource,
   applyForResource,
   getMyRequests,
   decideApplication,
   getMyDepartment,
   listDistricts,
+}
+
+async function listSharingResources(req, res) {
+  try {
+    const { q, requiredFrom, requiredTo } = req.query
+    let from = null
+    let to = null
+    if (requiredFrom || requiredTo) {
+      const parsed = parseDateRange(requiredFrom, requiredTo)
+      if (!parsed.valid) return res.status(400).json({ message: parsed.message })
+      from = parsed.from
+      to = parsed.to
+    }
+
+    const resourceFilter = { isDeleted: false, isActive: true }
+    if (q?.trim()) {
+      const search = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      resourceFilter.$or = [{ name: search }, { category: search }, { description: search }]
+    }
+    const resources = await Resource.find(resourceFilter)
+      .select('name description category district departmentId available createdAt')
+      .populate('district', 'name code')
+      .populate('departmentId', 'name code')
+      .sort({ createdAt: -1 })
+      .lean({ virtuals: true })
+
+    const quantities = from && to
+      ? await getApprovedQuantities(resources.map(resource => resource._id), from, to)
+      : new Map()
+    res.json({ resources: resources.map(resource => {
+      const approvedQuantity = quantities.get(resource._id.toString()) || 0
+      const availableQuantity = Math.max(0, resource.available - approvedQuantity)
+      return {
+        ...resource,
+        approvedQuantity,
+        availableQuantity,
+        availableForDates: availableQuantity > 0,
+        availabilityMessage: availableQuantity > 0 ? null : 'No resources are available for the selected date range.',
+      }
+    }) })
+  } catch (err) {
+    console.error('listSharingResources error:', err)
+    res.status(500).json({ message: 'Failed to load resources.' })
+  }
+}
+
+async function expireResourceRequests() {
+  const expiredPending = await ResourceRequest.find({
+    status: 'Pending',
+    requiredFrom: { $lte: new Date() },
+  }).select('_id resource requestedBy')
+
+  for (const request of expiredPending) {
+    const updated = await ResourceRequest.findOneAndUpdate(
+      { _id: request._id, status: 'Pending' },
+      { $set: { status: 'Rejected', remarks: 'Request expired before approval.' } },
+      { new: true }
+    )
+    if (!updated) continue
+
+    await Resource.updateOne(
+      { _id: request.resource },
+      {
+        $set: {
+          'applications.$[application].status': 'Rejected',
+          'applications.$[application].remarks': updated.remarks,
+        },
+        $pull: { applied: request.requestedBy },
+      },
+      { arrayFilters: [{ 'application.requestId': request._id }] }
+    )
+  }
+
+  const completedRequests = await ResourceRequest.find({
+    status: 'Approved',
+    requiredTo: { $lt: startOfToday() },
+  }).select('_id resource requestedBy requiredQuantity')
+
+  for (const request of completedRequests) {
+    const updated = await ResourceRequest.findOneAndUpdate(
+      { _id: request._id, status: 'Approved' },
+      { $set: { status: 'Completed', remarks: 'Resource returned after the required period.' } },
+      { new: true }
+    )
+    if (!updated) continue
+
+    const resource = await Resource.findById(request.resource)
+    if (!resource) continue
+
+    resource.applied = (resource.applied || []).filter(
+      userId => userId.toString() !== request.requestedBy.toString()
+    )
+
+    const application = resource.applications.find(
+      app => app.requestId?.toString() === request._id.toString()
+    )
+    if (application) {
+      application.status = 'Completed'
+      application.remarks = updated.remarks
+      application.decidedAt = new Date()
+    }
+
+    await resource.save()
+  }
+
+  return expiredPending.length + completedRequests.length
+}
+
+async function listResourceRequests(req, res) {
+  try {
+    await expireResourceRequests()
+    const requests = await ResourceRequest.find({}).sort({ createdAt: -1 }).lean()
+    res.json({ requests })
+  } catch (err) {
+    console.error('listResourceRequests error:', err)
+    res.status(500).json({ message: 'Failed to load resource requests.' })
+  }
+}
+
+let standaloneDecisionQueue = Promise.resolve()
+
+async function performResourceDecision(requestId, status, remarks, session) {
+  const allowedStatuses = status === 'Approved' ? ['Pending'] : ['Pending', 'Approved']
+  let requestQuery = ResourceRequest.findOne({ _id: requestId, status: { $in: allowedStatuses } })
+  if (session) requestQuery = requestQuery.session(session)
+  const request = await requestQuery
+  if (!request) throw createHttpError(409, 'This request is no longer pending.')
+
+  const quantity = request.requiredQuantity || 1
+  const resourceQuery = Resource.findOne({ _id: request.resource, isDeleted: false })
+  if (session) resourceQuery.session(session)
+  const resource = await resourceQuery
+  if (!resource) throw createHttpError(404, 'Resource not found.')
+
+  if (status === 'Approved') {
+    const approvedQuantities = await getApprovedQuantities(
+      [request.resource],
+      request.requiredFrom,
+      request.requiredTo,
+      session
+    )
+    const approvedQuantity = approvedQuantities.get(request.resource.toString()) || 0
+    const availableQuantity = Math.max(0, resource.available - approvedQuantity)
+    if (quantity > availableQuantity) {
+      throw createHttpError(409, `Cannot approve this request. Only ${availableQuantity} resources are available for the selected date range, but this request requires ${quantity}.`)
+    }
+  }
+
+  const updateOptions = { arrayFilters: [{ 'application.requestId': request._id }] }
+  if (session) updateOptions.session = session
+  await Resource.updateOne(
+    { _id: request.resource },
+    {
+      $set: {
+        'applications.$[application].status': status,
+        'applications.$[application].remarks': remarks,
+        'applications.$[application].decidedAt': new Date(),
+      },
+      ...(status === 'Rejected' ? { $pull: { applied: request.requestedBy } } : {}),
+    },
+    updateOptions
+  )
+
+  request.status = status
+  request.remarks = remarks
+  if (session) await request.save({ session })
+  else await request.save()
+
+  return { request, resource }
+}
+
+async function decideResourceRequest(req, res) {
+  let session
+  try {
+    const { requestId } = req.params
+    const { status, remarks = '' } = req.body
+    if (!['Approved', 'Rejected'].includes(status) || !mongoose.Types.ObjectId.isValid(requestId)) {
+      return res.status(400).json({ message: 'Invalid request decision.' })
+    }
+
+    await expireResourceRequests()
+    const topologyType = mongoose.connection.getClient()?.topology?.description?.type
+    const supportsTransactions = topologyType === 'ReplicaSet' || topologyType === 'Sharded'
+    let response
+
+    if (supportsTransactions) {
+      session = await mongoose.startSession()
+      await session.withTransaction(async () => {
+        response = await performResourceDecision(requestId, status, remarks, session)
+      })
+    } else {
+      const previous = standaloneDecisionQueue
+      let release
+      standaloneDecisionQueue = new Promise(resolve => { release = resolve })
+      await previous
+      try {
+        response = await performResourceDecision(requestId, status, remarks)
+      } finally {
+        release()
+      }
+    }
+
+    res.json({ message: `Request ${status.toLowerCase()}.`, ...response })
+  } catch (err) {
+    console.error('decideResourceRequest error:', err)
+    res.status(err.statusCode || 500).json({ message: err.message || 'Failed to update resource request.' })
+  } finally {
+    if (session) await session.endSession()
+  }
+}
+
+function createHttpError(statusCode, message) {
+  const error = new Error(message)
+  error.statusCode = statusCode
+  return error
+}
+
+async function getApprovedQuantities(resourceIds, from, to, session) {
+  const match = {
+    resource: { $in: resourceIds },
+    status: 'Approved',
+    requiredFrom: { $lte: to },
+    requiredTo: { $gte: from },
+  }
+  const aggregate = ResourceRequest.aggregate([
+    { $match: match },
+    { $group: { _id: '$resource', quantity: { $sum: '$requiredQuantity' } } },
+  ])
+  if (session) aggregate.session(session)
+  const rows = await aggregate
+  return new Map(rows.map(row => [row._id.toString(), row.quantity]))
+}
+
+async function getResourceAvailability(req, res) {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid resource id.' })
+    }
+    const parsed = parseDateRange(req.query.requiredFrom, req.query.requiredTo)
+    if (!parsed.valid) return res.status(400).json({ message: parsed.message })
+
+    const resource = await Resource.findOne({ _id: id, isDeleted: false, isActive: true })
+      .select('available')
+      .lean()
+    if (!resource) return res.status(404).json({ message: 'Resource not found.' })
+
+    const quantities = await getApprovedQuantities([resource._id], parsed.from, parsed.to)
+    const approvedQuantity = quantities.get(resource._id.toString()) || 0
+    res.json({
+      totalQuantity: resource.available,
+      approvedQuantity,
+      availableQuantity: Math.max(0, resource.available - approvedQuantity),
+    })
+  } catch (err) {
+    console.error('getResourceAvailability error:', err)
+    res.status(500).json({ message: 'Failed to calculate resource availability.' })
+  }
 }

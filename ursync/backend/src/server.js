@@ -6,6 +6,7 @@ const startApplicationStatusCron = require('./jobs/applicationStatusCron')
 const startOngoingStatusCron = require('./jobs/updateOngoingStatusCron')
 const cron = require('node-cron')
 const { cleanupExpiredTempApplications } = require('./jobs/cleanupTempApplications')
+const { expireResourceRequests } = require('./controllers/resourceController')
 
 const PORT = process.env.PORT || 5000
 
@@ -16,6 +17,9 @@ connectDB().then(() => {
     startOngoingStatusCron()
     cron.schedule('0 * * * *', () => {
       cleanupExpiredTempApplications().catch(console.error)
+    })
+    cron.schedule('* * * * *', () => {
+      expireResourceRequests().catch(err => console.error('resource request expiry error:', err))
     })
   })
 })

@@ -22,7 +22,7 @@ const resourceRequestSchema = new Schema(
     remarks: { type: String, trim: true, default: '' },
     status: {
       type: String,
-      enum: ['Pending', 'Approved', 'Rejected'],
+      enum: ['Pending', 'Approved', 'Rejected', 'Completed'],
       default: 'Pending',
     },
     requestedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -32,5 +32,7 @@ const resourceRequestSchema = new Schema(
 
 resourceRequestSchema.index({ requestedBy: 1, createdAt: -1 })
 resourceRequestSchema.index({ resource: 1, status: 1 })
+resourceRequestSchema.index({ resource: 1, status: 1, requiredFrom: 1, requiredTo: 1 })
+resourceRequestSchema.index({ resource: 1, requestedBy: 1, status: 1, requiredFrom: 1, requiredTo: 1 })
 
 module.exports = mongoose.model('ResourceRequest', resourceRequestSchema)

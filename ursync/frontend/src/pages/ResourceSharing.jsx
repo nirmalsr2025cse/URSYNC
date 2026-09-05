@@ -1,11 +1,7 @@
 // src/pages/ResourceSharing.jsx
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import Pagination from '../components/Pagination'
-import {
-  AVAILABLE_RESOURCES,
-  UNAVAILABLE_RESOURCES,
-  RESOURCE_REQUESTS,
-} from '../data/resourceSharingMockData'
+import { useApi } from '../api/client'
 
 /* ─────────────────────── helpers ─────────────────────── */
 const TABS = [
@@ -602,6 +598,7 @@ function RequestCard({ request, onView, onApprove, onReject, activeTab }) {
 const PAGE_SIZE = 6
 
 export default function ResourceSharing() {
+  const { apiFetch } = useApi()
   const [activeTab,     setActiveTab]     = useState('Available')
   const [animating,     setAnimating]     = useState(false)
   const [currentPage,   setCurrentPage]   = useState(1)
@@ -609,14 +606,61 @@ export default function ResourceSharing() {
   const [appliedSearch, setAppliedSearch] = useState('')
   const [searching,     setSearching]     = useState(false)
 
-  const [availableList,   setAvailableList]   = useState(AVAILABLE_RESOURCES)
-  const [unavailableList, setUnavailableList] = useState(UNAVAILABLE_RESOURCES)
-  const [requestList,     setRequestList]     = useState(RESOURCE_REQUESTS)
+  const [resourceList,    setResourceList]    = useState([])
+  const [requestList,     setRequestList]     = useState([])
+  const [loading,         setLoading]         = useState(true)
 
   const [viewResource, setViewResource] = useState(null)
   const [editResource, setEditResource] = useState(null)
   const [viewRequest,  setViewRequest]  = useState(null)
   const [toast,        setToast]        = useState(null)
+
+  async function loadData() {
+    try {
+      setLoading(true)
+      const [resourceData, requestData] = await Promise.all([
+        apiFetch('/resource-sharing/resources'),
+        apiFetch('/resource-sharing/requests'),
+      ])
+      setResourceList((resourceData.resources || []).map(resource => ({
+        ...resource,
+        id: resource._id,
+        status: resource.available > 0 ? 'Available' : 'Not Available',
+        department: resource.departmentId?.name || resource.departmentId?.code || 'Not specified',
+        district: resource.district?.name || resource.district?.code || 'Not specified',
+        quantity: resource.available,
+        unit: 'units',
+        condition: 'Not specified',
+        specifications: resource.description || 'Not specified',
+        availableFrom: resource.createdAt,
+        availableTo: resource.createdAt,
+        expectedAvailability: resource.createdAt,
+      })))
+      setRequestList((requestData.requests || []).map(request => ({
+        ...request,
+        id: request._id,
+        requestedBy: request.applicantName,
+        requestedDate: request.createdAt,
+        urgency: 'Standard',
+        user: {
+          name: request.applicantName,
+          designation: request.designation,
+          department: request.department,
+          district: request.district,
+          phone: request.contactNumber,
+          email: request.organization,
+        },
+      })))
+    } catch (err) {
+      showToast(err.message || 'Failed to load resource sharing data.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
@@ -643,51 +687,60 @@ export default function ResourceSharing() {
     setCurrentPage(1)
   }
 
-  function handleSaveEdit(updatedResource) {
-    if (updatedResource.status === 'Available') {
-      setAvailableList(prev => prev.map(r => r.id === updatedResource.id ? updatedResource : r))
-    } else {
-      setUnavailableList(prev => prev.map(r => r.id === updatedResource.id ? updatedResource : r))
+  async function handleDecision(reqId, status) {
+    try {
+      await apiFetch(`/resource-sharing/requests/${reqId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      })
+      await loadData()
+      showToast(`Request ${status.toLowerCase()} successfully`)
+    } catch (err) {
+      showToast(err.message || `Failed to ${status.toLowerCase()} request.`, 'error')
     }
-    showToast('Resource updated successfully')
   }
 
   function handleApprove(reqId) {
-    setRequestList(prev => prev.map(r => r.id === reqId ? { ...r, status: 'Approved' } : r))
-    showToast('Request Approved Successfully')
+    handleDecision(reqId, 'Approved')
   }
 
   function handleReject(reqId) {
-    setRequestList(prev => prev.map(r => r.id === reqId ? { ...r, status: 'Rejected' } : r))
-    showToast('Request Rejected', 'error')
+    handleDecision(reqId, 'Rejected')
+  }
+
+  function handleSaveEdit(updatedResource) {
+    setResourceList(prev => prev.map(resource => (
+      resource.id === updatedResource.id ? { ...resource, ...updatedResource } : resource
+    )))
+    showToast('Resource updated locally. Persisted editing is not available yet.')
   }
 
   // Filter logic
   const filtered = useMemo(() => {
     const q = appliedSearch.toLowerCase().trim()
 
-    if (activeTab === 'Available') {
-      return availableList.filter(r =>
+    if (activeTab === 'Available' || activeTab === 'Not-Available') {
+      return resourceList
+        .filter(r => activeTab === 'Available' ? r.available > 0 : r.available === 0)
+        .filter(r =>
         !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
-        r.department.toLowerCase().includes(q) || r.district.toLowerCase().includes(q) || r.category.toLowerCase().includes(q)
+        (r.departmentId?.name || '').toLowerCase().includes(q) ||
+        (r.district?.name || '').toLowerCase().includes(q) || r.category.toLowerCase().includes(q)
       )
     }
-    if (activeTab === 'Not-Available') {
-      return unavailableList.filter(r =>
-        !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
-        r.department.toLowerCase().includes(q) || r.district.toLowerCase().includes(q)
-      )
-    }
-    // Request / Approved / Rejected tabs all use requestList, filtered by status
+    /* Requests are read from resourcerequests and grouped by status. */
     const statusMap = { Request: 'Pending', Approved: 'Approved', Rejected: 'Rejected' }
     const statusFilter = statusMap[activeTab]
     return requestList
       .filter(r => r.status === statusFilter)
       .filter(r =>
-        !q || r.resourceName.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) ||
-        r.requestedBy.toLowerCase().includes(q) || r.user.name.toLowerCase().includes(q)
+        !q ||
+        (r.resourceName || '').toLowerCase().includes(q) ||
+        (r.id || '').toLowerCase().includes(q) ||
+        (r.resourceId || '').toLowerCase().includes(q) ||
+        (r.applicantName || '').toLowerCase().includes(q)
       )
-  }, [activeTab, appliedSearch, availableList, unavailableList, requestList])
+  }, [activeTab, appliedSearch, resourceList, requestList])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated  = useMemo(() => {
@@ -818,7 +871,12 @@ export default function ResourceSharing() {
 
       {/* Cards Grid */}
       <div className={['transition-opacity duration-150', animating ? 'opacity-0' : 'opacity-100'].join(' ')}>
-        {paginated.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-20 bg-white rounded-2xl border border-tn-border">
+            <div className="w-6 h-6 border-2 border-tn-blue border-t-transparent rounded-full animate-spin" />
+            <span className="ml-3 text-sm text-tn-muted">Loading resources and requests...</span>
+          </div>
+        ) : paginated.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-tn-border border-dashed">
             <div className="w-14 h-14 rounded-full bg-tn-light flex items-center justify-center mb-4 border border-tn-border">
               <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -36,15 +36,16 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
   const district = resource.district?.name || resource.district?.code || 'Not specified'
   const department = resource.departmentId?.name || resource.departmentId?.code || 'Not specified'
   const remaining = Math.max(0, (resource.available || 0) - (resource.booked || 0))
+  const availableForDates = resource.availableForDates !== false && resource.available > 0
 
   return (
     <div className="bg-white rounded-2xl border border-tn-border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden">
-      <div className="h-1.5 w-full bg-emerald-400" />
+      <div className={`h-1.5 w-full ${availableForDates ? 'bg-emerald-400' : 'bg-red-400'}`} />
 
       <div className="p-5 flex flex-col flex-1">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-emerald-50 text-emerald-600">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${availableForDates ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
               <CategoryIcon category={resource.category} />
             </div>
             <div className="min-w-0">
@@ -52,8 +53,8 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
               <p className="text-[10px] text-tn-muted">{resource._id}</p>
             </div>
           </div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 mt-0.5 bg-emerald-50 text-emerald-700 border-emerald-200">
-            Available
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 mt-0.5 ${availableForDates ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+            {availableForDates ? 'Available' : 'Unavailable for selected dates'}
           </span>
         </div>
 
@@ -75,7 +76,7 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
           <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          {resource.description || 'No description available.'}
+          {resource.availabilityMessage || resource.description || 'No description available.'}
         </div>
 
         <div className="flex-1" />
@@ -93,7 +94,8 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
           </button>
           <button
             onClick={() => onGetResource(resource)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors"
+            disabled={!availableForDates}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -110,6 +112,13 @@ function SearchResourceCard({ resource, onView, onGetResource }) {
 export default function SearchResourcePage() {
   const navigate = useNavigate()
   const { apiFetch } = useApi()
+  const [search, setSearch] = useState('')
+  const [requiredFrom, setRequiredFrom] = useState('')
+  const [requiredTo, setRequiredTo] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [resources, setResources] = useState([])
+  const [loadingResources, setLoadingResources] = useState(false)
+  const [resourceError, setResourceError] = useState('')
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -120,7 +129,14 @@ export default function SearchResourcePage() {
     setLoadingResources(true)
     setResourceError('')
 
-    apiFetch('/resources')
+    const params = new URLSearchParams()
+    if (requiredFrom && requiredTo) {
+      params.set('requiredFrom', requiredFrom)
+      params.set('requiredTo', requiredTo)
+    }
+    const query = params.toString() ? `?${params.toString()}` : ''
+
+    apiFetch(`/resources${query}`)
       .then((data) => {
         if (!cancelled) setResources(data.resources || [])
       })
@@ -132,13 +148,7 @@ export default function SearchResourcePage() {
       })
 
     return () => { cancelled = true }
-  }, [apiFetch])
-
-  const [search, setSearch] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [resources, setResources] = useState([])
-  const [loadingResources, setLoadingResources] = useState(false)
-  const [resourceError, setResourceError] = useState('')
+  }, [apiFetch, requiredFrom, requiredTo])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
@@ -219,6 +229,27 @@ export default function SearchResourcePage() {
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-tn-border rounded-xl bg-white text-tn-navy placeholder-tn-muted focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue transition-all"
             />
           </div>
+
+          <input
+            type="date"
+            value={requiredFrom}
+            onChange={(e) => {
+              setRequiredFrom(e.target.value)
+              setCurrentPage(1)
+            }}
+            className="px-3 py-2.5 text-sm border border-tn-border rounded-xl text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30"
+            aria-label="Required from date"
+          />
+          <input
+            type="date"
+            value={requiredTo}
+            onChange={(e) => {
+              setRequiredTo(e.target.value)
+              setCurrentPage(1)
+            }}
+            className="px-3 py-2.5 text-sm border border-tn-border rounded-xl text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30"
+            aria-label="Required to date"
+          />
 
           {search && (
             <button onClick={handleClear} className="text-xs text-tn-muted hover:text-tn-danger underline px-2">

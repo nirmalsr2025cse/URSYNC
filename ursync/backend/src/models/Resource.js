@@ -7,15 +7,14 @@
 //   - GetResourcePage.jsx      -> POST /api/resources/:id/apply
 //   - AppliedResourcesPage.jsx -> GET  /api/resource-requests/mine
 //
-// availableCount / bookedCount bookkeeping:
-//   - `available`  = total units of this resource that exist
-//   - `booked`     = how many units are currently committed (Approved apps)
-//   - effective free units for new applications = available - booked
+// `available` is the total physical quantity. Reservation availability is
+// calculated from approved ResourceRequest documents for a date range.
 //
 // applications[] acts as the waiting list:
 //   - status "Pending"  -> just applied, waiting for admin decision
-//   - status "Approved" -> counted against `booked`
-//   - status "Rejected" -> does not count against `booked`
+//   - status "Approved" -> consumes quantity for its date range
+//   - status "Rejected" -> does not consume quantity
+//   - status "Completed" -> no longer consumes quantity
 const mongoose = require('mongoose')
 const { Schema } = mongoose
 
@@ -25,13 +24,14 @@ const applicationSchema = new Schema(
     // a client-supplied userId.
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     requestId: { type: Schema.Types.ObjectId, ref: 'ResourceRequest', default: null },
+    requiredQuantity: { type: Number, min: 1, default: 1 },
 
     requiredFrom: { type: Date, required: true },
     requiredTo: { type: Date, required: true },
 
     status: {
       type: String,
-      enum: ['Pending', 'Approved', 'Rejected'],
+      enum: ['Pending', 'Approved', 'Rejected', 'Completed'],
       default: 'Pending',
     },
 
@@ -58,12 +58,6 @@ const resourceSchema = new Schema(
 
     // Total units of this resource that exist.
     available: { type: Number, required: true, min: 0, default: 0 },
-
-    // How many units are currently committed to Approved applications.
-    // Kept as a stored counter (rather than computed on every read) so
-    // list/search pages can filter/sort on it directly. Kept in sync by
-    // the controller whenever an application's status changes.
-    booked: { type: Number, required: true, min: 0, default: 0 },
 
     // Waiting list / application history for this resource.
     applications: { type: [applicationSchema], default: [] },

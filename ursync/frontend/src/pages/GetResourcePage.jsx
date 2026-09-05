@@ -14,12 +14,12 @@ const FIELDS = [
   { id:'department',    label:'Department',            icon:Building2,    type:'select',   options:['Public Works Department','Highways Department','Rural Development','TANGEDCO','TWAD Board','Chennai Corporation','Health Department','Education Department'], required:true },
   { id:'organization',  label:'Organization / Board',  icon:Building2,    type:'text',     placeholder:'e.g. Tamil Nadu PWD',                           required:true },
   { id:'district',      label:'District of Use',       icon:MapPin,       type:'select',   options:['Chennai','Coimbatore','Salem','Madurai','Tiruchirappalli','Erode','Vellore','Thanjavur','Tirunelveli','Cuddalore'], required:true },
-  { id:'requiredQuantity', label:'Resources Required', icon:ClipboardList, type:'number', placeholder:'Enter quantity', required:true },
   { id:'projectName',   label:'Project Name',          icon:ClipboardList,type:'text',     placeholder:'Name of the project',                           required:true },
   { id:'projectId',     label:'Tender / Project ID',   icon:Hash,         type:'text',     placeholder:'e.g. TN/PWD/2026/045',                          required:true },
   { id:'purpose',       label:'Purpose of Use',        icon:FileText,     type:'textarea', placeholder:'Briefly describe how this resource will be used...', required:true },
   { id:'startDate',     label:'Required From Date',    icon:Calendar,     type:'date',     required:true },
   { id:'endDate',       label:'Required Until Date',   icon:Calendar,     type:'date',     required:true },
+  { id:'requiredQuantity', label:'Resources Required', icon:ClipboardList, type:'number', placeholder:'Enter quantity', required:true },
   { id:'contactNumber', label:'Contact Number',        icon:Phone,        type:'tel',      placeholder:'10-digit mobile number',                        required:true },
   { id:'remarks',       label:'Additional Remarks',    icon:FileText,     type:'textarea', placeholder:'Any additional notes (optional)',                required:false },
 ]
@@ -47,7 +47,8 @@ export default function GetResourcePage() {
   const { apiFetch } = useApi()
   const resource   = state?.resource
   const district = resource?.district?.name || resource?.district?.code || resource?.district || 'Not specified'
-  const availableUnits = Math.max(0, (resource?.available || 0) - (resource?.booked || 0))
+  const [availability, setAvailability] = useState(null)
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
 
   // Always open at the very top of the page
   useEffect(() => {
@@ -64,6 +65,27 @@ export default function GetResourcePage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [requestId, setRequestId] = useState('')
+
+  const availableUnits = availability?.availableQuantity ?? resource?.available ?? 0
+  const datesValid = Boolean(form.startDate && form.endDate && form.endDate > form.startDate)
+
+  useEffect(() => {
+    if (!datesValid) {
+      setAvailability(null)
+      return undefined
+    }
+    const controller = new AbortController()
+    if (!resource) return undefined
+    const params = new URLSearchParams({ requiredFrom: form.startDate, requiredTo: form.endDate })
+    setAvailabilityLoading(true)
+    apiFetch(`/resources/${resource._id || resource.id}/availability?${params}`, { signal: controller.signal })
+      .then(setAvailability)
+      .catch(err => {
+        if (err.name !== 'AbortError') setSubmitError(err.message || 'Failed to calculate availability.')
+      })
+      .finally(() => setAvailabilityLoading(false))
+    return () => controller.abort()
+  }, [apiFetch, resource, form.startDate, form.endDate, datesValid])
 
   if (!resource) return null
 
@@ -84,7 +106,7 @@ export default function GetResourcePage() {
         if (newMinEnd && prev.endDate < newMinEnd) next.endDate = ''
       }
       // Clamp quantity so it can never exceed what's available.
-      if (id === 'requiredQuantity' && value !== '' && availableUnits > 0) {
+      if (id === 'requiredQuantity' && value !== '' && datesValid && availableUnits > 0) {
         const num = Number(value)
         if (!Number.isNaN(num) && num > availableUnits) next.requiredQuantity = String(availableUnits)
       }
@@ -101,7 +123,7 @@ export default function GetResourcePage() {
     if (form.startDate && form.startDate < minStartDate) newErrors.startDate = true
     if (form.startDate && form.endDate && form.endDate <= form.startDate) newErrors.endDate = true
     if (form.contactNumber && !/^\d{10}$/.test(form.contactNumber.replace(/\s/g, ''))) newErrors.contactNumber = true
-    if (!Number.isInteger(Number(form.requiredQuantity)) || Number(form.requiredQuantity) < 1 || Number(form.requiredQuantity) > availableUnits) {
+    if (!datesValid || !Number.isInteger(Number(form.requiredQuantity)) || Number(form.requiredQuantity) < 1 || Number(form.requiredQuantity) > availableUnits) {
       newErrors.requiredQuantity = true
     }
     setErrors(newErrors)
@@ -133,7 +155,7 @@ export default function GetResourcePage() {
         }),
       })
       setRequestId(data.requestId || '')
-      setSubmitted(true)
+      navigate('/applied-resources', { replace: true })
     } catch (err) {
       setSubmitError(err.message || 'Failed to submit the resource request.')
     } finally {
@@ -326,8 +348,8 @@ export default function GetResourcePage() {
                           : isEndDate ? minEndDate
                           : undefined
                       }
-                      max={field.id === 'requiredQuantity' ? availableUnits : undefined}
-                      disabled={endDateLocked}
+                      max={field.id === 'requiredQuantity' && datesValid ? availableUnits : undefined}
+                      disabled={field.id === 'requiredQuantity' ? !datesValid || availabilityLoading : endDateLocked}
                       title={endDateLocked ? 'Please choose the "Required From" date first' : undefined}
                       className={inputClass(field.id) + (endDateLocked ? ' opacity-50 cursor-not-allowed' : '')}
                     />

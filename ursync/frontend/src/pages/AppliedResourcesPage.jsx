@@ -37,6 +37,7 @@ const STATUS_STYLES = {
   Pending:  { classes: 'bg-tn-amber text-tn-warn border border-tn-gold',      Icon: Clock       },
   Approved: { classes: 'bg-green-50 text-tn-success border border-green-200', Icon: CheckCircle2 },
   Rejected: { classes: 'bg-red-50 text-tn-danger border border-red-200',      Icon: XCircle      },
+  Completed:{ classes: 'bg-blue-50 text-tn-blue border border-blue-200',       Icon: CheckCircle2 },
 }
 
 function formatDate(value) {
@@ -99,6 +100,14 @@ function RequestCard({ req }) {
           <p className="text-[11px] text-tn-muted mt-0.5">
             {req.resourceId || '—'}
           </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 text-xs text-tn-navy flex-shrink-0">
+        <ClipboardList size={13} className="text-tn-muted" />
+        <div>
+          <p className="text-[9px] font-bold text-tn-muted uppercase tracking-wider">Required</p>
+          <p className="font-semibold">{req.requiredQuantity || 1}</p>
         </div>
       </div>
 
