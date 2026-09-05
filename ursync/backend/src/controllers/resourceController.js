@@ -279,6 +279,62 @@ async function updateResource(req, res) {
   }
 }
 
+// DELETE /api/resources/:id
+// Soft delete resource, reject all pending requests for this resource, and send email notifications.
+async function deleteResource(req, res) {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid resource id.' })
+    }
+
+    const resource = await Resource.findOne({ _id: id, isDeleted: false })
+    if (!resource) {
+      return res.status(404).json({ message: 'Resource not found or already deleted.' })
+    }
+
+    resource.isDeleted = true
+    resource.deletedAt = new Date()
+    resource.isActive = false
+
+    const rejectionRemark = 'Resource has been removed / deleted by the department.'
+
+    // Find all pending requests for this resource
+    const pendingRequests = await ResourceRequest.find({
+      resource: resource._id,
+      status: 'Pending',
+    })
+
+    for (const pendingReq of pendingRequests) {
+      pendingReq.status = 'Rejected'
+      pendingReq.remarks = rejectionRemark
+      await pendingReq.save()
+
+      // Notify the applicant via email
+      notifyResourceRequestRejected(pendingReq, pendingReq.requestedBy, rejectionRemark, false)
+    }
+
+    // Update embedded applications
+    if (resource.applications && resource.applications.length > 0) {
+      for (const app of resource.applications) {
+        if (app.status === 'Pending') {
+          app.status = 'Rejected'
+          app.remarks = rejectionRemark
+          app.decidedAt = new Date()
+        }
+      }
+    }
+
+    resource.applied = []
+    await resource.save()
+
+    res.json({ message: 'Resource deleted successfully. All pending requests were rejected.' })
+  } catch (err) {
+    console.error('deleteResource error:', err)
+    res.status(500).json({ message: 'Failed to delete resource.' })
+  }
+}
+
 // ── Dropdown / prefill data for AddResources.jsx ───────────────────────
 
 // GET /api/resources/department
@@ -559,11 +615,13 @@ module.exports = {
   listSharingResources,
   listResourceRequests,
   decideResourceRequest,
+  updateApprovedRequestDate,
   expireResourceRequests,
   getResourceById,
   getResourceAvailability,
   createResource,
   updateResource,
+  deleteResource,
   applyForResource,
   getMyRequests,
   decideApplication,
@@ -799,6 +857,80 @@ async function decideResourceRequest(req, res) {
     res.status(err.statusCode || 500).json({ message: err.message || 'Failed to update resource request.' })
   } finally {
     if (session) await session.endSession()
+  }
+}
+
+// PATCH /api/resource-sharing/requests/:requestId/date
+// Allows reducing the requiredTo date for an Approved request.
+async function updateApprovedRequestDate(req, res) {
+  try {
+    const { requestId } = req.params
+    const { requiredTo } = req.body
+
+    if (!mongoose.Types.ObjectId.isValid(requestId)) {
+      return res.status(400).json({ message: 'Invalid request id.' })
+    }
+    if (!requiredTo) {
+      return res.status(400).json({ message: 'Required To date is required.' })
+    }
+
+    const newRequiredTo = new Date(requiredTo)
+    if (Number.isNaN(newRequiredTo.getTime())) {
+      return res.status(400).json({ message: 'Invalid Required To date.' })
+    }
+
+    const request = await ResourceRequest.findById(requestId)
+    if (!request) {
+      return res.status(404).json({ message: 'Resource request not found.' })
+    }
+    if (request.status !== 'Approved') {
+      return res.status(400).json({ message: 'Only approved requests can have their booking period modified.' })
+    }
+
+    const originalRequiredTo = new Date(request.requiredTo)
+    const requiredFrom = new Date(request.requiredFrom)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    newRequiredTo.setHours(23, 59, 59, 999)
+    originalRequiredTo.setHours(23, 59, 59, 999)
+    requiredFrom.setHours(0, 0, 0, 0)
+
+    // Rule 1: Can only reduce the date (newRequiredTo < originalRequiredTo)
+    if (newRequiredTo >= originalRequiredTo) {
+      return res.status(400).json({ message: 'The new date must be strictly earlier than the existing Required To date.' })
+    }
+
+    // Rule 2: newRequiredTo must be > requiredFrom
+    if (newRequiredTo <= requiredFrom) {
+      return res.status(400).json({ message: 'The new date must be after the Required From date.' })
+    }
+
+    // Rule 3: If today > requiredFrom, newRequiredTo must be >= today
+    if (today > requiredFrom && newRequiredTo < today) {
+      return res.status(400).json({ message: 'The new date cannot be in the past.' })
+    }
+
+    // Update ResourceRequest
+    request.requiredTo = new Date(requiredTo)
+    await request.save()
+
+    // Update embedded application in Resource
+    await Resource.updateOne(
+      { _id: request.resource, 'applications.requestId': request._id },
+      {
+        $set: {
+          'applications.$.requiredTo': new Date(requiredTo),
+        },
+      }
+    )
+
+    res.json({
+      message: 'Booking period updated successfully.',
+      request,
+    })
+  } catch (err) {
+    console.error('updateApprovedRequestDate error:', err)
+    res.status(500).json({ message: 'Failed to update request date.' })
   }
 }
 

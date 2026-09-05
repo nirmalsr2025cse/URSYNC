@@ -6,10 +6,12 @@ const {
   listSharingResources,
   listResourceRequests,
   decideResourceRequest,
+  updateApprovedRequestDate,
   getResourceById,
   getResourceAvailability,
   createResource,
   updateResource,
+  deleteResource,
   applyForResource,
   getMyRequests,
   decideApplication,
@@ -24,6 +26,7 @@ router.use(authMiddleware)
 router.get('/resource-sharing/resources', requireRole('department_head', 'administrator'), listSharingResources)
 router.get('/resource-sharing/requests', requireRole('department_head', 'administrator'), listResourceRequests)
 router.patch('/resource-sharing/requests/:requestId', requireRole('department_head', 'administrator'), decideResourceRequest)
+router.patch('/resource-sharing/requests/:requestId/date', requireRole('department_head', 'administrator'), updateApprovedRequestDate)
 
 router.get('/resources', listResources)
 router.get('/resources/department', getMyDepartment)
@@ -45,6 +48,16 @@ router.put(
   '/resources/:id',
   requireRole('department_employee', 'department_head', 'administrator'),
   updateResource
+)
+router.delete(
+  '/resources/:id',
+  requireRole('department_employee', 'department_head', 'administrator'),
+  deleteResource
+)
+router.delete(
+  '/resource-sharing/resources/:id',
+  requireRole('department_employee', 'department_head', 'administrator'),
+  deleteResource
 )
 router.post('/resources/:id/apply', applyForResource)
 router.get('/resource-requests/mine', getMyRequests)

@@ -214,15 +214,23 @@ function FinancialCard({ row, editable, saving, onView, onEditSave }) {
         </div>
       </div>
 
-      <div className={`grid ${editable ? "grid-cols-2" : "grid-cols-1"} gap-1.5 pt-3 border-t border-tn-border mt-auto`}>
-        <button onClick={() => onView(row)} className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold bg-tn-blue hover:bg-tn-navy text-white transition-all">
-          <Eye size={13}/><span>View</span>
-        </button>
+      <div className={`grid ${editable ? "grid-cols-2" : "grid-cols-1"} gap-2 pt-3 border-t border-tn-border mt-auto`}>
         {editable && (
-          <button onClick={startEdit} className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold bg-indigo-500 hover:bg-indigo-700 text-white transition-all">
-            <Pencil size={13}/><span>Edit</span>
+          <button
+            onClick={startEdit}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-tn-blue hover:bg-tn-navy text-white transition-all"
+          >
+            <Pencil size={13} />
+            <span>Edit</span>
           </button>
         )}
+        <button
+          onClick={() => onView(row)}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-tn-border text-tn-navy bg-white hover:bg-tn-light transition-all"
+        >
+          <Eye size={13} />
+          <span>View</span>
+        </button>
       </div>
     </div>
   );

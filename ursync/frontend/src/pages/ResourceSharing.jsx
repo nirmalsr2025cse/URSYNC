@@ -286,6 +286,213 @@ function EditResourceModal({ resource, onClose, onSave }) {
   )
 }
 
+/* ─────────────────────── DeleteConfirmationModal ─────────────────────── */
+function DeleteConfirmationModal({ resource, onConfirm, onCancel, deleting }) {
+  if (!resource) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onCancel}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-tn-border w-full max-w-md overflow-hidden animate-scale-up"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-6">
+          <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mb-4">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-extrabold text-tn-navy">Delete Resource?</h3>
+          <p className="text-xs text-tn-muted mt-1 leading-relaxed">
+            Are you sure you want to delete <strong className="text-tn-navy">"{resource.name}"</strong> ({resource.displayId || resource.id})?
+          </p>
+          <div className="mt-3.5 bg-red-50/80 border border-red-200/80 rounded-xl p-3 text-xs text-red-700 leading-snug">
+            <strong>Warning:</strong> This resource will be permanently removed from listings. Any pending requests for this resource will be automatically marked as <strong>Rejected</strong> and applicants will receive an email update.
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-tn-border bg-tn-cream">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={deleting}
+            className="px-4 py-2 rounded-xl text-xs font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(resource)}
+            disabled={deleting}
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+          >
+            {deleting ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              'Delete Resource'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────── Approved Request Date Helper & Modal ─────────────────────── */
+function getApprovedEditDateRange(requiredFrom, requiredTo) {
+  const fromDate = new Date(requiredFrom)
+  const toDate = new Date(requiredTo)
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  fromDate.setHours(0, 0, 0, 0)
+  toDate.setHours(0, 0, 0, 0)
+
+  // Max date: strictly less than original requiredTo (i.e. toDate - 1 day)
+  const maxD = new Date(toDate)
+  maxD.setDate(maxD.getDate() - 1)
+
+  // Min date:
+  let minD
+  if (now > fromDate) {
+    minD = new Date(now)
+  } else {
+    minD = new Date(fromDate)
+    minD.setDate(minD.getDate() + 1)
+  }
+
+  const toISODate = (d) => {
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  return {
+    minDate: toISODate(minD),
+    maxDate: toISODate(maxD),
+    canReduce: minD <= maxD,
+  }
+}
+
+function EditApprovedDateModal({ request, onClose, onSave, saving }) {
+  if (!request) return null
+
+  const { minDate, maxDate, canReduce } = getApprovedEditDateRange(request.requiredFrom, request.requiredTo)
+  const [selectedDate, setSelectedDate] = useState(maxDate || '')
+  const [error, setError] = useState('')
+
+  const originalFromFormatted = new Date(request.requiredFrom).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  })
+  const originalToFormatted = new Date(request.requiredTo).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  })
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    if (!selectedDate) {
+      setError('Please select a valid date.')
+      return
+    }
+    if (selectedDate < minDate) {
+      setError(`Date must be on or after ${new Date(minDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}.`)
+      return
+    }
+    if (selectedDate > maxDate) {
+      setError(`Date must be on or before ${new Date(maxDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} (less than previous Required To).`)
+      return
+    }
+    onSave(request.id, selectedDate)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-tn-border w-full max-w-md overflow-hidden animate-scale-up"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-6 border-b border-tn-border">
+          <div>
+            <h2 className="text-lg font-extrabold text-tn-navy">Edit Booking Period</h2>
+            <p className="text-xs text-tn-muted mt-0.5">{request.resourceName} ({request.id})</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg border border-tn-border text-tn-muted hover:bg-tn-light transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="p-6 space-y-4">
+            <div className="bg-tn-cream rounded-xl p-3.5 border border-tn-border space-y-1.5 text-xs text-tn-navy">
+              <p><strong>Applicant:</strong> {request.requestedBy}</p>
+              <p><strong>Quantity:</strong> {request.requiredQuantity} unit(s)</p>
+              <p><strong>Current Period:</strong> {originalFromFormatted} to {originalToFormatted}</p>
+            </div>
+
+            {!canReduce ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 leading-snug">
+                This request cannot be reduced further as it is already at the minimum allowed duration.
+              </div>
+            ) : (
+              <div>
+                <label className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide mb-1 block">
+                  New Required Until Date (Reduced Only)
+                </label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  min={minDate}
+                  max={maxDate}
+                  onChange={e => {
+                    setSelectedDate(e.target.value)
+                    setError('')
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-tn-border rounded-xl bg-white text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30 focus:border-tn-blue transition-all"
+                  required
+                />
+                <p className="text-[11px] text-tn-muted mt-1.5">
+                  Allowed date range: <strong>{new Date(minDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong> to <strong>{new Date(maxDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
+                </p>
+                {error && <p className="text-xs text-red-600 mt-1.5">{error}</p>}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-tn-border bg-tn-cream">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl text-xs font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !canReduce}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+            >
+              {saving ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 /* ─────────────────────── RequestDetailModal ─────────────────────── */
 function RequestDetailModal({ request, onClose, onApprove, onReject }) {
   if (!request) return null
@@ -399,7 +606,7 @@ function RequestDetailModal({ request, onClose, onApprove, onReject }) {
    i.e. label, color, position AND the handler each button calls have
    all been swapped relative to the previous ResourceCard.
 ──────────────────────────────────────────────────────────────────── */
-function ResourceCard({ resource, onView, onEdit }) {
+function ResourceCard({ resource, onView, onEdit, onDelete }) {
   const isAvailable = resource.status === 'Available'
 
   return (
@@ -446,9 +653,9 @@ function ResourceCard({ resource, onView, onEdit }) {
 
         <div className="flex-1" />
 
-        {/* SWAPPED: Edit (blue, primary) first, then View (white) second */}
+        {/* Action buttons: Edit, View, and small Delete icon */}
         <div className="flex items-center gap-2 mt-auto pt-3 border-t border-tn-border">
-          {/* Edit — now primary blue, first position */}
+          {/* Edit — primary blue */}
           <button
             id={`edit-${resource.displayId || resource.id}`}
             onClick={() => onEdit(resource)}
@@ -459,7 +666,7 @@ function ResourceCard({ resource, onView, onEdit }) {
             </svg>
             Edit
           </button>
-          {/* View — now secondary white/border, second position */}
+          {/* View — secondary white/border */}
           <button
             id={`view-${resource.displayId || resource.id}`}
             onClick={() => onView(resource)}
@@ -471,6 +678,19 @@ function ResourceCard({ resource, onView, onEdit }) {
             </svg>
             View
           </button>
+          {/* Small Delete Icon */}
+          {onDelete && (
+            <button
+              id={`delete-${resource.displayId || resource.id}`}
+              title="Delete Resource"
+              onClick={() => onDelete(resource)}
+              className="p-2 rounded-xl border border-red-200 text-red-600 bg-red-50/60 hover:bg-red-600 hover:text-white transition-colors flex items-center justify-center flex-shrink-0"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -483,7 +703,7 @@ function ResourceCard({ resource, onView, onEdit }) {
      Approved tab             → View + Reject   (no Approve — already approved)
      Rejected tab              → View only       (already rejected, nothing to do)
 ──────────────────────────────────────────────────────────────────── */
-function RequestCard({ request, onView, onApprove, onReject, activeTab }) {
+function RequestCard({ request, onView, onApprove, onReject, onEditApproved, activeTab }) {
   return (
     <div
       className="bg-white rounded-2xl border border-tn-border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden cursor-pointer"
@@ -551,6 +771,20 @@ function RequestCard({ request, onView, onApprove, onReject, activeTab }) {
             View
           </button>
 
+          {/* Edit — only on Approved tab with bg-tn-blue */}
+          {activeTab === 'Approved' && onEditApproved && (
+            <button
+              id={`edit-approved-req-${request.id}`}
+              onClick={() => onEditApproved(request)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit
+            </button>
+          )}
+
           {/* Approve — only on the Requests (Pending) tab */}
           {activeTab === 'Request' && (
             <button
@@ -600,10 +834,14 @@ export default function ResourceSharing() {
   const [requestList,     setRequestList]     = useState([])
   const [loading,         setLoading]         = useState(true)
 
-  const [viewResource, setViewResource] = useState(null)
-  const [editResource, setEditResource] = useState(null)
-  const [viewRequest,  setViewRequest]  = useState(null)
-  const [toast,        setToast]        = useState(null)
+  const [viewResource,        setViewResource]        = useState(null)
+  const [editResource,        setEditResource]        = useState(null)
+  const [deleteResource,      setDeleteResource]      = useState(null)
+  const [deleting,            setDeleting]            = useState(false)
+  const [editApprovedRequest, setEditApprovedRequest] = useState(null)
+  const [savingApprovedDate,  setSavingApprovedDate]  = useState(false)
+  const [viewRequest,         setViewRequest]         = useState(null)
+  const [toast,               setToast]               = useState(null)
 
   // Debounced auto-search (400ms delay)
   useEffect(() => {
@@ -679,6 +917,14 @@ export default function ResourceSharing() {
     setTimeout(() => { setActiveTab(id); setAnimating(false) }, 150)
   }
 
+  function tabCount(tabId) {
+    if (tabId === 'Resources' || tabId === 'Available') return resourceList.length
+    if (tabId === 'Request') return requestList.filter(r => r.status === 'Pending').length
+    if (tabId === 'Approved') return requestList.filter(r => r.status === 'Approved').length
+    if (tabId === 'Rejected') return requestList.filter(r => r.status === 'Rejected').length
+    return 0
+  }
+
   function handleClear() {
     setSearch('')
     setAppliedSearch('')
@@ -734,6 +980,43 @@ export default function ResourceSharing() {
       showToast('Resource updated successfully.')
     } catch (err) {
       showToast(err.message || 'Failed to update resource.', 'error')
+    }
+  }
+
+  function handleDeleteResource(resource) {
+    setDeleteResource(resource)
+  }
+
+  async function handleConfirmDelete(resource) {
+    try {
+      setDeleting(true)
+      await apiFetch(`/resources/${resource.id}`, {
+        method: 'DELETE',
+      })
+      setDeleteResource(null)
+      await loadData()
+      showToast('Resource deleted successfully.')
+    } catch (err) {
+      showToast(err.message || 'Failed to delete resource.', 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleSaveApprovedDate(requestId, newRequiredTo) {
+    try {
+      setSavingApprovedDate(true)
+      await apiFetch(`/resource-sharing/requests/${requestId}/date`, {
+        method: 'PATCH',
+        body: JSON.stringify({ requiredTo: newRequiredTo }),
+      })
+      setEditApprovedRequest(null)
+      await loadData()
+      showToast('Booking period updated successfully.')
+    } catch (err) {
+      showToast(err.message || 'Failed to update booking period.', 'error')
+    } finally {
+      setSavingApprovedDate(false)
     }
   }
 
@@ -812,6 +1095,22 @@ export default function ResourceSharing() {
           onReject={handleReject}
         />
       )}
+      {deleteResource && (
+        <DeleteConfirmationModal
+          resource={deleteResource}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => { if (!deleting) setDeleteResource(null) }}
+          deleting={deleting}
+        />
+      )}
+      {editApprovedRequest && (
+        <EditApprovedDateModal
+          request={editApprovedRequest}
+          onClose={() => { if (!savingApprovedDate) setEditApprovedRequest(null) }}
+          onSave={handleSaveApprovedDate}
+          saving={savingApprovedDate}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -868,9 +1167,10 @@ export default function ResourceSharing() {
             return (
               <button
                 key={tab.id}
+                id={`tab-${tab.id.toLowerCase()}`}
                 onClick={() => switchTab(tab.id)}
                 className={[
-                  'px-6 py-2 rounded-full text-sm font-semibold transition-all duration-200 gsp',
+                  'px-6 py-2 rounded-full text-sm font-semibold transition-all duration-200',
                   isActive
                     ? 'bg-tn-navy text-white shadow-sm'
                     : 'text-tn-blue border border-tn-border bg-transparent hover:bg-tn-light',
@@ -912,6 +1212,7 @@ export default function ResourceSharing() {
                     resource={res}
                     onView={setViewResource}
                     onEdit={setEditResource}
+                    onDelete={handleDeleteResource}
                   />
                 ))
               : paginated.map(req => (
@@ -922,6 +1223,7 @@ export default function ResourceSharing() {
                     onView={setViewRequest}
                     onApprove={handleApprove}
                     onReject={handleReject}
+                    onEditApproved={setEditApprovedRequest}
                   />
                 ))
             }
