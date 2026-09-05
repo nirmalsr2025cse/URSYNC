@@ -926,3 +926,523 @@ exports.getBidsAwardedAnalysis = async (req, res) => {
   }
 }
 
+// ── GET /api/dashboard/bidder-wise ────────────────────────────────────────────
+exports.getBidderWiseAnalysis = async (req, res) => {
+  try {
+    const { fyFrom, fyTo } = req.query
+    const fyRange = buildFyRangeList(fyFrom, fyTo)
+
+    const bidderRoles = await Role.find({ name: { $in: ['tender_person', 'public'] } }).select('_id')
+    const bidderRoleIds = bidderRoles.map((r) => r._id)
+
+    // Fetch registered bidder users
+    const bidders = await User.find({
+      isDeleted: { $ne: true },
+      $or: [
+        { roleId: { $in: bidderRoleIds } },
+        { accountType: { $in: ['Individual', 'Organization'] }, departmentId: null },
+      ],
+    }).lean()
+
+    // Fetch applications to see if any bidder has company/organization data
+    const biddersLists = await BiddersList.find().select('applications').lean()
+    const msmeUserIds = new Set()
+    for (const bl of biddersLists) {
+      if (bl.applications) {
+        for (const a of bl.applications) {
+          const form = a.formData || {}
+          if (
+            form.companyName ||
+            form.companyRegNo ||
+            form.gstNumber ||
+            form.isMsme ||
+            form.msme
+          ) {
+            msmeUserIds.add(String(a.userId))
+          }
+        }
+      }
+    }
+
+    const currentFy = buildFyRangeList(null, null)[buildFyRangeList(null, null).length - 1]
+
+    const statsMap = new Map()
+    for (const fy of fyRange) {
+      statsMap.set(fy, { msme: 0, nonMsme: 0, total: 0 })
+    }
+
+    for (const u of bidders) {
+      const uDate = u.createdAt || u.updatedAt
+      let fy = uDate ? getFinancialYear(uDate) : currentFy
+      if (!fy || !statsMap.has(fy)) {
+        fy = currentFy
+      }
+      if (!statsMap.has(fy)) continue
+
+      const entry = statsMap.get(fy)
+      const uIdStr = String(u._id)
+      const isMsme =
+        u.isMsme === true ||
+        u.accountType === 'Organization' ||
+        msmeUserIds.has(uIdStr)
+
+      if (isMsme) {
+        entry.msme += 1
+      } else {
+        entry.nonMsme += 1
+      }
+      entry.total += 1
+    }
+
+    const result = fyRange.map((fy) => ({
+      fy,
+      msme: statsMap.get(fy).msme,
+      nonMsme: statsMap.get(fy).nonMsme,
+      total: statsMap.get(fy).total,
+    }))
+
+    return res.json({
+      success: true,
+      data: result,
+    })
+  } catch (error) {
+    console.error('Error in getBidderWiseAnalysis:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch bidder-wise analysis' })
+  }
+}
+
+// ── GET /api/dashboard/bid-analysis ───────────────────────────────────────────
+exports.getBidAnalysis = async (req, res) => {
+  try {
+    const { fyFrom, fyTo } = req.query
+    const fyRange = buildFyRangeList(fyFrom, fyTo)
+
+    // Fetch active published tenders (excluding Rejected, Cancelled, Deleted)
+    const tenders = await Tender.find(VALID_TENDER_MATCH)
+      .populate('categoryId', 'name type')
+      .lean()
+
+    const biddersLists = await BiddersList.find().select('tenderId applications').lean()
+    const bidsPerTenderMap = new Map()
+    for (const bl of biddersLists) {
+      const count = (bl.applications && bl.applications.length) || 0
+      bidsPerTenderMap.set(String(bl.tenderId), count)
+    }
+
+    const appliedBidders = await AppliedBidder.find().select('tenderId').lean()
+    for (const ab of appliedBidders) {
+      const tIdStr = String(ab.tenderId)
+      bidsPerTenderMap.set(tIdStr, (bidsPerTenderMap.get(tIdStr) || 0) + 1)
+    }
+
+    // Accumulators for each sub-tab
+    const receivedMap = new Map()
+    const goodsMap = new Map()
+    const servicesMap = new Map()
+    const worksMap = new Map()
+
+    for (const fy of fyRange) {
+      receivedMap.set(fy, { tenders: 0, bids: 0, value: 0 })
+      goodsMap.set(fy, { tenders: 0, bids: 0, value: 0 })
+      servicesMap.set(fy, { tenders: 0, bids: 0, value: 0 })
+      worksMap.set(fy, { tenders: 0, bids: 0, value: 0 })
+    }
+
+    for (const t of tenders) {
+      const tenderDate = t.startDate || t.createdAt || t.closingDate
+      const fy = getFinancialYear(tenderDate)
+      if (!fy || !receivedMap.has(fy)) continue
+
+      const tIdStr = String(t._id)
+      const bidsCount = bidsPerTenderMap.get(tIdStr) || 0
+      const valCr = toCrores(t.estimatedValue)
+
+      // Category resolution
+      let catKey = 'Works'
+      if (t.procurementType) {
+        if (t.procurementType === 'Goods') catKey = 'Goods'
+        else if (t.procurementType === 'Services' || t.procurementType === 'Consultancy') catKey = 'Services'
+        else catKey = 'Works'
+      } else if (t.categoryId?.name) {
+        const catName = t.categoryId.name.toLowerCase()
+        if (catName.includes('goods') || catName.includes('energy') || catName.includes('equipment')) {
+          catKey = 'Goods'
+        } else if (catName.includes('water') || catName.includes('health') || catName.includes('education') || catName.includes('sanitation') || catName.includes('consult')) {
+          catKey = 'Services'
+        } else {
+          catKey = 'Works'
+        }
+      }
+
+      // Total Received
+      const rec = receivedMap.get(fy)
+      rec.tenders += 1
+      rec.bids += bidsCount
+      rec.value = Number((rec.value + valCr).toFixed(4))
+
+      // Category Specific
+      if (catKey === 'Goods') {
+        const g = goodsMap.get(fy)
+        g.tenders += 1
+        g.bids += bidsCount
+        g.value = Number((g.value + valCr).toFixed(4))
+      } else if (catKey === 'Services') {
+        const s = servicesMap.get(fy)
+        s.tenders += 1
+        s.bids += bidsCount
+        s.value = Number((s.value + valCr).toFixed(4))
+      } else {
+        const w = worksMap.get(fy)
+        w.tenders += 1
+        w.bids += bidsCount
+        w.value = Number((w.value + valCr).toFixed(4))
+      }
+    }
+
+    const formatOutput = (map) =>
+      fyRange.map((fy) => {
+        const entry = map.get(fy)
+        const avg = entry.tenders > 0 ? Number((entry.bids / entry.tenders).toFixed(2)) : 0
+        return {
+          fy,
+          tenders: entry.tenders,
+          bids: entry.bids,
+          value: entry.value,
+          avgBidsPerTender: avg,
+        }
+      })
+
+    return res.json({
+      success: true,
+      data: {
+        received: formatOutput(receivedMap),
+        goods: formatOutput(goodsMap),
+        services: formatOutput(servicesMap),
+        works: formatOutput(worksMap),
+      },
+    })
+  } catch (error) {
+    console.error('Error in getBidAnalysis:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch bid analysis' })
+  }
+}
+
+// ── GET /api/dashboard/top10-analysis ─────────────────────────────────────────
+exports.getTop10Analysis = async (req, res) => {
+  try {
+    const { fy, category, sortBy = 'tenders' } = req.query
+    const targetFy = fy || getFinancialYear(new Date())
+
+    const departments = await Department.find({ isActive: { $ne: false } }).lean()
+    const tenders = await Tender.find(VALID_TENDER_MATCH)
+      .populate('categoryId', 'name type')
+      .populate('departmentId', 'name code')
+      .lean()
+
+    const biddersLists = await BiddersList.find().select('tenderId applications').lean()
+    const bidsPerTenderMap = new Map()
+    for (const bl of biddersLists) {
+      const count = (bl.applications && bl.applications.length) || 0
+      bidsPerTenderMap.set(String(bl.tenderId), count)
+    }
+
+    const appliedBidders = await AppliedBidder.find().select('tenderId').lean()
+    for (const ab of appliedBidders) {
+      const tIdStr = String(ab.tenderId)
+      bidsPerTenderMap.set(tIdStr, (bidsPerTenderMap.get(tIdStr) || 0) + 1)
+    }
+
+    // Map departments
+    const deptMap = new Map()
+    for (const d of departments) {
+      deptMap.set(String(d._id), {
+        id: String(d._id),
+        name: d.name,
+        code: d.code,
+        tenders: 0,
+        value: 0,
+        bids: 0,
+      })
+    }
+
+    for (const t of tenders) {
+      const tenderDate = t.startDate || t.createdAt || t.closingDate
+      const tenderFy = getFinancialYear(tenderDate)
+      if (tenderFy !== targetFy) continue
+
+      // Category matching
+      let catKey = 'works'
+      if (t.procurementType) {
+        const pt = t.procurementType.toLowerCase()
+        if (pt === 'goods') catKey = 'goods'
+        else if (pt === 'services' || pt === 'consultancy') catKey = 'services'
+        else catKey = 'works'
+      } else if (t.categoryId?.name) {
+        const catName = t.categoryId.name.toLowerCase()
+        if (catName.includes('goods') || catName.includes('energy') || catName.includes('equipment')) {
+          catKey = 'goods'
+        } else if (catName.includes('water') || catName.includes('health') || catName.includes('education') || catName.includes('sanitation') || catName.includes('consult')) {
+          catKey = 'services'
+        } else {
+          catKey = 'works'
+        }
+      }
+
+      if (category && category !== 'all' && catKey !== category.toLowerCase()) {
+        continue
+      }
+
+      const deptIdStr = t.departmentId ? String(t.departmentId._id || t.departmentId) : null
+      if (deptIdStr && deptMap.has(deptIdStr)) {
+        const entry = deptMap.get(deptIdStr)
+        const valLakhs = Number(((t.estimatedValue || 0) / 100000).toFixed(2))
+        const bids = bidsPerTenderMap.get(String(t._id)) || 0
+
+        entry.tenders += 1
+        entry.value = Number((entry.value + valLakhs).toFixed(2))
+        entry.bids += bids
+      }
+    }
+
+    const allEntities = Array.from(deptMap.values())
+    const sortField = sortBy === 'value' ? 'value' : 'tenders'
+    allEntities.sort((a, b) => b[sortField] - a[sortField])
+
+    const allWithRank = allEntities.map((e, index) => ({
+      sNo: index + 1,
+      ...e,
+    }))
+
+    const top10 = allWithRank.slice(0, 10)
+
+    return res.json({
+      success: true,
+      data: {
+        top10,
+        all: allWithRank,
+        total: allWithRank.length,
+      },
+    })
+  } catch (error) {
+    console.error('Error in getTop10Analysis:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch top 10 analysis' })
+  }
+}
+
+// ── GET /api/dashboard/last-12-months-trend ──────────────────────────────────
+exports.getLast12MonthsTrend = async (req, res) => {
+  try {
+    const TREND_MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const months = []
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth() // 0 - 11
+
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(currentYear, currentMonth - i, 1)
+      const y = d.getFullYear()
+      const m = d.getMonth()
+      const label = `${TREND_MONTH_LABELS[m]}-${y}`
+      const start = new Date(y, m, 1, 0, 0, 0, 0)
+      const end = new Date(y, m + 1, 0, 23, 59, 59, 999)
+      months.push({
+        label,
+        year: y,
+        monthIndex: m,
+        start,
+        end,
+        tenders: 0,
+        value: 0,
+        bids: 0,
+        entitiesSet: new Set(),
+      })
+    }
+
+    // Fetch active published tenders (excluding Rejected, Cancelled, Deleted)
+    const tenders = await Tender.find(VALID_TENDER_MATCH)
+      .select('estimatedValue departmentId startDate closingDate createdAt')
+      .lean()
+
+    // Fetch BiddersList applications
+    const biddersLists = await BiddersList.find()
+      .select('tenderId applications')
+      .lean()
+
+    // Fetch AppliedBidder
+    const appliedBidders = await AppliedBidder.find()
+      .select('tenderId appliedAt createdAt applicationTime paidAt')
+      .lean()
+
+    // Map tender ID to tender date
+    const tenderDateMap = new Map()
+    for (const t of tenders) {
+      const d = t.startDate || t.createdAt || t.closingDate
+      if (d) tenderDateMap.set(String(t._id), new Date(d))
+    }
+
+    // Accumulate tenders, value, publishing entities
+    for (const t of tenders) {
+      const d = t.startDate || t.createdAt || t.closingDate
+      if (!d) continue
+      const tenderDate = new Date(d)
+      if (isNaN(tenderDate.getTime())) continue
+
+      for (const m of months) {
+        if (tenderDate >= m.start && tenderDate <= m.end) {
+          m.tenders += 1
+          const valCr = (t.estimatedValue || 0) / 10000000
+          m.value += valCr
+          if (t.departmentId) {
+            m.entitiesSet.add(String(t.departmentId._id || t.departmentId))
+          }
+          break
+        }
+      }
+    }
+
+    // Accumulate bids from BiddersList
+    for (const bl of biddersLists) {
+      if (!bl.applications) continue
+      for (const app of bl.applications) {
+        const appDateRaw = app.applicationSubmissionDateTime || app.createdAt || app.paidAt || tenderDateMap.get(String(bl.tenderId))
+        if (!appDateRaw) continue
+        const appDate = new Date(appDateRaw)
+        if (isNaN(appDate.getTime())) continue
+
+        for (const m of months) {
+          if (appDate >= m.start && appDate <= m.end) {
+            m.bids += 1
+            break
+          }
+        }
+      }
+    }
+
+    // Accumulate bids from AppliedBidder
+    for (const ab of appliedBidders) {
+      const abDateRaw = ab.paidAt || ab.applicationTime || ab.appliedAt || ab.createdAt || tenderDateMap.get(String(ab.tenderId))
+      if (!abDateRaw) continue
+      const abDate = new Date(abDateRaw)
+      if (isNaN(abDate.getTime())) continue
+
+      for (const m of months) {
+        if (abDate >= m.start && abDate <= m.end) {
+          m.bids += 1
+          break
+        }
+      }
+    }
+
+    const data = months.map((m) => ({
+      label: m.label,
+      year: m.year,
+      monthIndex: m.monthIndex,
+      tenders: m.tenders,
+      value: Number(m.value.toFixed(2)),
+      bids: m.bids,
+      entities: m.entitiesSet.size,
+    }))
+
+    return res.json({
+      success: true,
+      data,
+    })
+  } catch (error) {
+    console.error('Error in getLast12MonthsTrend:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch last 12 months trend' })
+  }
+}
+
+// ── GET /api/dashboard/year-over-year ────────────────────────────────────────
+exports.getYearOverYearAnalysis = async (req, res) => {
+  try {
+    const { fy, fyTo } = req.query
+    const targetFy = fy || fyTo || `${getCurrentFyStartYear()}-${String((getCurrentFyStartYear() + 1) % 100).padStart(2, '0')}`
+    const startYear = parseInt(targetFy.split('-')[0], 10)
+
+    const FY_MONTH_ORDER = [
+      { name: 'Apr', jsMonth: 3 }, { name: 'May', jsMonth: 4 }, { name: 'Jun', jsMonth: 5 },
+      { name: 'Jul', jsMonth: 6 }, { name: 'Aug', jsMonth: 7 }, { name: 'Sep', jsMonth: 8 },
+      { name: 'Oct', jsMonth: 9 }, { name: 'Nov', jsMonth: 10 }, { name: 'Dec', jsMonth: 11 },
+      { name: 'Jan', jsMonth: 0 }, { name: 'Feb', jsMonth: 1 }, { name: 'Mar', jsMonth: 2 },
+    ]
+
+    const years = [startYear - 2, startYear - 1, startYear]
+
+    // Map: fyStartYear -> array of 12 numbers (counts)
+    const countsByYear = new Map()
+    for (const y of years) {
+      countsByYear.set(y, new Array(12).fill(0))
+    }
+
+    // Fetch active published tenders (excluding Rejected, Cancelled, Deleted)
+    const tenders = await Tender.find(VALID_TENDER_MATCH)
+      .select('startDate closingDate createdAt')
+      .lean()
+
+    for (const t of tenders) {
+      const d = t.startDate || t.createdAt || t.closingDate
+      if (!d) continue
+      const dateObj = new Date(d)
+      if (isNaN(dateObj.getTime())) continue
+
+      const tCalYear = dateObj.getFullYear()
+      const tJsMonth = dateObj.getMonth()
+
+      // Financial year start year: Apr-Dec is current year, Jan-Mar is previous year
+      const tFyStartYear = tJsMonth >= 3 ? tCalYear : tCalYear - 1
+
+      if (countsByYear.has(tFyStartYear)) {
+        // Month index in FY: Apr(3)->0, May(4)->1, ... Dec(11)->8, Jan(0)->9, Feb(1)->10, Mar(2)->11
+        const fyMonthIdx = tJsMonth >= 3 ? tJsMonth - 3 : tJsMonth + 9
+        const arr = countsByYear.get(tFyStartYear)
+        arr[fyMonthIdx] += 1
+      }
+    }
+
+    const currentFYLabel = `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`
+    const prevStartYear = startYear - 1
+    const previousFYLabel = `${prevStartYear}-${String((prevStartYear + 1) % 100).padStart(2, '0')}`
+
+    const current = countsByYear.get(startYear) || new Array(12).fill(0)
+    const previous = countsByYear.get(prevStartYear) || new Array(12).fill(0)
+
+    const growth = current.map((c, i) => {
+      const p = previous[i]
+      if (!p && !c) return 0
+      if (!p && c > 0) return 100
+      return Number((((c - p) / p) * 100).toFixed(2))
+    })
+
+    const yoy = {
+      labels: FY_MONTH_ORDER.map((m) => m.name),
+      currentFYLabel,
+      previousFYLabel,
+      current,
+      previous,
+      growth,
+    }
+
+    const last3 = {
+      labels: FY_MONTH_ORDER.map((m) => m.name),
+      series: years.map((y) => ({
+        label: `${y}-${String((y + 1) % 100).padStart(2, '0')}`,
+        data: countsByYear.get(y) || new Array(12).fill(0),
+      })),
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        yoy,
+        last3,
+      },
+    })
+  } catch (error) {
+    console.error('Error in getYearOverYearAnalysis:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch year over year analysis' })
+  }
+}
+
+
+

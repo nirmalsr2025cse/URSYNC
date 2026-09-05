@@ -1,18 +1,17 @@
 // src/pages/dashboard/Top10AnalysisBase.jsx
-// Shared implementation behind NumberWiseTop10Analysis.jsx and
-// ValueWiseTop10Analysis.jsx — same chart/table toggle, sub-tabs, and rich
-// tooltip, parameterized by which field to rank on. Not wired into
-// Dashboard.jsx directly; the two per-metric files below are.
-import React, { useState, useMemo } from 'react'
+// Shared implementation behind NumberWiseTop10Analysis.jsx and ValueWiseTop10Analysis.jsx
+// Renders live Top 10 entities ranked by Number (Count) or Value (Rs. in Lakhs) with Chart and Table toggle.
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
 import DataTable from '../../components/dashboard/DataTable'
 import { useThemeColors, toRgba } from '../../utils/dashboardChartUtils'
-import { getTop10Entities } from '../../utils/top10Utils'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TAB_DEFS = [
-  { id: 'entity', label: 'Publishing Entity Wise', category: undefined },
+  { id: 'entity', label: 'Publishing Entity Wise', category: 'all' },
   { id: 'goods', label: 'Product Category Wise-Goods', category: 'goods' },
   { id: 'services', label: 'Product Category Wise-Services', category: 'services' },
   { id: 'works', label: 'Product Category Wise-Works', category: 'works' },
@@ -20,38 +19,59 @@ const SUB_TAB_DEFS = [
 
 export default function Top10AnalysisBase({ fyTo, sortKey, tagBase, unitLabel, barColorKey }) {
   const colors = useThemeColors()
+  const { apiFetch } = useApi()
   const [activeSubTab, setActiveSubTab] = useState('entity')
   const [viewMode, setViewMode] = useState('chart')
+  const [loading, setLoading] = useState(false)
+  const [analysisData, setAnalysisData] = useState({
+    top10: [],
+    all: [],
+    total: 0,
+  })
 
   const subTabIndex = SUB_TAB_DEFS.findIndex((t) => t.id === activeSubTab)
-  const subTabDef = SUB_TAB_DEFS[subTabIndex]
+  const subTabDef = SUB_TAB_DEFS[subTabIndex] || SUB_TAB_DEFS[0]
   const tag = `T${tagBase + subTabIndex}`
+  const targetFy = fyTo || getDefaultRollingFyRange(6).fyTo
 
-  const { top10, all, total } = useMemo(
-    () => getTop10Entities(sortKey, subTabDef?.category),
-    [sortKey, subTabDef]
-  )
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const cat = subTabDef.category || 'all'
+        const res = await apiFetch(`/dashboard/top10-analysis?fy=${targetFy}&category=${cat}&sortBy=${sortKey}`)
+        if (isMounted && res?.success && res.data) {
+          setAnalysisData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch top 10 analysis data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, targetFy, subTabDef.category, sortKey])
 
   const barColor = colors[barColorKey] || colors.blue
 
-  // Value Wise (Rs. in Lakhs) needs 2 decimal places in its callouts/table
-  // to match the reference (e.g. "9,90,363.51"); Number Wise is a plain
-  // integer count (e.g. "72,604").
   const formatValue = (v) =>
     sortKey === 'value'
-      ? Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })
-      : Number(v).toLocaleString('en-IN')
+      ? Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : Number(v || 0).toLocaleString('en-IN')
 
-  // Chart.js draws bars in the order given, and with indexAxis: 'y' the
-  // first item ends up at the bottom — reverse so the #1 ranked entity
-  // renders at the top, matching the reference screenshot.
-  const chartRows = useMemo(() => [...top10].reverse(), [top10])
+  // Chart.js draws bars from bottom to top with indexAxis: 'y' — reverse so #1 rank is at top
+  const top10List = analysisData.top10 || []
+  const chartRows = useMemo(() => [...top10List].reverse(), [top10List])
 
   const chartConfig = useMemo(() => ({
     labels: chartRows.map((r) => r.name),
     datasets: [{
       label: unitLabel,
-      data: chartRows.map((r) => r[sortKey]),
+      data: chartRows.map((r) => r[sortKey] || 0),
       backgroundColor: toRgba(barColor, 0.9),
       borderColor: barColor,
       borderRadius: 3,
@@ -62,23 +82,28 @@ export default function Top10AnalysisBase({ fyTo, sortKey, tagBase, unitLabel, b
   const tableColumns = [
     { key: 'sNo', label: 'S.No' },
     { key: 'name', label: 'Tender Publishing Entities' },
-    { key: 'tenders', label: 'No. of Tenders', align: 'right', format: (v) => v.toLocaleString('en-IN') },
-    { key: 'value', label: 'Value of Tenders (Rs. in Lakhs)', align: 'right', format: (v) => v.toLocaleString('en-IN', { minimumFractionDigits: 2 }) },
-    { key: 'bids', label: 'No. of Bids', align: 'right', format: (v) => v.toLocaleString('en-IN') },
+    { key: 'tenders', label: 'No. of Tenders', align: 'right', format: (v) => Number(v || 0).toLocaleString('en-IN') },
+    {
+      key: 'value',
+      label: 'Value of Tenders (Rs. in Lakhs)',
+      align: 'right',
+      format: (v) => Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    },
+    { key: 'bids', label: 'No. of Bids', align: 'right', format: (v) => Number(v || 0).toLocaleString('en-IN') },
   ]
 
   function buildTooltipRows(dataIndex) {
     const row = chartRows[dataIndex]
     if (!row) return []
     return [
-      { label: '# Tenders', value: row.tenders, color: colors.blue },
+      { label: '# Tenders', value: row.tenders || 0, color: colors.blue },
       {
         label: '₹ Tenders (Rs. in Lakhs)',
-        value: row.value,
+        value: row.value || 0,
         color: colors.emerald,
-        display: row.value.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+        display: Number(row.value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       },
-      { label: '# Bids', value: row.bids, color: colors.amber },
+      { label: '# Bids', value: row.bids || 0, color: colors.amber },
     ]
   }
 
@@ -94,13 +119,18 @@ export default function Top10AnalysisBase({ fyTo, sortKey, tagBase, unitLabel, b
         onChange={(id) => { setActiveSubTab(id); setViewMode('chart') }}
       />
 
-      <div className="bg-white rounded-2xl border border-tn-border p-5">
+      <div className="bg-white rounded-2xl border border-tn-border p-5 relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
+            <span className="text-xs text-tn-muted font-medium animate-pulse">Loading top 10 data...</span>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <h3 className="font-bold text-tn-navy text-sm flex items-center gap-1.5">
             <Icon name="barChart" className="w-4 h-4 text-tn-blue" />
             {viewMode === 'chart'
-              ? `${tag}. Top 10 Tender Publishing Entities - ${unitLabel} - Fin. Year - ${fyTo}`
-              : `${tag}. Top ${total} Tender Publishing Entities - ${unitLabel} - Fin. Year - ${fyTo}`}
+              ? `${tag}. Top 10 Tender Publishing Entities - ${unitLabel} - Fin. Year - ${targetFy}`
+              : `${tag}. Top ${analysisData.total || 0} Tender Publishing Entities - ${unitLabel} - Fin. Year - ${targetFy}`}
           </h3>
 
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -138,7 +168,7 @@ export default function Top10AnalysisBase({ fyTo, sortKey, tagBase, unitLabel, b
             showValueLabels
             valueFormat={formatValue}
             richTooltip={{
-              titleOverride: `For the Fin Year ${fyTo}`,
+              titleOverride: `For the Fin Year ${targetFy}`,
               subheading: (dataIndex) => chartRows[dataIndex]?.name,
               leftHeader: 'Description',
               rightHeader: 'Number',
@@ -146,7 +176,7 @@ export default function Top10AnalysisBase({ fyTo, sortKey, tagBase, unitLabel, b
             }}
           />
         ) : (
-          <DataTable columns={tableColumns} rows={all} searchKeys={['name']} />
+          <DataTable columns={tableColumns} rows={analysisData.all || []} searchKeys={['name']} />
         )}
 
         {viewMode === 'table' && (

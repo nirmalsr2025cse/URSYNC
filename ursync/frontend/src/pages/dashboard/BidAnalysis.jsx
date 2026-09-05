@@ -1,21 +1,13 @@
 // src/pages/dashboard/BidAnalysis.jsx
 // Descriptive Analysis → Bid Analysis.
-// Same shape as Bidder Analysis: no radio sub-metrics in the sidebar, just
-// the Financial Year range filter — Dashboard.jsx renders this directly
-// whenever activeGroup === 'bidAnalysis' (see GROUP_COMPONENTS there).
-import React, { useState, useMemo } from 'react'
+// Renders live bids and tenders data for B1 (All), B2 (Goods), B3 (Services), B4 (Works).
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
-import { useThemeColors, toRgba, sliceByFyRange } from '../../utils/dashboardChartUtils'
-import {
-  BIDS_RECEIVED_BY_FY,
-  BIDS_RECEIVED_GOODS,
-  BIDS_RECEIVED_SERVICES,
-  BIDS_RECEIVED_WORKS,
-  TENDERS_VALUE_BY_FY,
-  TENDERS_VALUE_CATEGORY_WISE,
-} from '../../data/dashboardMockData'
+import { useThemeColors, toRgba } from '../../utils/dashboardChartUtils'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 const SUB_TABS = [
   { id: 'received', tag: 'B1', label: 'Bids Received' },
@@ -31,62 +23,78 @@ const CHART_TITLES = {
   works: 'Number of Bids Received (Works) - Fin. Year Wise',
 }
 
-const SOURCE_BY_TAB = {
-  received: BIDS_RECEIVED_BY_FY,
-  goods: BIDS_RECEIVED_GOODS,
-  services: BIDS_RECEIVED_SERVICES,
-  works: BIDS_RECEIVED_WORKS,
-}
-
-const CATEGORY_KEY_BY_TAB = { goods: 'Goods', services: 'Services', works: 'Works' }
-
 export default function BidAnalysis({ fyFrom, fyTo }) {
   const colors = useThemeColors()
+  const { apiFetch } = useApi()
   const [activeSubTab, setActiveSubTab] = useState('received')
+  const [loading, setLoading] = useState(false)
+  const [analysisData, setAnalysisData] = useState({
+    received: [],
+    goods: [],
+    services: [],
+    works: [],
+  })
 
-  const filtered = useMemo(
-    () => sliceByFyRange(SOURCE_BY_TAB[activeSubTab], fyFrom, fyTo),
-    [activeSubTab, fyFrom, fyTo]
-  )
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const defaultFy = getDefaultRollingFyRange(6)
+        const from = fyFrom || defaultFy.fyFrom
+        const to = fyTo || defaultFy.fyTo
+        const res = await apiFetch(`/dashboard/bid-analysis?fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && res.data) {
+          setAnalysisData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch bid analysis data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, fyFrom, fyTo])
+
+  const filtered = useMemo(() => {
+    return analysisData[activeSubTab] || []
+  }, [activeSubTab, analysisData])
 
   const chartConfig = useMemo(() => ({
     labels: filtered.map((r) => r.fy),
     stacked: false,
     yAxisLabel: 'Number',
     datasets: [
-      { label: 'No. of Tenders', data: filtered.map((r) => r.tenders), backgroundColor: toRgba(colors.blue, 0.85), borderRadius: 3 },
-      { label: 'No of Bids', data: filtered.map((r) => r.bids), backgroundColor: toRgba(colors.amber, 0.85), borderRadius: 3 },
+      { label: 'No. of Tenders', data: filtered.map((r) => r.tenders || 0), backgroundColor: toRgba(colors.blue, 0.85), borderRadius: 3 },
+      { label: 'No of Bids', data: filtered.map((r) => r.bids || 0), backgroundColor: toRgba(colors.amber, 0.85), borderRadius: 3 },
     ],
   }), [filtered, colors])
 
-  // Extra tooltip rows beyond what's actually plotted — the reference mock's
-  // hover card also shows tender VALUE (Rs. in Crores) and a computed
-  // "Avg Bids per Tender" ratio, neither of which is one of the chart's bars.
+  // Custom tooltip rows showing # Tenders, Tender Value (Cr), # Bids, and Avg Bids per Tender
   function buildTooltipRows(dataIndex) {
     const row = filtered[dataIndex]
     if (!row) return []
 
-    const valueSource = activeSubTab === 'received' ? TENDERS_VALUE_BY_FY : TENDERS_VALUE_CATEGORY_WISE
-    const valueRow = valueSource.find((r) => r.fy === row.fy)
-    const value = activeSubTab === 'received'
-      ? valueRow?.value ?? 0
-      : valueRow?.[CATEGORY_KEY_BY_TAB[activeSubTab]] ?? 0
-    const avgBidsPerTender = row.tenders ? row.bids / row.tenders : 0
+    const value = row.value || 0
+    const avgBidsPerTender = row.avgBidsPerTender || (row.tenders ? row.bids / row.tenders : 0)
 
     return [
-      { label: '# Tenders', value: row.tenders, color: colors.blue },
+      { label: '# Tenders', value: row.tenders || 0, color: colors.blue },
       {
         label: '₹ Tenders (Rs. in Crores)',
         value,
         color: colors.emerald,
-        display: value.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+        display: value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       },
-      { label: '# Bids', value: row.bids, color: colors.amber },
+      { label: '# Bids', value: row.bids || 0, color: colors.amber },
       {
         label: 'Avg Bids per Tender',
         value: avgBidsPerTender,
         color: '#9CC5A1',
-        display: avgBidsPerTender.toFixed(2),
+        display: Number(avgBidsPerTender).toFixed(2),
       },
     ]
   }
@@ -99,7 +107,12 @@ export default function BidAnalysis({ fyFrom, fyTo }) {
 
       <TabBar tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />
 
-      <div className="bg-white rounded-2xl border border-tn-border p-5">
+      <div className="bg-white rounded-2xl border border-tn-border p-5 relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
+            <span className="text-xs text-tn-muted font-medium animate-pulse">Loading bids data...</span>
+          </div>
+        )}
         <h3 className="font-bold text-tn-navy text-sm flex items-center gap-1.5 mb-4">
           <Icon name="doc" className="w-4 h-4 text-tn-blue" />
           {SUB_TABS.find((t) => t.id === activeSubTab)?.tag}. {CHART_TITLES[activeSubTab]}

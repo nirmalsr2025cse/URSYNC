@@ -67,6 +67,7 @@ function formatTender(t) {
     category: t.categoryId?.name || '—',
     categoryId: t.categoryId?._id?.toString() || null,
     tenderType: t.tenderType || 'Open',
+    procurementType: t.procurementType || 'Works',
     district: t.districtId?.name || '—',
     districtId: t.districtId?._id?.toString() || null,
     location: t.location || '',
@@ -325,6 +326,7 @@ exports.createTender = async (req, res) => {
       startDate,
       closingDate,
       tenderType,
+      procurementType,
       priority,
       image,
       documentUrl,
@@ -356,6 +358,7 @@ exports.createTender = async (req, res) => {
       startDate,
       closingDate,
       tenderType,
+      procurementType: procurementType || 'Works',
       priority,
       image,
       documentUrl,
@@ -441,7 +444,7 @@ exports.updateTender = async (req, res) => {
     const allowedFields = [
       'title', 'description', 'categoryId', 'districtId', 'location', 'taluk',
       'village', 'latitude', 'longitude', 'estimatedValue', 'currency',
-      'duration', 'startDate', 'closingDate', 'tenderType', 'priority',
+      'duration', 'startDate', 'closingDate', 'tenderType', 'procurementType', 'priority',
       'image', 'documentUrl',
       // NOTE: 'status' and 'sentTo' are intentionally NOT in this list —
       // Save/edit can never change them directly; only the send-to-* /

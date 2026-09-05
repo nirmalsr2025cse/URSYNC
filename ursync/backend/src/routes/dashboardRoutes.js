@@ -21,4 +21,19 @@ router.get('/percentage-wise', dashboardController.getPercentageWiseAnalysis)
 // GET /api/dashboard/bids-awarded
 router.get('/bids-awarded', dashboardController.getBidsAwardedAnalysis)
 
+// GET /api/dashboard/bidder-wise
+router.get('/bidder-wise', dashboardController.getBidderWiseAnalysis)
+
+// GET /api/dashboard/bid-analysis
+router.get('/bid-analysis', dashboardController.getBidAnalysis)
+
+// GET /api/dashboard/top10-analysis
+router.get('/top10-analysis', dashboardController.getTop10Analysis)
+
+// GET /api/dashboard/last-12-months-trend
+router.get('/last-12-months-trend', dashboardController.getLast12MonthsTrend)
+
+// GET /api/dashboard/year-over-year
+router.get('/year-over-year', dashboardController.getYearOverYearAnalysis)
+
 module.exports = router

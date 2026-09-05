@@ -414,7 +414,7 @@ exports.tenderAuthorityApprove = async (req, res) => {
         categoryId: tender.categoryId,
         districtId: tender.districtId,
 
-        procurementType: undefined, // not tracked on CreateTender; leave unset
+        procurementType: tender.procurementType || 'Works',
         productCategory: '',
         location: tender.location,
         taluk: tender.taluk || '',

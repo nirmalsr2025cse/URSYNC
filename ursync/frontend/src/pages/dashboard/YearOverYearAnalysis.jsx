@@ -32,7 +32,8 @@ import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
 import { useThemeColors, toRgba } from '../../utils/dashboardChartUtils'
 import { externalTooltipHandler, removeRichTooltipEls } from '../../components/dashboard/chartTooltip'
-import { getYearOverYearTenders, getLastThreeYearsTrend } from '../../data/dashboardMockData'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
 ChartJS.register(
   BarController, BarElement, LineController, LineElement, PointElement,
@@ -43,6 +44,8 @@ const SUB_TABS = [
   { id: 'yoy', label: 'Number of Tender - YOY' },
   { id: 'last3', label: 'Last Three Years Trend' },
 ]
+
+const DEFAULT_MONTH_LABELS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar']
 
 // ── Combo chart (2 bar series + 1 growth-% line, dual axis) ─────────────────
 function YoYComboChart({ data, colors }) {
@@ -55,12 +58,12 @@ function YoYComboChart({ data, colors }) {
 
     chartRef.current = new ChartJS(canvasRef.current, {
       data: {
-        labels: data.labels,
+        labels: data?.labels || DEFAULT_MONTH_LABELS,
         datasets: [
           {
             type: 'bar',
-            label: data.previousFYLabel,
-            data: data.previous,
+            label: data?.previousFYLabel || 'Previous FY',
+            data: data?.previous || new Array(12).fill(0),
             backgroundColor: toRgba(colors.navy, 0.85),
             borderRadius: 2,
             yAxisID: 'y',
@@ -68,8 +71,8 @@ function YoYComboChart({ data, colors }) {
           },
           {
             type: 'bar',
-            label: data.currentFYLabel,
-            data: data.current,
+            label: data?.currentFYLabel || 'Current FY',
+            data: data?.current || new Array(12).fill(0),
             backgroundColor: toRgba(colors.amber, 0.9),
             borderRadius: 2,
             yAxisID: 'y',
@@ -78,7 +81,7 @@ function YoYComboChart({ data, colors }) {
           {
             type: 'line',
             label: '% of Growth over Year',
-            data: data.growth,
+            data: data?.growth || new Array(12).fill(0),
             borderColor: colors.emerald,
             backgroundColor: colors.emerald,
             pointBackgroundColor: colors.emerald,
@@ -107,13 +110,13 @@ function YoYComboChart({ data, colors }) {
               leftHeader: 'Series',
               rightHeader: 'Value',
               rows: (dataIndex) => [
-                { label: data.previousFYLabel, value: data.previous[dataIndex], color: colors.navy },
-                { label: data.currentFYLabel, value: data.current[dataIndex], color: colors.amber },
+                { label: data?.previousFYLabel || 'Previous FY', value: data?.previous?.[dataIndex] || 0, color: colors.navy },
+                { label: data?.currentFYLabel || 'Current FY', value: data?.current?.[dataIndex] || 0, color: colors.amber },
                 {
                   label: '% Growth',
-                  value: data.growth[dataIndex],
+                  value: data?.growth?.[dataIndex] ?? 0,
                   color: colors.emerald,
-                  display: data.growth[dataIndex] === null ? 'N/A' : `${data.growth[dataIndex].toFixed(2)}%`,
+                  display: data?.growth?.[dataIndex] === null ? 'N/A' : `${data?.growth?.[dataIndex]?.toFixed(2)}%`,
                 },
               ],
             }),
@@ -154,18 +157,66 @@ function YoYComboChart({ data, colors }) {
   )
 }
 
-export default function YearOverYearAnalysis({ fyTo }) {
+export default function YearOverYearAnalysis({ fyTo, yearRange }) {
   const colors = useThemeColors()
+  const { apiFetch } = useApi()
   const [activeTab, setActiveTab] = useState('yoy')
+  const [loading, setLoading] = useState(false)
 
-  const yoyData = useMemo(() => getYearOverYearTenders(fyTo), [fyTo])
-  const last3Data = useMemo(() => getLastThreeYearsTrend(fyTo), [fyTo])
+  const targetFy = useMemo(() => {
+    if (fyTo) return fyTo
+    if (yearRange) {
+      const parts = yearRange.split(/[–-]/)
+      const yr = parseInt(parts[parts.length - 1], 10)
+      if (yr) return `${yr}-${String((yr + 1) % 100).padStart(2, '0')}`
+    }
+    return getDefaultRollingFyRange(6).fyTo
+  }, [fyTo, yearRange])
+
+  const [analysisData, setAnalysisData] = useState({
+    yoy: {
+      labels: DEFAULT_MONTH_LABELS,
+      currentFYLabel: targetFy,
+      previousFYLabel: '',
+      current: new Array(12).fill(0),
+      previous: new Array(12).fill(0),
+      growth: new Array(12).fill(0),
+    },
+    last3: {
+      labels: DEFAULT_MONTH_LABELS,
+      series: [],
+    },
+  })
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const res = await apiFetch(`/dashboard/year-over-year?fy=${targetFy}`)
+        if (isMounted && res?.success && res.data) {
+          setAnalysisData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch year over year analysis:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, targetFy])
+
+  const yoyData = analysisData.yoy
+  const last3Data = analysisData.last3
 
   const last3Config = useMemo(() => {
     const palette = [colors.navy, colors.amber, colors.emerald]
     return {
-      labels: last3Data.labels,
-      datasets: last3Data.series.map((s, i) => ({
+      labels: last3Data?.labels || DEFAULT_MONTH_LABELS,
+      datasets: (last3Data?.series || []).map((s, i) => ({
         label: s.label,
         data: s.data,
         backgroundColor: toRgba(palette[i % palette.length], 0.85),
@@ -186,11 +237,16 @@ export default function YearOverYearAnalysis({ fyTo }) {
         <h3 className="font-bold text-tn-navy text-sm flex items-center gap-1.5 mb-4">
           <Icon name="barChart" className="w-4 h-4 text-tn-blue" />
           {activeTab === 'yoy'
-            ? `Y1. Tender Publishing Trend over Previous Fin Year (${yoyData.previousFYLabel} & ${yoyData.currentFYLabel})`
+            ? `Y1. Tender Publishing Trend over Previous Fin Year (${yoyData?.previousFYLabel || ''} & ${yoyData?.currentFYLabel || ''})`
             : `Y2. Number of Tenders Published - Last 3 Years`}
         </h3>
 
-        {activeTab === 'yoy' ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-[420px] text-tn-muted text-sm">
+            <div className="w-6 h-6 border-2 border-tn-blue border-t-transparent rounded-full animate-spin mr-2" />
+            Loading Year Over Year data…
+          </div>
+        ) : activeTab === 'yoy' ? (
           <YoYComboChart data={yoyData} colors={colors} />
         ) : (
           <BarChartCanvas

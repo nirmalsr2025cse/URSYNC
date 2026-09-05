@@ -1,36 +1,75 @@
 // src/pages/dashboard/BidderWiseAnalysis.jsx
 // Descriptive Analysis → Bidder Analysis.
-// This group has no radio sub-metrics in the sidebar (just the Financial
-// Year range filter), so Dashboard.jsx renders this directly whenever
-// activeGroup === 'bidderAnalysis' — see GROUP_COMPONENTS there.
-import React, { useMemo } from 'react'
+// Renders MSME vs Non-MSME Bidders live statistics grouped by Financial Year.
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import TabBar from '../../components/dashboard/TabBar'
 import BarChartCanvas from '../../components/dashboard/BarChartCanvas'
-import { useThemeColors, toRgba, sliceByFyRange } from '../../utils/dashboardChartUtils'
-import { BIDDER_MSME_BY_FY } from '../../data/dashboardMockData'
+import { useThemeColors, toRgba } from '../../utils/dashboardChartUtils'
+import { useApi } from '../../api/client'
+import { getDefaultRollingFyRange } from '../../utils/financialYearUtils'
 
-// Only one sub-tab exists today, but it still goes through the shared
-// TabBar so the look stays consistent if more get added later.
 const SUB_TABS = [{ id: 'msme', tag: 'BI1', label: 'MSME vs Non MSME Bidders' }]
 
 export default function BidderWiseAnalysis({ fyFrom, fyTo }) {
   const colors = useThemeColors()
-  const filtered = useMemo(() => sliceByFyRange(BIDDER_MSME_BY_FY, fyFrom, fyTo), [fyFrom, fyTo])
+  const { apiFetch } = useApi()
+  const [loading, setLoading] = useState(false)
+  const [analysisData, setAnalysisData] = useState([])
+
+  useEffect(() => {
+    let isMounted = true
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const defaultFy = getDefaultRollingFyRange(6)
+        const from = fyFrom || defaultFy.fyFrom
+        const to = fyTo || defaultFy.fyTo
+        const res = await apiFetch(`/dashboard/bidder-wise?fyFrom=${from}&fyTo=${to}`)
+        if (isMounted && res?.success && Array.isArray(res.data)) {
+          setAnalysisData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch bidder analysis data:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [apiFetch, fyFrom, fyTo])
 
   const chartConfig = useMemo(() => {
-    const msmeColor = '#EC4899' // pink — distinct from the rest of the palette, matches the reference
+    const msmeColor = '#EC4899' // pink
+    const rows = analysisData || []
     return {
-      labels: filtered.map((r) => r.fy),
+      labels: rows.map((r) => r.fy),
       stacked: false,
       yAxisLabel: 'No.of Bidders',
       datasets: [
-        { label: 'MSME Bidders', data: filtered.map((r) => r.msme), backgroundColor: toRgba(msmeColor, 0.9), borderRadius: 3 },
-        { label: 'Non_MSME Bidders', data: filtered.map((r) => r.nonMsme), backgroundColor: toRgba(colors.emerald, 0.85), borderRadius: 3 },
-        { label: 'Total Registered Bidders', data: filtered.map((r) => r.total), backgroundColor: toRgba(colors.blue, 0.85), borderRadius: 3 },
+        {
+          label: 'MSME Bidders',
+          data: rows.map((r) => r.msme || 0),
+          backgroundColor: toRgba(msmeColor, 0.9),
+          borderRadius: 3,
+        },
+        {
+          label: 'Non_MSME Bidders',
+          data: rows.map((r) => r.nonMsme || 0),
+          backgroundColor: toRgba(colors.emerald, 0.85),
+          borderRadius: 3,
+        },
+        {
+          label: 'Total Registered Bidders',
+          data: rows.map((r) => r.total || 0),
+          backgroundColor: toRgba(colors.blue, 0.85),
+          borderRadius: 3,
+        },
       ],
     }
-  }, [filtered, colors])
+  }, [analysisData, colors])
 
   return (
     <div className="space-y-5">
@@ -40,7 +79,12 @@ export default function BidderWiseAnalysis({ fyFrom, fyTo }) {
 
       <TabBar tabs={SUB_TABS} activeTab="msme" onChange={() => {}} />
 
-      <div className="bg-white rounded-2xl border border-tn-border p-5">
+      <div className="bg-white rounded-2xl border border-tn-border p-5 relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
+            <span className="text-xs text-tn-muted font-medium animate-pulse">Loading bidder data...</span>
+          </div>
+        )}
         <h3 className="font-bold text-tn-navy text-sm flex items-center gap-1.5 mb-4">
           <Icon name="doc" className="w-4 h-4 text-tn-blue" />
           BI1. No. of MSME Bidders vs. Non-MSME Bidders - Year Wise

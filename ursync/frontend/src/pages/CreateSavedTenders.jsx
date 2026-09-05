@@ -70,7 +70,7 @@ function SavedTenderCard({ tender, onView, onEdit, onDelete }) {
         {/* Meta */}
         <div className="space-y-1.5 text-xs text-[#6B7A8D] pt-2 border-t border-[#FFE5BF]">
           <MetaRow icon="building" label={tender.department} />
-          <MetaRow icon="tag"      label={tender.category + ' · ' + tender.tenderType} />
+          <MetaRow icon="tag"      label={tender.category + ' · ' + (tender.procurementType || 'Works') + ' · ' + tender.tenderType} />
           <MetaRow icon="location" label={tender.district + ', ' + tender.village} />
           <div className="flex items-center justify-between pt-1">
             <MetaRow icon="calendar" label={'Start: ' + formatDate(tender.startDate)} />
@@ -169,7 +169,8 @@ export default function CreateSavedTenders() {
         tender.projectName.toLowerCase().includes(search.toLowerCase()) ||
         tender.department.toLowerCase().includes(search.toLowerCase()) ||
         tender.tenderId.toLowerCase().includes(search.toLowerCase()) ||
-        tender.district.toLowerCase().includes(search.toLowerCase())
+        tender.district.toLowerCase().includes(search.toLowerCase()) ||
+        (tender.procurementType && tender.procurementType.toLowerCase().includes(search.toLowerCase()))
 
       const matchesStatus =
         statusFilter === 'All' || tender.status === statusFilter

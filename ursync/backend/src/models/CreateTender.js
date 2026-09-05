@@ -53,6 +53,12 @@ const createTenderSchema = new Schema(
     },
 
     tenderType: { type: String, trim: true, default: 'Open' },
+    procurementType: {
+      type: String,
+      enum: ['Works', 'Goods', 'Services'],
+      default: 'Works',
+      trim: true,
+    },
     priority: {
       type: String,
       enum: ['Low', 'Medium', 'High'],

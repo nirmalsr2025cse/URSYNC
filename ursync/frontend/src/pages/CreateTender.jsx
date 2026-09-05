@@ -212,6 +212,7 @@ export default function CreateTender() {
     tenderId:         editData?.tenderId          || '',
     title:            editData?.title             || '',
     categoryId:       editData?.categoryId         || '',
+    procurementType:  editData?.procurementType    || 'Works',
     districtId:       editData?.districtId         || '',
     description:      editData?.description        || '',
     estimatedValue:   editData?.estimatedValue      || editData?.amount || '',
@@ -387,6 +388,7 @@ export default function CreateTender() {
       title: form.title,
       description: form.description,
       categoryId: form.categoryId,
+      procurementType: form.procurementType || 'Works',
       districtId: form.districtId,
       location: form.location,
       taluk: form.taluk,
@@ -624,6 +626,19 @@ export default function CreateTender() {
                   className={errors.categoryId ? inputError : inputClass}>
             <option value="">Select category</option>
             {meta.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+
+        <Field label="Procurement Type" required error={errors.procurementType}>
+          <select
+            name="procurementType"
+            value={form.procurementType}
+            onChange={e => set('procurementType', e.target.value)}
+            className={errors.procurementType ? inputError : inputClass}
+          >
+            <option value="Works">Works</option>
+            <option value="Goods">Goods</option>
+            <option value="Services">Services</option>
           </select>
         </Field>
 

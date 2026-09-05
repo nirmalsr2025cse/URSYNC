@@ -69,7 +69,7 @@ export const DESCRIPTIVE_GROUPS = [
     ],
     filter: null,
   },
-  { id: 'yearOverYear', label: 'Year Over Year', icon: 'trend', metrics: null, filter: 'singleRange' },
+  { id: 'yearOverYear', label: 'Year Over Year', icon: 'trend', metrics: null, filter: 'singleYear' },
 ]
 
 // Sidebar structure for the "Key Performance Indicators" top-nav section.

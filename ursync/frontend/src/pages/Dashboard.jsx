@@ -139,7 +139,7 @@ export default function Dashboard() {
   const defaultFy = getDefaultRollingFyRange(6)
   const [fyFrom, setFyFrom] = useState(defaultFy.fyFrom)
   const [fyTo, setFyTo] = useState(defaultFy.fyTo)
-  const [yearRange, setYearRange] = useState(YEAR_RANGE_OPTIONS[0])
+  const [yearRange, setYearRange] = useState(YEAR_RANGE_OPTIONS[YEAR_RANGE_OPTIONS.length - 1] || '2025–2026')
 
   // Monthly Report (MSR Report) filter state — controlled by
   // DashboardSidebar's 'monthly' branch, consumed by MsrReport.
@@ -237,7 +237,16 @@ export default function Dashboard() {
         onFyToChange={setFyTo}
         yearRangeOptions={YEAR_RANGE_OPTIONS}
         yearRange={yearRange}
-        onYearRangeChange={setYearRange}
+        onYearRangeChange={(val) => {
+          setYearRange(val)
+          if (val) {
+            const parts = val.split(/[–-]/)
+            const yr = parseInt(parts[parts.length - 1], 10)
+            if (yr) {
+              setFyTo(`${yr}-${String((yr + 1) % 100).padStart(2, '0')}`)
+            }
+          }
+        }}
         msrMonths={MSR_MONTHS}
         msrYear={msrYear}
         onMsrYearChange={setMsrYear}
@@ -268,6 +277,7 @@ export default function Dashboard() {
             <ActiveMetricComponent
               fyFrom={fyFrom}
               fyTo={fyTo}
+              yearRange={yearRange}
               msrYear={msrYear}
               msrMonth={msrMonth}
             />
