@@ -175,8 +175,25 @@ export default function SearchResourcePage() {
     return filtered.slice(start, start + PAGE_SIZE)
   }, [filtered, currentPage])
 
+  const today = new Date().toISOString().split('T')[0]
+
+  function handleRequiredFromChange(value) {
+    setRequiredFrom(value)
+    if (requiredTo && value && requiredTo < value) {
+      setRequiredTo('')
+    }
+    setCurrentPage(1)
+  }
+
+  function handleRequiredToChange(value) {
+    setRequiredTo(value)
+    setCurrentPage(1)
+  }
+
   function handleClear() {
     setSearch('')
+    setRequiredFrom('')
+    setRequiredTo('')
     setCurrentPage(1)
   }
 
@@ -213,8 +230,8 @@ export default function SearchResourcePage() {
 
       {/* ── Search Bar ── */}
       <div className="bg-white border border-tn-border rounded-2xl p-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row gap-3 items-center">
+          <div className="relative flex-1 w-full">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
@@ -230,29 +247,32 @@ export default function SearchResourcePage() {
             />
           </div>
 
-          <input
-            type="date"
-            value={requiredFrom}
-            onChange={(e) => {
-              setRequiredFrom(e.target.value)
-              setCurrentPage(1)
-            }}
-            className="px-3 py-2.5 text-sm border border-tn-border rounded-xl text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30"
-            aria-label="Required from date"
-          />
-          <input
-            type="date"
-            value={requiredTo}
-            onChange={(e) => {
-              setRequiredTo(e.target.value)
-              setCurrentPage(1)
-            }}
-            className="px-3 py-2.5 text-sm border border-tn-border rounded-xl text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30"
-            aria-label="Required to date"
-          />
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <input
+              type="date"
+              min={today}
+              value={requiredFrom}
+              onChange={(e) => handleRequiredFromChange(e.target.value)}
+              className="px-3 py-2.5 text-sm border border-tn-border rounded-xl text-tn-navy bg-white focus:outline-none focus:ring-2 focus:ring-tn-blue/30"
+              aria-label="Required from date"
+              title="Required from date"
+            />
+            <input
+              type="date"
+              min={requiredFrom || today}
+              value={requiredTo}
+              disabled={!requiredFrom}
+              onChange={(e) => handleRequiredToChange(e.target.value)}
+              className={`px-3 py-2.5 text-sm border border-tn-border rounded-xl text-tn-navy focus:outline-none focus:ring-2 focus:ring-tn-blue/30 transition-opacity ${
+                !requiredFrom ? 'opacity-50 cursor-not-allowed bg-tn-light/50' : 'bg-white'
+              }`}
+              aria-label="Required to date"
+              title={!requiredFrom ? 'Select Required From date first' : 'Required To date'}
+            />
+          </div>
 
-          {search && (
-            <button onClick={handleClear} className="text-xs text-tn-muted hover:text-tn-danger underline px-2">
+          {(search || requiredFrom || requiredTo) && (
+            <button onClick={handleClear} className="text-xs text-tn-muted hover:text-tn-danger underline px-2 whitespace-nowrap">
               Clear All
             </button>
           )}

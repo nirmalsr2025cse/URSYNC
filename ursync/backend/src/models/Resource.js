@@ -49,6 +49,7 @@ const applicationSchema = new Schema(
 
 const resourceSchema = new Schema(
   {
+    resourceId: { type: String, trim: true, default: '' },
     name: { type: String, required: true, trim: true },
     description: { type: String, trim: true, default: '' },
 
@@ -58,6 +59,19 @@ const resourceSchema = new Schema(
 
     // Total units of this resource that exist.
     available: { type: Number, required: true, min: 0, default: 0 },
+
+    condition: { type: String, trim: true, default: 'Good' },
+    rentPerDay: { type: Number, default: 0 },
+    specifications: { type: String, trim: true, default: '' },
+
+    contactPerson: {
+      name: { type: String, trim: true, default: '' },
+      phone: { type: String, trim: true, default: '' },
+      email: { type: String, trim: true, default: '' },
+    },
+
+    location: { type: String, trim: true, default: '' },
+    unit: { type: String, trim: true, default: 'units' },
 
     // Waiting list / application history for this resource.
     applications: { type: [applicationSchema], default: [] },

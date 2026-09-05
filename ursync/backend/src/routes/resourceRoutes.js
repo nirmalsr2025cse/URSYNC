@@ -9,6 +9,7 @@ const {
   getResourceById,
   getResourceAvailability,
   createResource,
+  updateResource,
   applyForResource,
   getMyRequests,
   decideApplication,
@@ -34,6 +35,16 @@ router.post(
   '/resources',
   requireRole('department_employee', 'department_head', 'administrator'),
   createResource
+)
+router.patch(
+  '/resources/:id',
+  requireRole('department_employee', 'department_head', 'administrator'),
+  updateResource
+)
+router.put(
+  '/resources/:id',
+  requireRole('department_employee', 'department_head', 'administrator'),
+  updateResource
 )
 router.post('/resources/:id/apply', applyForResource)
 router.get('/resource-requests/mine', getMyRequests)

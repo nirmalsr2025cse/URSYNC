@@ -6,6 +6,7 @@ const Resource = require('../models/Resource')
 const ResourceRequest = require('../models/ResourceRequest')
 const Department = require('../models/Department')
 const District = require('../models/District')
+const { Counter, getNextSequence } = require('../models/Counter')
 
 function parseDateRange(requiredFrom, requiredTo) {
   if (!requiredFrom || !requiredTo) {
@@ -70,7 +71,6 @@ async function listResources(req, res) {
       isDeleted: false,
       isActive: true,
     })
-      .select('name description category district departmentId available createdAt')
       .populate('district', 'name code')
       .populate('departmentId', 'name code')
       .sort({ createdAt: -1 })
@@ -109,7 +109,6 @@ async function getResourceById(req, res) {
     }
 
     const resource = await Resource.findOne({ _id: id, isDeleted: false })
-      .select('name description category district departmentId available createdAt')
       .populate('district', 'name code')
       .populate('departmentId', 'name code')
       .lean({ virtuals: true })
@@ -137,6 +136,15 @@ async function createResource(req, res) {
       departmentId,
       quantity,
       available,
+      condition,
+      rentPerDay,
+      specifications,
+      contactPerson,
+      contactName,
+      contactPhone,
+      contactEmail,
+      location,
+      unit,
     } = req.body
 
     const resourceLabel = name || resourceName
@@ -149,13 +157,27 @@ async function createResource(req, res) {
       return res.status(400).json({ message: 'available cannot be negative.' })
     }
 
+    const seq = await getNextSequence('resource')
+    const resourceId = `RS-${String(seq).padStart(3, '0')}`
+
     const resource = await Resource.create({
+      resourceId,
       name: resourceLabel,
-      description,
-      category,
+      description: description || '',
+      category: category || '',
       district: district || districtId || null,
       departmentId: departmentId || req.departmentId || null,
       available: Number(resourceQuantity),
+      condition: condition || 'Good',
+      rentPerDay: Number(rentPerDay) || 0,
+      specifications: specifications || '',
+      contactPerson: {
+        name: contactPerson?.name || contactName || '',
+        phone: contactPerson?.phone || contactPhone || '',
+        email: contactPerson?.email || contactEmail || '',
+      },
+      location: location || '',
+      unit: unit || 'units',
       applications: [],
       applied: [],
     })
@@ -164,6 +186,82 @@ async function createResource(req, res) {
   } catch (err) {
     console.error('createResource error:', err)
     res.status(500).json({ message: 'Failed to create resource.' })
+  }
+}
+
+// PATCH / PUT /api/resources/:id
+async function updateResource(req, res) {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid resource id.' })
+    }
+
+    const {
+      name,
+      resourceName,
+      description,
+      category,
+      district,
+      districtId,
+      departmentId,
+      quantity,
+      available,
+      condition,
+      rentPerDay,
+      specifications,
+      contactPerson,
+      contactName,
+      contactPhone,
+      contactEmail,
+      location,
+      unit,
+    } = req.body
+
+    const resource = await Resource.findOne({ _id: id, isDeleted: false })
+    if (!resource) return res.status(404).json({ message: 'Resource not found.' })
+
+    if (name !== undefined || resourceName !== undefined) {
+      resource.name = name || resourceName
+    }
+    if (description !== undefined) resource.description = description
+    if (category !== undefined) resource.category = category
+    if (district !== undefined || districtId !== undefined) {
+      resource.district = district || districtId || null
+    }
+    if (departmentId !== undefined) resource.departmentId = departmentId
+    if (quantity !== undefined || available !== undefined) {
+      const q = available ?? quantity
+      if (Number.isNaN(Number(q)) || Number(q) < 0) {
+        return res.status(400).json({ message: 'available cannot be negative.' })
+      }
+      resource.available = Number(q)
+    }
+    if (condition !== undefined) resource.condition = condition
+    if (rentPerDay !== undefined) resource.rentPerDay = Number(rentPerDay) || 0
+    if (specifications !== undefined) resource.specifications = specifications
+    if (location !== undefined) resource.location = location
+    if (unit !== undefined) resource.unit = unit
+
+    if (contactPerson || contactName !== undefined || contactPhone !== undefined || contactEmail !== undefined) {
+      resource.contactPerson = {
+        name: contactPerson?.name !== undefined ? contactPerson.name : (contactName !== undefined ? contactName : resource.contactPerson?.name || ''),
+        phone: contactPerson?.phone !== undefined ? contactPerson.phone : (contactPhone !== undefined ? contactPhone : resource.contactPerson?.phone || ''),
+        email: contactPerson?.email !== undefined ? contactPerson.email : (contactEmail !== undefined ? contactEmail : resource.contactPerson?.email || ''),
+      }
+    }
+
+    await resource.save()
+
+    const updated = await Resource.findById(resource._id)
+      .populate('district', 'name code')
+      .populate('departmentId', 'name code')
+      .lean({ virtuals: true })
+
+    res.json({ message: 'Resource updated successfully.', resource: updated })
+  } catch (err) {
+    console.error('updateResource error:', err)
+    res.status(500).json({ message: 'Failed to update resource.' })
   }
 }
 
@@ -416,6 +514,7 @@ module.exports = {
   getResourceById,
   getResourceAvailability,
   createResource,
+  updateResource,
   applyForResource,
   getMyRequests,
   decideApplication,
@@ -441,7 +540,6 @@ async function listSharingResources(req, res) {
       resourceFilter.$or = [{ name: search }, { category: search }, { description: search }]
     }
     const resources = await Resource.find(resourceFilter)
-      .select('name description category district departmentId available createdAt')
       .populate('district', 'name code')
       .populate('departmentId', 'name code')
       .sort({ createdAt: -1 })

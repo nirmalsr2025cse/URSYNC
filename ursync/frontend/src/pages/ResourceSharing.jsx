@@ -79,7 +79,7 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
             </div>
             <div>
               <h2 className="text-lg font-extrabold text-tn-navy">{resource.name}</h2>
-              <p className="text-xs text-tn-muted mt-0.5">{resource.id} · {resource.category}</p>
+              <p className="text-xs text-tn-muted mt-0.5">{resource.displayId || resource.id} · {resource.category}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -99,21 +99,13 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
 
         {/* Modal Body */}
         <div className="p-6 space-y-5">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {[
-              { label: 'Department', value: resource.department },
-              { label: 'District',   value: resource.district   },
-              { label: 'Quantity',   value: `${resource.quantity} ${resource.unit}` },
-              { label: 'Condition',  value: resource.condition  },
-              ...(isAvailable
-                ? [
-                    { label: 'Available From', value: new Date(resource.availableFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
-                    { label: 'Available To',   value: new Date(resource.availableTo).toLocaleDateString('en-IN',   { day: '2-digit', month: 'short', year: 'numeric' }) },
-                  ]
-                : [
-                    { label: 'Expected Availability', value: new Date(resource.expectedAvailability).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
-                  ]
-              ),
+              { label: 'Department',   value: resource.department },
+              { label: 'District',     value: resource.district   },
+              { label: 'Quantity',     value: `${resource.quantity} ${resource.unit}` },
+              { label: 'Condition',    value: resource.condition  },
+              { label: 'Rent Per Day', value: `₹${resource.rentPerDay || 0} / day` },
             ].map(({ label, value }) => (
               <div key={label}>
                 <p className="text-[10px] font-semibold text-tn-muted uppercase tracking-wide">{label}</p>
@@ -170,15 +162,28 @@ function ResourceDetailModal({ resource, onClose, onEdit }) {
 
 /* ─────────────────────── EditResourceModal ─────────────────────── */
 function EditResourceModal({ resource, onClose, onSave }) {
-  const [form, setForm] = useState({ ...resource })
-  const isAvailable = resource.status === 'Available'
+  const [form, setForm] = useState({
+    name: resource.name || '',
+    category: resource.category || '',
+    quantity: resource.quantity ?? resource.available ?? '',
+    unit: resource.unit || 'units',
+    condition: resource.condition || 'Good',
+    rentPerDay: resource.rentPerDay ?? 0,
+    description: resource.description === 'Not specified' ? '' : (resource.description || ''),
+    specifications: resource.specifications === 'Not specified' ? '' : (resource.specifications || ''),
+    contactPerson: resource.contactPerson === 'Not specified' ? '' : (resource.contactPerson || ''),
+    contactPhone: resource.contactPhone === 'Not specified' ? '' : (resource.contactPhone || ''),
+    contactEmail: resource.contactEmail === 'Not specified' ? '' : (resource.contactEmail || ''),
+    location: resource.location === 'Not specified' ? '' : (resource.location || ''),
+  })
 
   function handleChange(e) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  function handleSave() {
-    onSave(form)
+  function handleSave(e) {
+    e.preventDefault()
+    onSave(resource.id, form)
     onClose()
   }
 
@@ -194,7 +199,7 @@ function EditResourceModal({ resource, onClose, onSave }) {
         <div className="flex items-center justify-between p-6 border-b border-tn-border">
           <div>
             <h2 className="text-lg font-extrabold text-tn-navy">Edit Resource</h2>
-            <p className="text-xs text-tn-muted mt-0.5">{resource.id}</p>
+            <p className="text-xs text-tn-muted mt-0.5">{resource.displayId || resource.id}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg border border-tn-border text-tn-muted hover:bg-tn-light transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -202,85 +207,74 @@ function EditResourceModal({ resource, onClose, onSave }) {
             </svg>
           </button>
         </div>
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Resource Name</label>
-              <input name="name" value={form.name} onChange={handleChange} className={inputClass} />
-            </div>
-            <div>
-              <label className={labelClass}>Category</label>
-              <input name="category" value={form.category} onChange={handleChange} className={inputClass} />
-            </div>
-            <div>
-              <label className={labelClass}>Quantity</label>
-              <input name="quantity" type="number" value={form.quantity} onChange={handleChange} className={inputClass} />
-            </div>
-            <div>
-              <label className={labelClass}>Unit</label>
-              <input name="unit" value={form.unit} onChange={handleChange} className={inputClass} />
-            </div>
-            <div>
-              <label className={labelClass}>Condition</label>
-              <select name="condition" value={form.condition} onChange={handleChange} className={inputClass}>
-                {['Excellent', 'Good', 'Fair', 'Under Repair', 'In Use'].map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>District</label>
-              <input name="district" value={form.district} onChange={handleChange} className={inputClass} />
-            </div>
-            {isAvailable ? (
-              <>
-                <div>
-                  <label className={labelClass}>Available From</label>
-                  <input type="date" name="availableFrom" value={form.availableFrom} onChange={handleChange} className={inputClass} />
-                </div>
-                <div>
-                  <label className={labelClass}>Available To</label>
-                  <input type="date" name="availableTo" value={form.availableTo} onChange={handleChange} className={inputClass} />
-                </div>
-              </>
-            ) : (
+        <form onSubmit={handleSave}>
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelClass}>Expected Availability</label>
-                <input type="date" name="expectedAvailability" value={form.expectedAvailability} onChange={handleChange} className={inputClass} />
+                <label className={labelClass}>Resource Name</label>
+                <input name="name" value={form.name} onChange={handleChange} className={inputClass} required />
               </div>
-            )}
-          </div>
-          <div>
-            <label className={labelClass}>Description</label>
-            <textarea name="description" value={form.description} onChange={handleChange} rows={3} className={inputClass + ' resize-none'} />
-          </div>
-          <div>
-            <label className={labelClass}>Specifications</label>
-            <textarea name="specifications" value={form.specifications} onChange={handleChange} rows={2} className={inputClass + ' resize-none'} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Contact Person</label>
-              <input name="contactPerson" value={form.contactPerson} onChange={handleChange} className={inputClass} />
+              <div>
+                <label className={labelClass}>Category</label>
+                <input name="category" value={form.category} onChange={handleChange} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Quantity</label>
+                <input name="quantity" type="number" min="0" value={form.quantity} onChange={handleChange} className={inputClass} required />
+              </div>
+              <div>
+                <label className={labelClass}>Unit</label>
+                <input name="unit" value={form.unit} onChange={handleChange} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Rent Per Day (₹)</label>
+                <input name="rentPerDay" type="number" min="0" value={form.rentPerDay} onChange={handleChange} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Condition</label>
+                <select name="condition" value={form.condition} onChange={handleChange} className={inputClass}>
+                  {['Good', 'Average', 'Bad', 'Excellent', 'Fair', 'Under Repair', 'In Use'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div>
-              <label className={labelClass}>Contact Phone</label>
-              <input name="contactPhone" value={form.contactPhone} onChange={handleChange} className={inputClass} />
+              <label className={labelClass}>Location</label>
+              <input name="location" value={form.location} onChange={handleChange} className={inputClass} />
             </div>
-            <div className="sm:col-span-2">
-              <label className={labelClass}>Contact Email</label>
-              <input name="contactEmail" value={form.contactEmail} onChange={handleChange} className={inputClass} />
+            <div>
+              <label className={labelClass}>Description</label>
+              <textarea name="description" value={form.description} onChange={handleChange} rows={3} className={inputClass + ' resize-none'} />
+            </div>
+            <div>
+              <label className={labelClass}>Specifications</label>
+              <textarea name="specifications" value={form.specifications} onChange={handleChange} rows={2} className={inputClass + ' resize-none'} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className={labelClass}>Contact Person</label>
+                <input name="contactPerson" value={form.contactPerson} onChange={handleChange} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Contact Phone</label>
+                <input name="contactPhone" value={form.contactPhone} onChange={handleChange} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Contact Email</label>
+                <input name="contactEmail" value={form.contactEmail} onChange={handleChange} className={inputClass} />
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-tn-border bg-tn-cream rounded-b-2xl">
-          <button onClick={onClose} className="px-5 py-2 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleSave} className="px-5 py-2 rounded-xl text-sm font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors">
-            Save Changes
-          </button>
-        </div>
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-tn-border bg-tn-cream rounded-b-2xl">
+            <button type="button" onClick={onClose} className="px-5 py-2 rounded-xl text-sm font-semibold border border-tn-border bg-white text-tn-navy hover:bg-tn-light transition-colors">
+              Cancel
+            </button>
+            <button type="submit" className="px-5 py-2 rounded-xl text-sm font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors">
+              Save Changes
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )
@@ -417,7 +411,7 @@ function ResourceCard({ resource, onView, onEdit }) {
             </div>
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-tn-navy leading-snug truncate">{resource.name}</h3>
-              <p className="text-[10px] text-tn-muted">{resource.id}</p>
+              <p className="text-[10px] text-tn-muted">{resource.displayId || resource.id}</p>
             </div>
           </div>
           <span className={[
@@ -434,6 +428,8 @@ function ResourceCard({ resource, onView, onEdit }) {
             { label: 'District',  value: resource.district   },
             { label: 'Qty',       value: `${resource.quantity} ${resource.unit}` },
             { label: 'Condition', value: resource.condition  },
+            { label: 'Rent/Day',  value: `₹${resource.rentPerDay || 0}` },
+            { label: 'Location',  value: resource.location   },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[9px] font-semibold text-tn-muted uppercase tracking-wide">{label}</p>
@@ -442,23 +438,13 @@ function ResourceCard({ resource, onView, onEdit }) {
           ))}
         </div>
 
-        <div className="flex items-center gap-1.5 text-[10px] text-tn-muted bg-tn-cream px-3 py-1.5 rounded-lg border border-tn-border mb-4">
-          <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          {isAvailable
-            ? `${new Date(resource.availableFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(resource.availableTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
-            : `Expected: ${new Date(resource.expectedAvailability).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
-          }
-        </div>
-
         <div className="flex-1" />
 
         {/* SWAPPED: Edit (blue, primary) first, then View (white) second */}
         <div className="flex items-center gap-2 mt-auto pt-3 border-t border-tn-border">
           {/* Edit — now primary blue, first position */}
           <button
-            id={`edit-${resource.id}`}
+            id={`edit-${resource.displayId || resource.id}`}
             onClick={() => onEdit(resource)}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-tn-blue text-white hover:bg-tn-navy transition-colors"
           >
@@ -469,7 +455,7 @@ function ResourceCard({ resource, onView, onEdit }) {
           </button>
           {/* View — now secondary white/border, second position */}
           <button
-            id={`view-${resource.id}`}
+            id={`view-${resource.displayId || resource.id}`}
             onClick={() => onView(resource)}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-tn-border text-tn-navy bg-white hover:bg-tn-light transition-colors"
           >
@@ -632,16 +618,20 @@ export default function ResourceSharing() {
       setResourceList((resourceData.resources || []).map(resource => ({
         ...resource,
         id: resource._id,
+        displayId: resource.resourceId || resource._id,
         status: resource.available > 0 ? 'Available' : 'Unavailable',
         department: resource.departmentId?.name || resource.departmentId?.code || 'Not specified',
-        district: resource.district?.name || resource.district?.code || 'Not specified',
+        district: resource.district?.name || resource.district?.code || (typeof resource.district === 'string' ? resource.district : 'Not specified'),
         quantity: resource.available,
-        unit: 'units',
-        condition: 'Not specified',
-        specifications: resource.description || 'Not specified',
-        availableFrom: resource.createdAt,
-        availableTo: resource.createdAt,
-        expectedAvailability: resource.createdAt,
+        unit: resource.unit || 'units',
+        condition: resource.condition || 'Good',
+        rentPerDay: resource.rentPerDay ?? 0,
+        description: resource.description || 'Not specified',
+        specifications: resource.specifications || 'Not specified',
+        contactPerson: resource.contactPerson?.name || 'Not specified',
+        contactPhone: resource.contactPhone || resource.contactPerson?.phone || 'Not specified',
+        contactEmail: resource.contactEmail || resource.contactPerson?.email || 'Not specified',
+        location: resource.location || 'Not specified',
       })))
       setRequestList((requestData.requests || []).map(request => ({
         ...request,
@@ -710,11 +700,34 @@ export default function ResourceSharing() {
     handleDecision(reqId, 'Rejected')
   }
 
-  function handleSaveEdit(updatedResource) {
-    setResourceList(prev => prev.map(resource => (
-      resource.id === updatedResource.id ? { ...resource, ...updatedResource } : resource
-    )))
-    showToast('Resource updated locally. Persisted editing is not available yet.')
+  async function handleSaveEdit(id, updatedForm) {
+    try {
+      const payload = {
+        name: updatedForm.name,
+        category: updatedForm.category,
+        quantity: Number(updatedForm.quantity),
+        available: Number(updatedForm.quantity),
+        unit: updatedForm.unit,
+        condition: updatedForm.condition,
+        rentPerDay: Number(updatedForm.rentPerDay),
+        description: updatedForm.description,
+        specifications: updatedForm.specifications,
+        contactPerson: {
+          name: updatedForm.contactPerson,
+          phone: updatedForm.contactPhone,
+          email: updatedForm.contactEmail,
+        },
+        location: updatedForm.location,
+      }
+      await apiFetch(`/resources/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      })
+      await loadData()
+      showToast('Resource updated successfully.')
+    } catch (err) {
+      showToast(err.message || 'Failed to update resource.', 'error')
+    }
   }
 
   const isResourceTab = activeTab === 'Resources' || activeTab === 'Available'
@@ -729,9 +742,12 @@ export default function ResourceSharing() {
         !q ||
         (r.name || '').toLowerCase().includes(q) ||
         (r.id || '').toLowerCase().includes(q) ||
+        (r.displayId || '').toLowerCase().includes(q) ||
         (r.department || '').toLowerCase().includes(q) ||
         (r.district || '').toLowerCase().includes(q) ||
-        (r.category || '').toLowerCase().includes(q)
+        (r.category || '').toLowerCase().includes(q) ||
+        (r.location || '').toLowerCase().includes(q) ||
+        (r.contactPerson || '').toLowerCase().includes(q)
       )
     }
     /* Requests are read from resourcerequests and grouped by status. */

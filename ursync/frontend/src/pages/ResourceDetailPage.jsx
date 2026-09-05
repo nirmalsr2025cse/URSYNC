@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  Tag, MapPin, Building2, Package, DollarSign,
+  Tag, MapPin, Building2, Package, IndianRupee,
   CheckCircle, FileText, ArrowLeft,
 } from 'lucide-react'
 import RESOURCES from '../data/resourceData.js'
@@ -15,18 +15,22 @@ export default function ResourceDetailPage() {
   const department = resource.departmentId?.name || resource.departmentId?.code || resource.owner || 'Not specified'
   const available = resource.available ?? resource.quantity ?? 0
 
+  const rentPerDay = (resource.rentPerDay !== undefined && resource.rentPerDay !== null && resource.rentPerDay !== '')
+    ? `₹${Number(resource.rentPerDay).toLocaleString('en-IN')} / day`
+    : (resource.dailyRate || resource.rate ? `₹${resource.dailyRate || resource.rate} / day` : 'Not specified')
+
   // Always open at the very top of the page
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
 
   const infoRows = [
-    { icon: Tag,        label: 'Category',        value: resource.category },
-    { icon: MapPin,     label: 'District',         value: district },
-    { icon: Building2,  label: 'Owner Department', value: department },
-    { icon: Package,    label: 'Specifications',   value: resource.description || 'Not specified' },
-    { icon: DollarSign, label: 'Daily Rate',       value: 'Not specified' },
-    { icon: Package,    label: 'Units Available',  value: `${available} unit${available !== 1 ? 's' : ''}` },
+    { icon: Tag,         label: 'Category',         value: resource.category || 'Not specified' },
+    { icon: MapPin,      label: 'District',         value: district },
+    { icon: Building2,   label: 'Owner Department',  value: department },
+    { icon: IndianRupee, label: 'Rent Per Day',     value: rentPerDay },
+    { icon: Package,     label: 'Specifications',    value: resource.specifications || resource.description || 'Not specified' },
+    { icon: Package,     label: 'Units Available',   value: `${available} unit${available !== 1 ? 's' : ''}` },
   ]
 
   const goBack = () => {
@@ -54,7 +58,7 @@ export default function ResourceDetailPage() {
         </button>
         <div className="mt-1 pl-1">
           <h1 className="text-lg font-extrabold text-tn-navy leading-tight">{resource.name}</h1>
-          <p className="text-xs text-tn-muted mt-0.5">{resource._id || resource.id}</p>
+          <p className="text-xs text-tn-muted mt-0.5">{resource.resourceId || resource._id || resource.id}</p>
         </div>
       </div>
 
