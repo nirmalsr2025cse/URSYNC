@@ -7,6 +7,12 @@ const ResourceRequest = require('../models/ResourceRequest')
 const Department = require('../models/Department')
 const District = require('../models/District')
 const { Counter, getNextSequence } = require('../models/Counter')
+const {
+  notifyResourceCreated,
+  notifyResourceRequestApplied,
+  notifyResourceRequestApproved,
+  notifyResourceRequestRejected,
+} = require('../services/resourceNotificationService')
 
 function parseDateRange(requiredFrom, requiredTo) {
   if (!requiredFrom || !requiredTo) {
@@ -187,6 +193,8 @@ async function createResource(req, res) {
       applications: [],
       applied: [],
     })
+
+    notifyResourceCreated(resource, req.user)
 
     res.status(201).json({ resource })
   } catch (err) {
@@ -426,6 +434,8 @@ async function applyForResource(req, res) {
 
     await resource.save()
 
+    notifyResourceRequestApplied(resourceRequest, req.user)
+
     res.status(201).json({ message: 'Request submitted.', requestId: resourceRequest._id })
   } catch (err) {
     console.error('applyForResource error:', err)
@@ -437,6 +447,7 @@ async function applyForResource(req, res) {
 // Returns requests from the dedicated resourcerequests collection.
 async function getMyRequests(req, res) {
   try {
+    await expireResourceRequests()
     const requests = await ResourceRequest.find({ requestedBy: req.user._id })
       .sort({ createdAt: -1 })
       .lean()
@@ -507,6 +518,35 @@ async function decideApplication(req, res) {
       await resource.save()
     }
 
+    if (status === 'Approved') {
+      notifyResourceRequestApproved(
+        {
+          resourceName: resource.name,
+          resourceId: resource.resourceId,
+          requiredQuantity: application.requiredQuantity,
+          requiredFrom: application.requiredFrom,
+          requiredTo: application.requiredTo,
+          remarks: application.remarks,
+        },
+        application.userId,
+        application.remarks
+      )
+    } else if (status === 'Rejected') {
+      notifyResourceRequestRejected(
+        {
+          resourceName: resource.name,
+          resourceId: resource.resourceId,
+          requiredQuantity: application.requiredQuantity,
+          requiredFrom: application.requiredFrom,
+          requiredTo: application.requiredTo,
+          remarks: application.remarks,
+        },
+        application.userId,
+        application.remarks,
+        false
+      )
+    }
+
     res.json({ message: `Request ${status.toLowerCase()}.` })
   } catch (err) {
     console.error('decideApplication error:', err)
@@ -533,6 +573,7 @@ module.exports = {
 
 async function listSharingResources(req, res) {
   try {
+    await expireResourceRequests()
     const { q, requiredFrom, requiredTo } = req.query
     let from = null
     let to = null
@@ -588,7 +629,7 @@ async function expireResourceRequests() {
   const expiredPending = await ResourceRequest.find({
     status: 'Pending',
     requiredFrom: { $lte: new Date() },
-  }).select('_id resource requestedBy')
+  })
 
   for (const request of expiredPending) {
     const updated = await ResourceRequest.findOneAndUpdate(
@@ -609,6 +650,8 @@ async function expireResourceRequests() {
       },
       { arrayFilters: [{ 'application.requestId': request._id }] }
     )
+
+    notifyResourceRequestRejected(updated, request.requestedBy, updated.remarks, true)
   }
 
   const completedRequests = await ResourceRequest.find({
@@ -684,7 +727,10 @@ async function performResourceDecision(requestId, status, remarks, session) {
     const avail = availabilityMap.get(request.resource.toString())
     const availableQuantity = avail ? avail.availableQuantity : resource.available
     if (quantity > availableQuantity) {
-      throw createHttpError(409, 'Cannot approve this request because there are not enough resources available for the selected date range.')
+      throw createHttpError(
+        409,
+        `Cannot approve request: Only ${availableQuantity} of ${resource.available} units are available between ${formatDateForMessage(request.requiredFrom)} and ${formatDateForMessage(request.requiredTo)} (requested: ${quantity} units). Request remains in Pending status.`
+      )
     }
   }
 
@@ -739,6 +785,12 @@ async function decideResourceRequest(req, res) {
       } finally {
         release()
       }
+    }
+
+    if (status === 'Approved') {
+      notifyResourceRequestApproved(response.request, response.request.requestedBy, remarks)
+    } else if (status === 'Rejected') {
+      notifyResourceRequestRejected(response.request, response.request.requestedBy, remarks, false)
     }
 
     res.json({ message: `Request ${status.toLowerCase()}.`, ...response })

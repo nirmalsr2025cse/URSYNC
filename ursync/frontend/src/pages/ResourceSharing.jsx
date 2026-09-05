@@ -46,13 +46,19 @@ function CategoryIcon({ category }) {
 function Toast({ toast }) {
   if (!toast) return null
   const isError = toast.type === 'error'
+  const isWarning = toast.type === 'warning'
   return (
     <div className={[
-      'fixed top-20 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold flex items-center gap-2 animate-fade-in',
-      isError ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      'fixed top-20 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold flex items-center gap-2.5 animate-fade-in max-w-md',
+      isError ? 'bg-red-50 text-red-700 border border-red-200' :
+      isWarning ? 'bg-amber-50 text-amber-800 border border-amber-300' :
+      'bg-emerald-50 text-emerald-700 border border-emerald-200',
     ].join(' ')}>
-      <span className={['w-2 h-2 rounded-full flex-shrink-0', isError ? 'bg-red-500' : 'bg-emerald-500'].join(' ')} />
-      {toast.msg}
+      <span className={[
+        'w-2.5 h-2.5 rounded-full flex-shrink-0',
+        isError ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500',
+      ].join(' ')} />
+      <span className="leading-snug">{toast.msg}</span>
     </div>
   )
 }
@@ -661,7 +667,7 @@ export default function ResourceSharing() {
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), type === 'error' || type === 'warning' ? 6000 : 3000)
   }
 
   function switchTab(id) {
@@ -688,7 +694,8 @@ export default function ResourceSharing() {
       await loadData()
       showToast(`Request ${status.toLowerCase()} successfully`)
     } catch (err) {
-      showToast(err.message || `Failed to ${status.toLowerCase()} request.`, 'error')
+      await loadData()
+      showToast(err.message || `Failed to ${status.toLowerCase()} request.`, 'warning')
     }
   }
 
