@@ -199,30 +199,34 @@ export default function AppliedResourcesPage() {
 
       {/* Header */}
       <div className="px-4 sm:px-8 pt-5 pb-3">
-        <button
-          onClick={goBack}
-          className="flex items-center gap-1 text-tn-navy active:opacity-60 transition-opacity mb-2"
-        >
-          <ArrowLeft size={18} />
-        </button>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-extrabold text-tn-navy leading-tight">Applied Resources</h1>
+              <h1 className="text-xl font-display font-bold text-tn-navy leading-tight">Applied Resources</h1>
               <DepartmentBadge label={departmentLabel} />
             </div>
-            <p className="text-xs text-tn-muted mt-0.5">
+            <p className="text-sm text-tn-muted mt-0.5">
               Resources you've requested, and their current approval status.
             </p>
           </div>
-          <button
-            onClick={loadRequests}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-tn-border bg-white text-tn-navy text-xs font-semibold hover:bg-tn-light transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <nav className="text-xs text-tn-muted flex items-center gap-1.5" aria-label="Breadcrumb">
+              <span>Home</span>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="text-tn-blue font-medium">Applied Resources</span>
+            </nav>
+            <button
+              onClick={loadRequests}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-tn-border bg-white text-tn-navy text-xs font-semibold hover:bg-tn-light transition-colors disabled:opacity-50 flex-shrink-0"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
 

@@ -3,7 +3,6 @@ import React, { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Navbar from './Navbar'
 import Sidebar from './Sidebar'
-import RoleSwitcher from './RoleSwitcher'
 
 // The Dashboard module has its own DashboardSidebar (see
 // src/pages/Dashboard.jsx) instead of the app's existing Sidebar, and no
@@ -33,18 +32,15 @@ export default function Layout() {
           <Outlet context={{ sidebarOpen, closeSidebar: () => setSidebarOpen(false) }} /> {/*Outlet is a placeholder component that renders the matching child route element inside a parent route's layout . Used for Nested Routing */}
         </div>
       ) : (
-        <>
-          <RoleSwitcher />
-          <div className="flex flex-1 overflow-hidden">
-            <Sidebar
-              open={sidebarOpen}
-              onClose={() => setSidebarOpen(false)}
-            />
-            <main className="flex-1 overflow-y-auto bg-tn-cream">
-              <Outlet />
-            </main>
-          </div>
-        </>
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar
+            open={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+          />
+          <main className="flex-1 overflow-y-auto bg-tn-cream">
+            <Outlet />
+          </main>
+        </div>
       )}
     </div>
   )

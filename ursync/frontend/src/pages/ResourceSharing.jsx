@@ -1115,7 +1115,7 @@ export default function ResourceSharing() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl font-extrabold text-tn-navy">Resource Sharing</h1>
+          <h1 className="text-xl font-display font-bold text-tn-navy">Resource Sharing</h1>
           <p className="text-sm text-tn-muted mt-0.5">Manage and share government resources across departments.</p>
         </div>
         <nav className="flex items-center gap-1.5 text-xs text-tn-muted">
@@ -1123,7 +1123,7 @@ export default function ResourceSharing() {
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-          <span className="text-tn-blue font-semibold">Resource Sharing</span>
+          <span className="text-tn-blue font-medium">Resource Sharing</span>
         </nav>
       </div>
 

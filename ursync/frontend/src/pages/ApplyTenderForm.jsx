@@ -860,10 +860,10 @@ export default function ApplyTenderForm() {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-extrabold text-[#0A2240]">
+            <h1 className="text-xl font-display font-bold text-tn-navy">
               {isViewMode ? 'View Application' : isEditMode ? 'Edit Application' : 'Apply Tender'}
             </h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5 line-clamp-1">
+            <p className="text-sm text-tn-muted mt-0.5 line-clamp-1">
               {tender?.projectName || tender?.title}
             </p>
           </div>

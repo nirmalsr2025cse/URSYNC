@@ -118,8 +118,8 @@ export default function ChoosePaymentPlatform() {
           </svg>
         </button>
         <div>
-          <h1 className="text-xl font-extrabold text-[#0A2240]">Choose Payment Platform</h1>
-          <p className="text-xs text-[#6B7A8D] mt-0.5">Select your preferred payment application.</p>
+          <h1 className="text-xl font-display font-bold text-tn-navy">Choose Payment Platform</h1>
+          <p className="text-xs text-tn-muted mt-0.5">Select your preferred payment application.</p>
         </div>
       </div>
 

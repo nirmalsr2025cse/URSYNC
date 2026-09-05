@@ -22,8 +22,6 @@ export default function Applications() {
   const [dept,        setDept]        = useState('All')
   const [district,    setDistrict]    = useState('All')
   const [category,    setCategory]    = useState('All')
-  const [appliedSearch, setAppliedSearch] = useState('')
-  const [searching, setSearching] = useState(false)
   const [activeTab, setActiveTab] = useState(location.state?.fromTab || 'Open')
 
   // ── Data from the backend ────────────────────────────────────────────
@@ -51,13 +49,13 @@ export default function Applications() {
 
   const buildQueryParams = useCallback((extra = {}) => {
     const params = new URLSearchParams()
-    if (appliedSearch.trim()) params.set('search', appliedSearch.trim())
+    if (search.trim()) params.set('search', search.trim())
     if (dept !== 'All') params.set('department', dept)
     if (district !== 'All') params.set('district', district)
     if (category !== 'All') params.set('category', category)
     Object.entries(extra).forEach(([k, v]) => params.set(k, v))
     return params.toString()
-  }, [appliedSearch, dept, district, category])
+  }, [search, dept, district, category])
 
   // ── Fetch the active tab's tenders (paginated) ───────────────────────
   useEffect(() => {
@@ -88,25 +86,15 @@ export default function Applications() {
     setTimeout(() => { setActiveTab(id); setAnimating(false) }, 150)
   }
 
-  function handleSearch() {
-    setSearching(true)
-    setTimeout(() => {
-      setAppliedSearch(search)
-      setCurrentPage(1)
-      setSearching(false)
-    }, 300)
-  }
-
   function handleClear() {
     setSearch('')
-    setAppliedSearch('')
     setDept('All')
     setDistrict('All')
     setCategory('All')
     setCurrentPage(1)
   }
 
-  const hasFilters = appliedSearch || dept !== 'All' || district !== 'All' || category !== 'All'
+  const hasFilters = Boolean(search.trim() || dept !== 'All' || district !== 'All' || category !== 'All')
   const selectClass = "px-3 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all cursor-pointer"
 
   const EMPTY_TEXT = {
@@ -120,12 +108,12 @@ export default function Applications() {
       {/* ── Header + Breadcrumb ────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl font-extrabold text-[#0A2240]">Applications</h1>
-          <p className="text-sm text-[#6B7A8D] mt-0.5">
+          <h1 className="text-xl font-display font-bold text-tn-navy">Applications</h1>
+          <p className="text-sm text-tn-muted mt-0.5">
             Review government tenders by their application window status.
           </p>
         </div>
-        <nav className="flex items-center gap-1.5 text-xs text-[#6B7A8D]">
+        <nav className="flex items-center gap-1.5 text-xs text-tn-muted">
           <span>Home</span>
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -142,33 +130,25 @@ export default function Applications() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
-              type="text" value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setCurrentPage(1)
+              }}
               placeholder="Search by Tender ID or title..."
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-[#FFE5BF] rounded-xl bg-white text-[#0A2240] placeholder-[#6B7A8D] focus:outline-none focus:ring-2 focus:ring-[#1A4A8C]/30 focus:border-[#1A4A8C] transition-all"
             />
           </div>
-          <button
-            onClick={handleSearch}
-            disabled={searching}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs sm:text-sm font-semibold whitespace-nowrap rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {searching ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Searching…
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                Search
-              </>
-            )}
-          </button>
+          {search.trim() && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="text-xs text-tn-muted hover:text-tn-danger underline whitespace-nowrap self-center sm:self-auto px-2 py-2"
+            >
+              Clear all
+            </button>
+          )}
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
           <select value={dept} onChange={(e) => { setDept(e.target.value); setCurrentPage(1) }} className={selectClass + ' flex-1'}>
@@ -180,11 +160,11 @@ export default function Applications() {
           <select value={category} onChange={(e) => { setCategory(e.target.value); setCurrentPage(1) }} className={selectClass}>
             {categories.map(c => <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>)}
           </select>
-          {hasFilters && (
+          {hasFilters && !search.trim() && (
             <button
               type="button"
               onClick={handleClear}
-              className="text-xs text-tn-muted hover:text-tn-danger underline ml-1"
+              className="text-xs text-tn-muted hover:text-tn-danger underline ml-1 self-center"
             >
               Clear all
             </button>

@@ -300,8 +300,8 @@ export default function BidderList() {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-extrabold text-[#0A2240]">Bidder List</h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5">
+            <h1 className="text-xl font-display font-bold text-tn-navy">Bidder List</h1>
+            <p className="text-xs text-tn-muted mt-0.5">
               {applicantPool.length} applicant{applicantPool.length !== 1 ? 's' : ''} sent by Tender Authority
             </p>
           </div>

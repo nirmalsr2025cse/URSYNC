@@ -322,8 +322,8 @@ export default function ApplicantDetails() {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-extrabold text-[#0A2240]">Applicant Details</h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5">{applicant.applicationId}</p>
+            <h1 className="text-xl font-display font-bold text-tn-navy">Applicant Details</h1>
+            <p className="text-xs text-tn-muted mt-0.5">{applicant.applicationId}</p>
           </div>
         </div>
         <span className={['text-xs font-semibold px-3 py-1.5 rounded-full border', STATUS_STYLE[status]].join(' ')}>

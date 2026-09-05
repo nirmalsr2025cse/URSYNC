@@ -264,12 +264,19 @@ export default function TenderFinancialChangesPage() {
     <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="flex items-center gap-1.5 text-xs text-tn-muted mb-3">
-        <span>Home</span><ChevronRight size={12} /><span>Financial Department</span><ChevronRight size={12} /><span className="text-tn-blue font-semibold">Tender Financial Changes</span>
-      </div>
+      {/* ── Page Header + Breadcrumb ───────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
+        <div>
+          <h1 className="text-xl font-display font-bold text-tn-navy">Tender Financial Changes</h1>
+          <p className="text-sm text-tn-muted mt-0.5">Review and approve all financial revision requests submitted for active tenders.</p>
+        </div>
 
-      <h1 className="text-2xl font-bold text-tn-navy">Tender Financial Changes</h1>
-      <p className="text-sm text-tn-muted mt-1 mb-6">Review and approve all financial revision requests submitted for active tenders.</p>
+        <nav className="text-xs text-tn-muted flex items-center gap-1.5 flex-wrap" aria-label="Breadcrumb">
+          <span>Home</span>
+          <ChevronRight size={12} />
+          <span className="text-tn-blue font-medium">Tender Financial Changes</span>
+        </nav>
+      </div>
 
       <div className="bg-white rounded-xl border border-tn-border shadow-sm p-5 mb-4">
         <div className="flex flex-col sm:flex-row gap-3">

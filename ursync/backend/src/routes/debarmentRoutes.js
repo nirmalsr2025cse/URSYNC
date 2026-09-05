@@ -1,15 +1,12 @@
 // src/routes/debarmentRoutes.js
 const express = require('express')
 const router = express.Router()
-const authMiddleware = require('../middleware/authMiddleware')
 const {
   getOrganisationDebarments,
   getIndividualDebarments,
   getDebarmentCounts,
   searchDebarments,
 } = require('../controllers/debarmentController')
-
-router.use(authMiddleware)
 
 // GET /api/debarments/organisation?page=&limit=
 router.get('/organisation', getOrganisationDebarments)

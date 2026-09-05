@@ -53,4 +53,66 @@ async function authMiddleware(req, res, next) {
   }
 }
 
+async function optionalAuth(req, res, next) {
+  try {
+    const authHeader = req.header('Authorization') || ''
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+    if (!token) {
+      req.user = null
+      req.role = 'public'
+      req.isDepartmentRestricted = false
+      req.departmentId = null
+      req.departmentCode = null
+      return next()
+    }
+
+    let payload
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET)
+    } catch (err) {
+      req.user = null
+      req.role = 'public'
+      req.isDepartmentRestricted = false
+      req.departmentId = null
+      req.departmentCode = null
+      return next()
+    }
+
+    const user = await User.findOne({ _id: payload.userId, isDeleted: false })
+      .populate('roleId')
+      .populate('departmentId')
+
+    if (!user || user.status !== 'Active') {
+      req.user = null
+      req.role = 'public'
+      req.isDepartmentRestricted = false
+      req.departmentId = null
+      req.departmentCode = null
+      return next()
+    }
+
+    const roleName = user.roleId?.name || null
+
+    req.user = user
+    req.role = roleName
+    req.isDepartmentRestricted = DEPARTMENT_RESTRICTED_ROLES.includes(roleName)
+    req.departmentId = user.departmentId ? user.departmentId._id : null
+    req.departmentCode = req.isDepartmentRestricted && user.departmentId ? user.departmentId.code : null
+
+    next()
+  } catch (err) {
+    console.error('optionalAuth error:', err)
+    req.user = null
+    req.role = 'public'
+    req.isDepartmentRestricted = false
+    req.departmentId = null
+    req.departmentCode = null
+    next()
+  }
+}
+
+authMiddleware.optionalAuth = optionalAuth
+authMiddleware.authMiddleware = authMiddleware
+
 module.exports = authMiddleware

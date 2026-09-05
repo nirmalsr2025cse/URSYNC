@@ -314,7 +314,7 @@ export default function ConflictDetails() {
 
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-display font-bold text-tn-navy">Conflict Details</h1>
+            <h1 className="text-xl font-display font-bold text-tn-navy">Conflict Details</h1>
             <p className="text-sm text-tn-muted mt-0.5">
               {activeTab === 'conflict'
                 ? 'Detailed analysis of conflicting upcoming tenders.'

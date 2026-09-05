@@ -396,10 +396,10 @@ export default function FinalBidder() {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-extrabold text-[#0A2240]">
+            <h1 className="text-xl font-display font-bold text-tn-navy">
               {listView === 'final' ? 'Final Bidder List' : 'Bidder Applications'}
             </h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5">
+            <p className="text-sm text-tn-muted mt-0.5">
               {tenderMeta?.title ? tenderMeta.title + ' · ' : ''}
               {mainList.length} pending · {finalList.length} in final list
               {tenderMeta?.isFinalizedBidders ? ' · Finalized' : ''}

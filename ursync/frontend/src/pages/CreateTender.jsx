@@ -550,10 +550,10 @@ export default function CreateTender() {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-extrabold text-[#0A2240]">
+            <h1 className="text-xl font-display font-bold text-tn-navy">
               {tenderRecordId ? 'Edit Tender' : 'Create Tender'}
             </h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5">
+            <p className="text-sm text-tn-muted mt-0.5">
               Fill in all required fields to {tenderRecordId ? 'update' : 'submit'} the tender.
             </p>
           </div>

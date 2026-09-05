@@ -195,4 +195,22 @@ async function signup(req, res) {
   }
 }
 
-module.exports = { login, signup }
+// GET /api/auth/me
+// Returns current authenticated user and populated role directly from DB
+async function getMe(req, res) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Authentication required.' })
+    }
+    return res.status(200).json({
+      success: true,
+      user: toSafeUser(req.user),
+      role: req.role,
+    })
+  } catch (err) {
+    console.error('getMe error:', err)
+    return res.status(500).json({ message: 'Failed to fetch user profile.' })
+  }
+}
+
+module.exports = { login, signup, getMe }

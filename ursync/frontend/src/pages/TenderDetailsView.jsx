@@ -269,8 +269,8 @@ export default function TenderDetailsView() {
             </svg>
           </button>
           <div>
-            <h1 className="text-lg font-extrabold text-[#0A2240] leading-snug">Tender Details</h1>
-            <p className="text-xs text-[#6B7A8D] font-mono mt-0.5">{tender.id}</p>
+            <h1 className="text-xl font-display font-bold text-tn-navy leading-snug">Tender Details</h1>
+            <p className="text-sm text-tn-muted font-mono mt-0.5">{tender.id}</p>
           </div>
         </div>
 

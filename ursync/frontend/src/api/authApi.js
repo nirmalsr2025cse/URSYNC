@@ -24,3 +24,24 @@ export function signupRequest(payload) {
 export function loginRequest(payload) {
   return request('/auth/login', payload)
 }
+
+export async function getMeRequest() {
+  const token = localStorage.getItem('token')
+  if (!token) return null
+
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await res.json().catch(() => ({}))
+
+  if (!res.ok) {
+    throw new Error(data?.message || `Request failed (${res.status})`)
+  }
+
+  return data // { success: true, user, role }
+}

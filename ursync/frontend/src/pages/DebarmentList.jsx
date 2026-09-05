@@ -449,11 +449,11 @@ function SearchTab() {
 function Breadcrumb() {
   return (
     <nav className="flex items-center gap-1 text-xs">
-      <a href="/" className="text-tn-blue hover:underline">Home</a>
+      <a href="/" className="text-tn-muted hover:underline">Home</a>
       <svg className="w-3 h-3 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
       </svg>
-      <span className="text-tn-navy font-medium">Debarment List</span>
+      <span className="text-tn-blue font-medium">Debarment List</span>
     </nav>
   )
 }
@@ -494,8 +494,8 @@ export default function DebarmentList() {
         {/* Page header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-tn-navy mb-1">Debarment List</h1>
-            <p className="text-sm text-tn-muted">
+            <h1 className="text-xl font-display font-bold text-tn-navy">Debarment List</h1>
+            <p className="text-sm text-tn-muted mt-0.5">
               View bidders and organisations currently debarred from participating in tenders.
             </p>
           </div>

@@ -216,16 +216,21 @@ export default function AddResources() {
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 text-xs text-tn-muted mb-3">
-        <span>Home</span>
-        <ChevronRight size={12} />
-        <span className="text-tn-blue font-semibold">Add Resources</span>
-      </div>
+      {/* ── Page Header + Breadcrumb ───────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
+        <div>
+          <h1 className="text-xl font-display font-bold text-tn-navy">Add Resources</h1>
+          <p className="text-sm text-tn-muted mt-0.5">
+            Register available department resources so they can be tracked and allocated.
+          </p>
+        </div>
 
-      <h1 className="text-2xl font-bold text-tn-navy">Add Resources</h1>
-      <p className="text-sm text-tn-muted mt-1 mb-6">
-        Register available department resources so they can be tracked and allocated.
-      </p>
+        <nav className="text-xs text-tn-muted flex items-center gap-1.5" aria-label="Breadcrumb">
+          <span>Home</span>
+          <ChevronRight size={12} />
+          <span className="text-tn-blue font-medium">Add Resources</span>
+        </nav>
+      </div>
 
       {submitError && (
         <div className="mb-4 flex items-center gap-2 px-4 py-3 rounded-lg border border-tn-danger bg-red-50 text-sm text-tn-danger">

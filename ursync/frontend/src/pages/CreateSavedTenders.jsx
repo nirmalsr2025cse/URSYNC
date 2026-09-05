@@ -279,13 +279,17 @@ export default function CreateSavedTenders() {
       {/* ── Page Header ────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold text-[#0A2240]">Create & Saved Tenders</h1>
-          <p className="text-sm text-[#6B7A8D] mt-0.5">Manage all your department tenders in one place.</p>
+          <h1 className="text-xl font-display font-bold text-tn-navy">Create & Saved Tenders</h1>
+          <p className="text-sm text-tn-muted mt-0.5">Manage all your department tenders in one place.</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-[#6B7A8D] bg-white border border-[#FFE5BF] px-3 py-1.5 rounded-full">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          {filtered.length} tender{filtered.length !== 1 ? 's' : ''} found
-        </div>
+
+        <nav className="text-xs text-tn-muted flex items-center gap-1.5 flex-wrap" aria-label="Breadcrumb">
+          <span>Home</span>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <span className="text-tn-blue font-medium">Create & Saved Tenders</span>
+        </nav>
       </div>
 
       {/* ── Filters ────────────────────────────────────────────────────── */}

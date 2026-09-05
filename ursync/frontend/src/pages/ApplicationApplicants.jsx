@@ -312,8 +312,8 @@ export default function ApplicationApplicants() {
           </svg>
         </button>
         <div>
-          <h1 className="text-xl font-extrabold text-[#0A2240]">{readOnly ? 'Bidders' : 'Applicants'}</h1>
-          <p className="text-xs text-[#6B7A8D] mt-0.5">
+          <h1 className="text-xl font-display font-bold text-tn-navy">{readOnly ? 'Bidders' : 'Applicants'}</h1>
+          <p className="text-sm text-tn-muted mt-0.5">
             {readOnly
               ? `${applicants.length} finalized bidder${applicants.length !== 1 ? 's' : ''} for this tender`
               : `${applicants.length} pending applicants for this tender`}

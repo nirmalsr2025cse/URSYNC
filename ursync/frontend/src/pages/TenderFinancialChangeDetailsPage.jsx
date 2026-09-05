@@ -85,29 +85,28 @@ export default function TenderFinancialChangeDetailsPage() {
   return (
     <div className="p-4 sm:p-6 w-full">
 
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-xs text-tn-muted mb-3">
-        <span>Home</span><ChevronRight size={12}/>
-        <span>Financial Department</span><ChevronRight size={12}/>
-        <button onClick={() => navigate("/financial-changes")} className="hover:text-tn-navy hover:underline">Tender Financial Changes</button>
-        <ChevronRight size={12}/>
-        <span className="text-tn-blue font-semibold">Details</span>
-      </div>
+      {/* ── Top Bar: Back Button + Breadcrumb ───────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+        <button
+          onClick={() => navigate("/financial-changes")}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-tn-blue hover:text-tn-navy transition-colors"
+        >
+          <ChevronLeft size={16}/>Back
+        </button>
 
-      {/* Back button */}
-      <button
-        onClick={() => navigate("/financial-changes")}
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-tn-blue hover:text-tn-navy mb-4 transition-colors"
-      >
-        <ChevronLeft size={16}/>Back
-      </button>
+        <nav className="text-xs text-tn-muted flex items-center gap-1.5 flex-wrap" aria-label="Breadcrumb">
+          <span>Home</span><ChevronRight size={12}/>
+          <span>Financial Department</span><ChevronRight size={12}/>
+          <span className="text-tn-blue font-medium">Details</span>
+        </nav>
+      </div>
 
       <div className="bg-white rounded-xl border border-tn-border shadow-sm overflow-hidden">
         {/* Header */}
         <div className="bg-tn-navy text-white px-6 py-4">
           <p className="text-xs text-blue-200 font-mono">{tender.tenderCode}</p>
-          <h1 className="text-lg font-bold mt-0.5 leading-tight">{tender.projectName}</h1>
-          <p className="text-xs text-blue-300 mt-0.5">Financial Change Request {isQuery ? "— Raise a Query" : "— Details"}</p>
+          <h1 className="text-xl font-display font-bold mt-0.5 leading-tight">{tender.projectName}</h1>
+          <p className="text-sm text-blue-300 mt-0.5">Financial Change Request {isQuery ? "— Raise a Query" : "— Details"}</p>
         </div>
 
         <div className="p-6 space-y-6">

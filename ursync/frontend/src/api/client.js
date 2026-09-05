@@ -26,11 +26,10 @@ export function useApi() {
     })
 
     if (res.status === 401) {
-      // token missing/expired/invalid — force re-login
+      // token missing/expired/invalid — clear stale session
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
-      throw new Error('Session expired. Please sign in again.')
+      throw new Error('Authentication required or session expired.')
     }
 
     if (!res.ok) {
@@ -62,8 +61,7 @@ export function useApi() {
     if (res.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
-      throw new Error('Session expired. Please sign in again.')
+      throw new Error('Authentication required or session expired.')
     }
 
     if (!res.ok) {

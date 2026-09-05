@@ -277,8 +277,8 @@ export default function ApprovedApplicants() {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-extrabold text-[#0A2240]">Approved Applicants</h1>
-            <p className="text-xs text-[#6B7A8D] mt-0.5">{applicants.length} approved for this tender</p>
+            <h1 className="text-xl font-display font-bold text-tn-navy">Approved Applicants</h1>
+            <p className="text-xs text-tn-muted mt-0.5">{applicants.length} approved for this tender</p>
           </div>
         </div>
 

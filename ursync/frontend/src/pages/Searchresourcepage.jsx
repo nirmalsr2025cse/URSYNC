@@ -413,7 +413,7 @@ export default function SearchResourcePage() {
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl font-extrabold text-tn-navy">Search Resource</h1>
+          <h1 className="text-xl font-display font-bold text-tn-navy">Search Resource</h1>
           <p className="text-sm text-tn-muted mt-0.5">
             Search for available government construction resources such as JCB, crane, bulldozer and more.
           </p>
@@ -423,7 +423,7 @@ export default function SearchResourcePage() {
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-          <span className="text-tn-blue font-semibold">Search Resource</span>
+          <span className="text-tn-blue font-medium">Search Resource</span>
         </nav>
       </div>
 

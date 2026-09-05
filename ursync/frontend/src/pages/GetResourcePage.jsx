@@ -253,8 +253,8 @@ export default function GetResourcePage() {
           </svg>
         </button>
         <div className="mt-1 pl-1">
-          <h1 className="text-lg font-extrabold text-tn-navy leading-tight">Get Resource</h1>
-          <p className="text-xs text-tn-muted mt-0.5">{resource._id || resource.id} · {resource.name}</p>
+          <h1 className="text-xl font-display font-bold text-tn-navy leading-tight">Get Resource</h1>
+          <p className="text-sm text-tn-muted mt-0.5">{resource._id || resource.id} · {resource.name}</p>
         </div>
       </div>
 

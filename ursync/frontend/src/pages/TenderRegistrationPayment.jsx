@@ -350,8 +350,8 @@ export default function TenderRegistrationPayment() {
           </svg>
         </button>
         <div>
-          <h1 className="text-xl font-extrabold text-[#0A2240]">Tender Registration Payment</h1>
-          <p className="text-xs text-[#6B7A8D] mt-0.5">
+          <h1 className="text-xl font-display font-bold text-tn-navy">Tender Registration Payment</h1>
+          <p className="text-sm text-tn-muted mt-0.5">
             Complete the registration fee payment to submit your tender application.
           </p>
         </div>

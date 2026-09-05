@@ -80,16 +80,24 @@ const Downloads = ({ onMenuClick }) => {
   return (
     <div className="flex-1 px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-[1400px] mx-auto w-full">
       {/* Header */}
-      <header className="mb-2">
-        <div className="flex items-center gap-3">
-          <h1 className="font-heading font-bold text-navy text-[28px] sm:text-[34px] lg:text-[40px] leading-tight">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+        <div>
+          <h1 className="text-xl font-display font-bold text-tn-navy">
             Downloads
           </h1>
+          <p className="text-sm text-tn-muted mt-0.5 max-w-2xl">
+            Access required software, templates, and documents for smooth tender participation.
+          </p>
         </div>
-        <p className="font-body text-tn-muted text-sm sm:text-base max-w-2xl">
-          Access required software, templates, and documents for smooth tender participation.
-        </p>
-      </header>
+
+        <nav className="text-xs text-tn-muted flex items-center gap-1.5 flex-wrap" aria-label="Breadcrumb">
+          <span>Home</span>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <span className="text-tn-blue font-medium">Downloads</span>
+        </nav>
+      </div>
 
       {/* Search + Filters */}
       <div className="mt-6">

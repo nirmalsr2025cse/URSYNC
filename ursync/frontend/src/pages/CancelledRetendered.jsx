@@ -127,7 +127,7 @@ export default function CancelledRetendered() {
       {/* ── Page Header + Breadcrumb ───────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl font-extrabold text-tn-navy">
+          <h1 className="text-xl font-display font-bold text-tn-navy">
             Cancelled / Retendered Tenders
           </h1>
           <p className="text-sm text-tn-muted mt-0.5">

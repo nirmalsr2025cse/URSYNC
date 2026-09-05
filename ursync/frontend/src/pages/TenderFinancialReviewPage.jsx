@@ -394,12 +394,19 @@ export default function TenderFinancialReviewPage() {
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 text-xs text-tn-muted mb-3">
-        <span>Home</span><ChevronRight size={12}/><span>Department Head</span><ChevronRight size={12}/><span className="text-tn-blue font-semibold">Tender Financial Changes</span>
-      </div>
+      {/* ── Page Header + Breadcrumb ───────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
+        <div>
+          <h1 className="text-xl font-display font-bold text-tn-navy">Tender Financial Changes</h1>
+          <p className="text-sm text-tn-muted mt-0.5">Review and update the amount for your department's tenders.</p>
+        </div>
 
-      <h1 className="text-2xl font-bold text-tn-navy">Tender Financial Changes</h1>
-      <p className="text-sm text-tn-muted mt-1 mb-6">Review and update the amount for your department's tenders.</p>
+        <nav className="text-xs text-tn-muted flex items-center gap-1.5 flex-wrap" aria-label="Breadcrumb">
+          <span>Home</span>
+          <ChevronRight size={12}/>
+          <span className="text-tn-blue font-medium">Tender Financial Changes</span>
+        </nav>
+      </div>
 
       {loading ? (
         <div className="bg-white rounded-xl border border-tn-border p-12 text-center">

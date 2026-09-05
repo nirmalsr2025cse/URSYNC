@@ -675,17 +675,17 @@ export default function Approvement() {
       {/* ── Page Header ────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold text-[#0A2240]">Approvement</h1>
-          <p className="text-sm text-[#6B7A8D] mt-0.5">
+          <h1 className="text-xl font-display font-bold text-tn-navy">Approvement</h1>
+          <p className="text-sm text-tn-muted mt-0.5">
             Review and approve tenders and bidder finalization requests.
           </p>
         </div>
-        <nav className="flex items-center gap-1.5 text-xs text-[#6B7A8D]">
+        <nav className="flex items-center gap-1.5 text-xs text-tn-muted">
           <span>Home</span>
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-          <span className="text-[#1A4A8C] font-semibold">Approvement</span>
+          <span className="text-[#1A4A8C] font-medium">Approvement</span>
         </nav>
       </div>
 

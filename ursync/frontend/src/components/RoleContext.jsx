@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { getMeRequest } from '../api/authApi'
 
 export const ROLES = {
   PUBLIC:              'public',
@@ -118,9 +119,90 @@ export const NAV_CONFIG = {
 const RoleContext = createContext(null)
 
 export function RoleProvider({ children }) {
-  const [role, setRole] = useState(ROLES.PUBLIC)
+  const [user, setUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('user')
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
+    }
+  })
+
+  const [role, setRoleState] = useState(() => {
+    try {
+      const token = localStorage.getItem('token')
+      const stored = localStorage.getItem('user')
+      if (token && stored) {
+        const u = JSON.parse(stored)
+        const userRole = u?.role || u?.roleName || u?.roleId?.name
+        if (userRole && Object.values(ROLES).includes(userRole)) {
+          return userRole
+        }
+      }
+    } catch {}
+    return ROLES.PUBLIC
+  })
+
+  const [loading, setLoading] = useState(true)
+
+  // Fetch and verify authentic user & role from the backend
+  const refreshUser = useCallback(async () => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      setUser(null)
+      setRoleState(ROLES.PUBLIC)
+      setLoading(false)
+      return
+    }
+
+    try {
+      const res = await getMeRequest()
+      if (res?.user && res?.role) {
+        setUser(res.user)
+        setRoleState(res.role)
+        localStorage.setItem('user', JSON.stringify(res.user))
+      }
+    } catch (err) {
+      console.warn('Could not verify backend session:', err.message)
+      // If token is invalid / expired, purge session
+      if (err.message?.includes('401') || err.message?.includes('Authentication')) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        setUser(null)
+        setRoleState(ROLES.PUBLIC)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshUser()
+  }, [refreshUser])
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    setUser(null)
+    setRoleState(ROLES.PUBLIC)
+    window.location.href = '/login'
+  }, [])
+
+  const setRole = useCallback((newRole) => {
+    // Only allow setting valid role internally or during auth transitions
+    setRoleState(newRole)
+    try {
+      const stored = localStorage.getItem('user')
+      if (stored) {
+        const u = JSON.parse(stored)
+        u.role = newRole
+        localStorage.setItem('user', JSON.stringify(u))
+      }
+    } catch {}
+  }, [])
+
   return (
-    <RoleContext.Provider value={{ role, setRole }}>
+    <RoleContext.Provider value={{ user, role, setRole, loading, logout, refreshUser }}>
       {children}
     </RoleContext.Provider>
   )

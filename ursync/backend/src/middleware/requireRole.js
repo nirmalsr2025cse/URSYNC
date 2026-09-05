@@ -9,7 +9,7 @@ function requireRole(...allowedRoles) {
       return res.status(401).json({ message: 'Authentication required.' })
     }
     if (!allowedRoles.includes(req.role)) {
-      return res.status(403).json({ message: 'You do not have access to this resource.' })
+      return res.status(404).json({ success: false, message: 'Resource not found' })
     }
     next()
   }

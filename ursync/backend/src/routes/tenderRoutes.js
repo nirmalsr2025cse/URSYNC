@@ -1,7 +1,7 @@
 // src/routes/tenderRoutes.js
 const express = require('express')
 const router = express.Router()
-const authMiddleware = require('../middleware/authMiddleware')
+const { optionalAuth } = require('../middleware/authMiddleware')
 const {
   listTenders,
   getStats,
@@ -14,7 +14,7 @@ const archiveRoutes = require('./archiveRoutes')
 const cancelledRetenderedRoutes = require('./cancelledRetenderedRoutes')
 const tenderStatusRoutes = require('./tenderStatusRoutes')
 
-router.use(authMiddleware)
+router.use(optionalAuth)
 
 router.get('/', listTenders) // api/tenders/
 router.get('/stats', getStats) // api/tenders/stats

@@ -57,8 +57,8 @@ export default function ResourceDetailPage() {
           </svg>
         </button>
         <div className="mt-1 pl-1">
-          <h1 className="text-lg font-extrabold text-tn-navy leading-tight">{resource.name}</h1>
-          <p className="text-xs text-tn-muted mt-0.5">{resource.resourceId || resource._id || resource.id}</p>
+          <h1 className="text-xl font-display font-bold text-tn-navy leading-tight">{resource.name}</h1>
+          <p className="text-sm text-tn-muted mt-0.5">{resource.resourceId || resource._id || resource.id}</p>
         </div>
       </div>
 

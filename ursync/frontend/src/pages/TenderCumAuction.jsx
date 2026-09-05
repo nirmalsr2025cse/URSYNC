@@ -77,15 +77,23 @@ export default function TenderCumAuction() {
     <div className="p-4 md:p-6 lg:p-8 min-h-screen animate-fade-in">
 
       {/* ── Page Header ────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#0A2240]">
+          <h1 className="text-xl font-display font-bold text-tn-navy">
             Tender Cum Auction
           </h1>
-          <p className="text-sm text-tn-muted mt-1">
+          <p className="text-sm text-tn-muted mt-0.5">
             Steps and configuration details for enabling the Tender Cum Auction process.
           </p>
         </div>
+
+        <nav className="text-xs text-tn-muted flex items-center gap-1.5 flex-wrap" aria-label="Breadcrumb">
+          <span>Home</span>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <span className="text-tn-blue font-medium">Tender Cum Auction</span>
+        </nav>
       </div>
 
       {/* ── Main Content Card ──────────────────────────────────────────── */}
