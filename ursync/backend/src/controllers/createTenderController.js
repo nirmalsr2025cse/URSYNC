@@ -52,6 +52,16 @@ const {
   notifyStage,
 } = require('../services/tenderNotificationService')
 const { calculateHaversineDistanceKm, isTenderRangeApproxMatch } = require('../utils/geoUtils')
+const {
+  getDepartmentCode,
+  getCategoryForDepartment,
+  getCategoriesForDepartment,
+} = require('../utils/departmentCategoryConfig')
+const {
+  getNextSequentialTenderId,
+  isTenderIdTaken,
+  syncDefaultCategories,
+} = require('../utils/tenderIdGenerator')
 
 // ── helper: format a Mongo tender doc into the shape CreateSavedTenders.jsx / TenderView.jsx expect ──
 function formatTender(t) {
@@ -159,10 +169,24 @@ exports.getFormMeta = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Not authenticated' })
     }
 
-    const [categories, districts] = await Promise.all([
+    // Ensure all standard categories exist in the database
+    await syncDefaultCategories()
+
+    const [allCategories, districts] = await Promise.all([
       Category.find({ isActive: true }).select('name').sort({ name: 1 }).lean(),
       District.find({ isActive: true }).select('name').sort({ name: 1 }).lean(),
     ])
+
+    const deptName = me.departmentId?.name || ''
+    const deptCode = getDepartmentCode(deptName, me.departmentId?.code)
+    const categoryName = getCategoryForDepartment(deptName)
+    const suggestedTenderId = await getNextSequentialTenderId(deptCode, new Date().getFullYear())
+
+    // Ensure the static category exists in the Category collection
+    let catDoc = await Category.findOne({ name: { $regex: new RegExp(`^${categoryName}$`, 'i') } })
+    if (!catDoc) {
+      catDoc = await Category.create({ name: categoryName, type: 'Tender Category', isActive: true })
+    }
 
     return res.status(200).json({
       success: true,
@@ -170,8 +194,13 @@ exports.getFormMeta = async (req, res) => {
         department: {
           id: (me.departmentId?._id || me.departmentId)?.toString() || null,
           name: me.departmentId?.name || null,
+          code: deptCode,
         },
-        categories: categories.map((c) => ({ id: c._id.toString(), name: c.name })),
+        category: {
+          id: catDoc._id.toString(),
+          name: categoryName,
+        },
+        suggestedTenderId,
         districts: districts.map((d) => ({ id: d._id.toString(), name: d.name })),
       },
     })
@@ -349,7 +378,18 @@ exports.createTender = async (req, res) => {
       tenderId,
     } = req.body
 
-    if (!title || !categoryId || !districtId || !estimatedValue) {
+    let finalCategoryId = categoryId
+    if (!finalCategoryId) {
+      const deptName = me.departmentId?.name || ''
+      const categoryName = getCategoryForDepartment(deptName)
+      let catDoc = await Category.findOne({ name: { $regex: new RegExp(`^${categoryName}$`, 'i') } })
+      if (!catDoc) {
+        catDoc = await Category.create({ name: categoryName, type: 'Tender Category', isActive: true })
+      }
+      finalCategoryId = catDoc._id
+    }
+
+    if (!title || !finalCategoryId || !districtId || !estimatedValue) {
       return res.status(400).json({
         success: false,
         message: 'title, categoryId, districtId and estimatedValue are required',
@@ -373,38 +413,65 @@ exports.createTender = async (req, res) => {
       }
     }
 
-    const tender = await CreateTender.create({
-      tenderId,
-      title,
-      description,
-      departmentId: me.departmentId?._id || me.departmentId,
-      categoryId,
-      districtId,
-      location,
-      taluk,
-      village,
-      latitude: startLat,
-      longitude: startLng,
-      startLatitude: startLat,
-      startLongitude: startLng,
-      endLatitude: endLat,
-      endLongitude: endLng,
-      tenderRange: rangeVal,
-      estimatedValue,
-      currency,
-      duration,
-      startDate,
-      closingDate,
-      tenderType,
-      procurementType: procurementType || 'Works',
-      priority,
-      image,
-      documentUrl,
-      documentFileName: documentFileName || (documentUrl ? 'tender_document.pdf' : ''),
-      documentFileSize: documentFileSize || null,
-      createdBy: me._id,
-      status: 'Draft', // always starts as Draft
-    })
+    const deptName = me.departmentId?.name || ''
+    const deptCode = getDepartmentCode(deptName, me.departmentId?.code)
+    const currentYear = new Date().getFullYear()
+
+    // Resolve tenderId: if empty or already taken by another user, generate next sequential ID
+    let finalTenderId = (tenderId || '').trim()
+    const isTaken = finalTenderId ? await isTenderIdTaken(finalTenderId) : true
+
+    if (isTaken || !finalTenderId) {
+      finalTenderId = await getNextSequentialTenderId(deptCode, currentYear)
+    }
+
+    let tender = null
+    let attempts = 0
+    while (attempts < 3) {
+      try {
+        tender = await CreateTender.create({
+          tenderId: finalTenderId,
+          title,
+          description,
+          departmentId: me.departmentId?._id || me.departmentId,
+          categoryId: finalCategoryId,
+          districtId,
+          location,
+          taluk,
+          village,
+          latitude: startLat,
+          longitude: startLng,
+          startLatitude: startLat,
+          startLongitude: startLng,
+          endLatitude: endLat,
+          endLongitude: endLng,
+          tenderRange: rangeVal,
+          estimatedValue,
+          currency,
+          duration,
+          startDate,
+          closingDate,
+          tenderType,
+          procurementType: procurementType || 'Works',
+          priority,
+          image,
+          documentUrl,
+          documentFileName: documentFileName || (documentUrl ? 'tender_document.pdf' : ''),
+          documentFileSize: documentFileSize || null,
+          createdBy: me._id,
+          status: 'Draft', // always starts as Draft
+        })
+        break
+      } catch (createErr) {
+        if (createErr.code === 11000 && (createErr.keyPattern?.tenderId || String(createErr.message).includes('tenderId'))) {
+          attempts++
+          finalTenderId = await getNextSequentialTenderId(deptCode, currentYear)
+          if (attempts >= 3) throw createErr
+        } else {
+          throw createErr
+        }
+      }
+    }
 
     if (documentUrl) {
       try {

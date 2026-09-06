@@ -217,6 +217,7 @@ export default function CreateTender() {
     tenderId:         editData?.tenderId          || '',
     title:            editData?.title             || '',
     categoryId:       editData?.categoryId         || '',
+    categoryName:     editData?.category           || '',
     procurementType:  editData?.procurementType    || 'Works',
     districtId:       editData?.districtId         || '',
     description:      editData?.description        || '',
@@ -291,13 +292,12 @@ export default function CreateTender() {
       .then((res) => {
         if (cancelled) return
         setMeta(res.data)
-        // Prefill categoryId/districtId when editing and the backend
-        // returned them as populated objects (formatTender gives us
-        // names, not ids, on GET) — only backfill if the form doesn't
-        // already have a valid id selected.
+        // Prefill tenderId, categoryId, categoryName, and districtId
         setForm((prev) => ({
           ...prev,
-          categoryId: prev.categoryId || '',
+          tenderId: prev.tenderId || res.data.suggestedTenderId || '',
+          categoryId: prev.categoryId || res.data.category?.id || '',
+          categoryName: prev.categoryName || res.data.category?.name || '',
           districtId: prev.districtId || '',
         }))
       })
@@ -396,7 +396,7 @@ export default function CreateTender() {
     const e = {}
     if (!form.tenderId.trim())       e.tenderId       = 'Tender ID is required.'
     if (!form.title.trim())          e.title          = 'Title is required.'
-    if (!form.categoryId)            e.categoryId     = 'Please select a category.'
+    if (!form.categoryId && !meta.category?.id) e.categoryId = 'Category is required.'
     if (!form.districtId)            e.districtId     = 'Please select a district.'
     if (!form.description.trim())    e.description    = 'Description is required.'
     if (!form.estimatedValue.toString().trim()) e.estimatedValue = 'Estimated value is required.'
@@ -447,7 +447,7 @@ export default function CreateTender() {
       tenderId: form.tenderId,
       title: form.title,
       description: form.description,
-      categoryId: form.categoryId,
+      categoryId: form.categoryId || meta.category?.id || null,
       procurementType: form.procurementType || 'Works',
       districtId: form.districtId,
       location: form.location,
@@ -551,15 +551,19 @@ export default function CreateTender() {
       method: 'POST',
       body: JSON.stringify(payload),
     })
-    const newId = res.data._id
+    const savedTender = res.data
+    const newId = savedTender._id
     setTenderRecordId(newId)
-    setLastUpdated(res.data.updatedAt || null)
+    if (savedTender.tenderId && savedTender.tenderId !== form.tenderId) {
+      setForm((prev) => ({ ...prev, tenderId: savedTender.tenderId }))
+    }
+    setLastUpdated(savedTender.updatedAt || null)
     broadcastEvent('TENDER_CHANGED', {
       id: newId,
-      tenderId: form.tenderId,
+      tenderId: savedTender.tenderId || form.tenderId,
       action: 'create',
-      updatedAt: res.data.updatedAt,
-      status: res.data.status,
+      updatedAt: savedTender.updatedAt,
+      status: savedTender.status,
     })
     return newId
   }
@@ -792,15 +796,22 @@ export default function CreateTender() {
       {/* ── Section 1: Project Details ─────────────────────────────────── */}
       <FormSection title="Project Details" icon={<InfoIcon />}>
         <Field label="Tender ID" required error={errors.tenderId}>
-          <input
-            type="text"
-            name="tenderId"
-            value={form.tenderId}
-            onChange={e => set('tenderId', e.target.value)}
-            placeholder="e.g. TN/PWD/2026/010"
-            disabled={!!tenderRecordId}
-            className={tenderRecordId ? readOnlyClass : (errors.tenderId ? inputError : inputClass)}
-          />
+          <div className="relative">
+            <input
+              type="text"
+              name="tenderId"
+              value={form.tenderId}
+              onChange={e => set('tenderId', e.target.value)}
+              placeholder="e.g. TN/PWD/2026/1"
+              readOnly={!tenderRecordId && !!form.tenderId}
+              className={(!tenderRecordId && !!form.tenderId) ? (readOnlyClass + ' pr-28') : (tenderRecordId ? readOnlyClass : (errors.tenderId ? inputError : inputClass))}
+            />
+            {!tenderRecordId && form.tenderId && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded bg-[#FFF2DB] border border-[#FFE5BF] text-[#1A4A8C]">
+                Auto-Generated
+              </span>
+            )}
+          </div>
         </Field>
 
         <Field label="Title" required error={errors.title}>
@@ -818,12 +829,13 @@ export default function CreateTender() {
           <input type="text" value={meta.department?.name || '—'} readOnly className={readOnlyClass} />
         </Field>
 
-        <Field label="Category" required error={errors.categoryId}>
-          <select name="categoryId" value={form.categoryId} onChange={e => set('categoryId', e.target.value)}
-                  className={errors.categoryId ? inputError : inputClass}>
-            <option value="">Select category</option>
-            {meta.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+        <Field label="Category">
+          <input
+            type="text"
+            value={meta.category?.name || form.categoryName || '—'}
+            readOnly
+            className={readOnlyClass}
+          />
         </Field>
 
         <Field label="Procurement Type" required error={errors.procurementType}>
