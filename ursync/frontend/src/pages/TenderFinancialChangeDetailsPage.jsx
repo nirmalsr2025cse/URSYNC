@@ -68,7 +68,7 @@ export default function TenderFinancialChangeDetailsPage() {
     if (!remarks.trim()) return;
     setSubmitted(true);
     setTimeout(() => {
-      navigate("/financial-changes");
+      navigate("/financial-changes", { replace: true });
     }, 900);
   }
 

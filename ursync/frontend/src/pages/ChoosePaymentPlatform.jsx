@@ -96,6 +96,7 @@ export default function ChoosePaymentPlatform() {
 
   function handleContinue() {
     navigate('/apply-tenders', {
+      replace: true,
       state: {
         paymentCompleted: true,
         tenderId,

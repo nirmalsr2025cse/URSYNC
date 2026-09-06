@@ -249,9 +249,17 @@ export default function TenderDetailsView() {
   const sc   = STATUS_CONFIG[tender.status] || STATUS_CONFIG['Ongoing']
   const days = daysLeft(tender.closingDate)
   const isCompleted = tender.status === 'Completed'
-  const hasCoords = typeof tender.latitude === 'number' && typeof tender.longitude === 'number'
-  const mapsUrl = hasCoords
-    ? `https://www.google.com/maps/search/?api=1&query=${tender.latitude},${tender.longitude}`
+  const startLat = tender.startLatitude ?? tender.latitude
+  const startLng = tender.startLongitude ?? tender.longitude
+  const endLat = tender.endLatitude
+  const endLng = tender.endLongitude
+  const hasStartCoords = typeof startLat === 'number' && typeof startLng === 'number'
+  const hasEndCoords = typeof endLat === 'number' && typeof endLng === 'number'
+  const hasCoords = hasStartCoords || hasEndCoords
+  const mapsUrl = hasStartCoords && hasEndCoords
+    ? `https://www.google.com/maps/dir/?api=1&origin=${startLat},${startLng}&destination=${endLat},${endLng}`
+    : hasStartCoords
+    ? `https://www.google.com/maps/search/?api=1&query=${startLat},${startLng}`
     : null
 
   return (
@@ -387,13 +395,16 @@ export default function TenderDetailsView() {
       {/* ── Project Location ────────────────────────────────────────────── */}
       <SectionCard title="Project Location" icon={<LocationIcon />}>
         <div className="divide-y divide-[#FFF2DB]">
-          <InfoRow label="Location"  value={tender.location} />
-          <InfoRow label="Taluk"    value={tender.taluk} />
-          <InfoRow label="Village"  value={tender.village} />
-          <InfoRow label="Latitude"  value={formatCoord(tender.latitude)} />
-          <InfoRow label="Longitude" value={formatCoord(tender.longitude)} />
+          <InfoRow label="Location"           value={tender.location} />
+          <InfoRow label="Taluk"              value={tender.taluk} />
+          <InfoRow label="Village"            value={tender.village} />
+          <InfoRow label="Starting Latitude"  value={formatCoord(startLat)} />
+          <InfoRow label="Starting Longitude" value={formatCoord(startLng)} />
+          <InfoRow label="Ending Latitude"    value={formatCoord(endLat)} />
+          <InfoRow label="Ending Longitude"   value={formatCoord(endLng)} />
+          <InfoRow label="Tender Range"       value={tender.tenderRange != null ? `${tender.tenderRange} km` : '—'} accent />
         </div>
-        {hasCoords && (
+        {mapsUrl && (
           <a
             href={mapsUrl}
             target="_blank"
@@ -404,8 +415,12 @@ export default function TenderDetailsView() {
               <LocationIcon />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-[#0A2240] truncate">View on Map</p>
-              <p className="text-xs text-[#6B7A8D]">Open this location in Google Maps</p>
+              <p className="text-sm font-bold text-[#0A2240] truncate">
+                {hasStartCoords && hasEndCoords ? 'View Route on Map' : 'View on Map'}
+              </p>
+              <p className="text-xs text-[#6B7A8D]">
+                {hasStartCoords && hasEndCoords ? 'Open route directions in Google Maps' : 'Open this location in Google Maps'}
+              </p>
             </div>
             <svg className="w-4 h-4 text-[#1A4A8C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />

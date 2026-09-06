@@ -185,7 +185,7 @@ export function RoleProvider({ children }) {
     localStorage.removeItem('user')
     setUser(null)
     setRoleState(ROLES.PUBLIC)
-    window.location.href = '/login'
+    window.location.replace('/login')
   }, [])
 
   const setRole = useCallback((newRole) => {

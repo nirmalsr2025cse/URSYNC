@@ -18,6 +18,8 @@ const tenderSchema = new Schema(
     description: { type: String, trim: true },
     image: { type: String, trim: true },
     documentUrl: { type: String, trim: true, default: null }, // link/path to the tender document PDF
+    documentFileName: { type: String, trim: true, default: '' },
+    documentFileSize: { type: Number, default: null },
 
     departmentId: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
     categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
@@ -30,6 +32,11 @@ const tenderSchema = new Schema(
     village: { type: String, trim: true, default: '' },
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
+    startLatitude: { type: Number, default: null },
+    startLongitude: { type: Number, default: null },
+    endLatitude: { type: Number, default: null },
+    endLongitude: { type: Number, default: null },
+    tenderRange: { type: Number, default: null }, // range in km
     duration: { type: String, trim: true, default: '' },
 
     // ── Project schedule ─────────────────────────────────────────────────

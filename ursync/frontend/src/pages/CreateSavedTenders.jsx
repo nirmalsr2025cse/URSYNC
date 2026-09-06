@@ -5,6 +5,7 @@ import { STATUS_CONFIG, PRIORITY_CONFIG, TENDER_CATEGORIES } from '../data/tende
 import { useRole } from '../components/RoleContext'
 import { useApi } from '../api/client'
 import Pagination, { useResponsiveItemsPerPage } from '../components/Pagination'
+import { broadcastEvent, subscribeToCrossTab } from '../utils/crossTabSync'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(d) {
@@ -161,6 +162,16 @@ export default function CreateSavedTenders() {
     fetchTenders()
   }, [fetchTenders])
 
+  // ── Auto-sync list when tenders change in other tabs without page reload ─
+  useEffect(() => {
+    const unsubscribe = subscribeToCrossTab((data) => {
+      if (data && data.eventType === 'TENDER_CHANGED') {
+        fetchTenders()
+      }
+    })
+    return unsubscribe
+  }, [fetchTenders])
+
   // Filtered list (search/status/category filters run client-side on top
   // of the already role-filtered data returned by the backend)
   const filtered = useMemo(() => {
@@ -223,6 +234,7 @@ export default function CreateSavedTenders() {
     try {
       await apiFetch(`/create-tenders/${deleteModal.id}`, { method: 'DELETE' })
       setTenders(prev => prev.filter(t => t.id !== deleteModal.id))
+      broadcastEvent('TENDER_CHANGED', { id: deleteModal.id, action: 'delete' })
       showToast('Tender deleted successfully.', 'error')
     } catch (err) {
       showToast(err.message || 'Failed to delete tender.', 'error')

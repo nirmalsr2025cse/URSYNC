@@ -78,7 +78,7 @@ export default function AppRoutes() {
     localStorage.setItem('token', token)
     localStorage.setItem('user', JSON.stringify(user))
     await refreshUser()
-    navigate('/home')
+    navigate('/home', { replace: true })
   }
 
   async function handleLogin(formValues) {
@@ -89,7 +89,7 @@ export default function AppRoutes() {
     localStorage.setItem('token', token)
     localStorage.setItem('user', JSON.stringify(user))
     await refreshUser()
-    navigate('/home')
+    navigate('/home', { replace: true })
   }
 
   return (

@@ -42,6 +42,7 @@
 // See src/services/tenderNotificationService.js for the recipient rules.
 
 const CreateTender = require('../models/CreateTender')
+const Document = require('../models/Document')
 const User = require('../models/User')
 const Role = require('../models/Role')
 const Category = require('../models/Category')
@@ -50,6 +51,7 @@ const {
   addToApprovalChain,
   notifyStage,
 } = require('../services/tenderNotificationService')
+const { calculateHaversineDistanceKm, isTenderRangeApproxMatch } = require('../utils/geoUtils')
 
 // ── helper: format a Mongo tender doc into the shape CreateSavedTenders.jsx / TenderView.jsx expect ──
 function formatTender(t) {
@@ -73,8 +75,13 @@ function formatTender(t) {
     location: t.location || '',
     taluk: t.taluk || '',
     village: t.village || '—',
-    latitude: t.latitude ?? null,
-    longitude: t.longitude ?? null,
+    latitude: t.latitude ?? t.startLatitude ?? null,
+    longitude: t.longitude ?? t.startLongitude ?? null,
+    startLatitude: t.startLatitude ?? t.latitude ?? null,
+    startLongitude: t.startLongitude ?? t.longitude ?? null,
+    endLatitude: t.endLatitude ?? null,
+    endLongitude: t.endLongitude ?? null,
+    tenderRange: t.tenderRange ?? null,
     duration: t.duration || '',
     startDate: t.startDate,
     endDate: t.closingDate,
@@ -84,6 +91,8 @@ function formatTender(t) {
     currency: t.currency || 'INR',
     image: t.image,
     documentUrl: t.documentUrl || '',
+    documentFileName: t.documentFileName || '',
+    documentFileSize: t.documentFileSize || null,
     sentTo: t.sentTo ? t.sentTo.toString() : null,
     lastUpdated: t.updatedAt,
     createdBy: t.createdBy?._id?.toString(),
@@ -320,6 +329,11 @@ exports.createTender = async (req, res) => {
       village,
       latitude,
       longitude,
+      startLatitude,
+      startLongitude,
+      endLatitude,
+      endLongitude,
+      tenderRange,
       estimatedValue,
       currency,
       duration,
@@ -330,6 +344,8 @@ exports.createTender = async (req, res) => {
       priority,
       image,
       documentUrl,
+      documentFileName,
+      documentFileSize,
       tenderId,
     } = req.body
 
@@ -338,6 +354,23 @@ exports.createTender = async (req, res) => {
         success: false,
         message: 'title, categoryId, districtId and estimatedValue are required',
       })
+    }
+
+    const startLat = startLatitude !== undefined && startLatitude !== null ? Number(startLatitude) : (latitude !== undefined && latitude !== null ? Number(latitude) : null)
+    const startLng = startLongitude !== undefined && startLongitude !== null ? Number(startLongitude) : (longitude !== undefined && longitude !== null ? Number(longitude) : null)
+    const endLat = endLatitude !== undefined && endLatitude !== null && endLatitude !== '' ? Number(endLatitude) : null
+    const endLng = endLongitude !== undefined && endLongitude !== null && endLongitude !== '' ? Number(endLongitude) : null
+    const rangeVal = tenderRange !== undefined && tenderRange !== null && tenderRange !== '' ? Number(tenderRange) : null
+
+    if (startLat != null && startLng != null && endLat != null && endLng != null && rangeVal != null) {
+      const matchCheck = isTenderRangeApproxMatch(startLat, startLng, endLat, endLng, rangeVal)
+      if (!matchCheck.isValid) {
+        return res.status(400).json({
+          success: false,
+          message: `Entered tender range (${rangeVal} km) differs significantly from the calculated distance (~${matchCheck.calculatedDistance} km) between starting and ending coordinates.`,
+          calculatedDistance: matchCheck.calculatedDistance,
+        })
+      }
     }
 
     const tender = await CreateTender.create({
@@ -350,8 +383,13 @@ exports.createTender = async (req, res) => {
       location,
       taluk,
       village,
-      latitude,
-      longitude,
+      latitude: startLat,
+      longitude: startLng,
+      startLatitude: startLat,
+      startLongitude: startLng,
+      endLatitude: endLat,
+      endLongitude: endLng,
+      tenderRange: rangeVal,
       estimatedValue,
       currency,
       duration,
@@ -362,9 +400,30 @@ exports.createTender = async (req, res) => {
       priority,
       image,
       documentUrl,
+      documentFileName: documentFileName || (documentUrl ? 'tender_document.pdf' : ''),
+      documentFileSize: documentFileSize || null,
       createdBy: me._id,
       status: 'Draft', // always starts as Draft
     })
+
+    if (documentUrl) {
+      try {
+        await Document.create({
+          tenderId: tender.tenderId,
+          createTenderId: tender._id,
+          fileName: documentFileName || 'tender_document.pdf',
+          fileUrl: documentUrl,
+          contentType: 'application/pdf',
+          fileSize: documentFileSize || null,
+          uploadedBy: me._id,
+          departmentId: me.departmentId?._id || me.departmentId,
+          status: 'Draft',
+          isApproved: false,
+        })
+      } catch (docErr) {
+        console.error('Failed to create Document record on tender creation:', docErr)
+      }
+    }
 
     // ── notification: tender created ────────────────────────────────────
     // Record the creator as the first approval-chain entry and email them
@@ -441,11 +500,27 @@ exports.updateTender = async (req, res) => {
       })
     }
 
+    // ── Optimistic Concurrency Control / Multi-tab conflict check ───────
+    if (req.body.lastUpdated) {
+      const clientUpdated = new Date(req.body.lastUpdated).getTime()
+      const serverUpdated = new Date(tender.updatedAt).getTime()
+      // If the server record was updated after the client loaded it (with a 2-second grace threshold)
+      if (!isNaN(clientUpdated) && serverUpdated - clientUpdated > 2000) {
+        return res.status(409).json({
+          success: false,
+          conflict: true,
+          message: 'This tender has been modified in another session or tab. Please load the latest changes to avoid overwriting them.',
+          serverUpdatedAt: tender.updatedAt,
+        })
+      }
+    }
+
     const allowedFields = [
       'title', 'description', 'categoryId', 'districtId', 'location', 'taluk',
-      'village', 'latitude', 'longitude', 'estimatedValue', 'currency',
+      'village', 'latitude', 'longitude', 'startLatitude', 'startLongitude',
+      'endLatitude', 'endLongitude', 'tenderRange', 'estimatedValue', 'currency',
       'duration', 'startDate', 'closingDate', 'tenderType', 'procurementType', 'priority',
-      'image', 'documentUrl',
+      'image', 'documentUrl', 'documentFileName', 'documentFileSize',
       // NOTE: 'status' and 'sentTo' are intentionally NOT in this list —
       // Save/edit can never change them directly; only the send-to-* /
       // approve / reject actions can.
@@ -455,6 +530,26 @@ exports.updateTender = async (req, res) => {
       if (req.body[field] !== undefined) tender[field] = req.body[field]
     })
 
+    // Keep latitude / startLatitude in sync
+    if (req.body.startLatitude !== undefined) tender.latitude = req.body.startLatitude
+    if (req.body.startLongitude !== undefined) tender.longitude = req.body.startLongitude
+    if (req.body.latitude !== undefined && req.body.startLatitude === undefined) tender.startLatitude = req.body.latitude
+    if (req.body.longitude !== undefined && req.body.startLongitude === undefined) tender.startLongitude = req.body.longitude
+
+    // Range check validation on update
+    const effStartLat = tender.startLatitude ?? tender.latitude
+    const effStartLng = tender.startLongitude ?? tender.longitude
+    if (effStartLat != null && effStartLng != null && tender.endLatitude != null && tender.endLongitude != null && tender.tenderRange != null) {
+      const matchCheck = isTenderRangeApproxMatch(effStartLat, effStartLng, tender.endLatitude, tender.endLongitude, tender.tenderRange)
+      if (!matchCheck.isValid) {
+        return res.status(400).json({
+          success: false,
+          message: `Entered tender range (${tender.tenderRange} km) differs significantly from the calculated distance (~${matchCheck.calculatedDistance} km) between starting and ending coordinates.`,
+          calculatedDistance: matchCheck.calculatedDistance,
+        })
+      }
+    }
+
     if (isOwnerDraftEdit) {
       tender.status = 'Draft' // explicit, even though it's already Draft
     }
@@ -463,6 +558,34 @@ exports.updateTender = async (req, res) => {
     // reviewer can still act on it (approve/reject/forward) afterward.
     tender.updatedBy = me._id
     await tender.save()
+
+    if (tender.documentUrl) {
+      try {
+        await Document.findOneAndUpdate(
+          { createTenderId: tender._id },
+          {
+            tenderId: tender.tenderId,
+            createTenderId: tender._id,
+            fileName: tender.documentFileName || req.body.documentFileName || 'tender_document.pdf',
+            fileUrl: tender.documentUrl,
+            contentType: 'application/pdf',
+            fileSize: tender.documentFileSize || req.body.documentFileSize || null,
+            uploadedBy: me._id,
+            departmentId: tender.departmentId,
+            status: tender.status,
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        )
+      } catch (docErr) {
+        console.error('Failed to upsert Document record on tender update:', docErr)
+      }
+    } else {
+      try {
+        await Document.deleteMany({ createTenderId: tender._id })
+      } catch (docErr) {
+        console.error('Failed to remove Document record on tender update:', docErr)
+      }
+    }
 
     return res.status(200).json({ success: true, data: tender })
   } catch (err) {
@@ -520,6 +643,12 @@ exports.sendToHead = async (req, res) => {
     // ── notification: sent to head ──────────────────────────────────────
     addToApprovalChain(tender, me._id, 'Sent to Head')
     await tender.save()
+
+    try {
+      await Document.updateMany({ createTenderId: tender._id }, { status: 'Sent to Head' })
+    } catch (docErr) {
+      console.error('Failed to sync Document status on sendToHead:', docErr)
+    }
 
     // me is the employee here, and always the creator (checked above).
     notifyStage(tender, me, {
@@ -584,6 +713,12 @@ exports.sendToAdministrator = async (req, res) => {
     // ── notification: sent to administrator ─────────────────────────────
     addToApprovalChain(tender, me._id, 'Sent to Administrator')
     await tender.save()
+
+    try {
+      await Document.updateMany({ createTenderId: tender._id }, { status: 'Sent to Administrator' })
+    } catch (docErr) {
+      console.error('Failed to sync Document status on sendToAdministrator:', docErr)
+    }
 
     // The head may be forwarding their OWN draft, or an employee's tender
     // that was routed to them — fetch the real creator either way so the

@@ -46,6 +46,7 @@
 
 const CreateTender = require('../models/CreateTender')
 const Tender = require('../models/Tender')
+const Document = require('../models/Document')
 const User = require('../models/User')
 const Rejection = require('../models/Rejection')
 const Role = require('../models/Role')
@@ -108,6 +109,8 @@ function formatApprovementTender(t) {
     description: t.description || '',
     image: t.image || '',
     documentUrl: t.documentUrl || null,
+    documentFileName: t.documentFileName || '',
+    documentFileSize: t.documentFileSize || null,
     department: t.departmentId?.name || '—',
     departmentCode: t.departmentId?.code || '—',
     organization: t.departmentId?.organization || t.departmentId?.name || '—',
@@ -119,8 +122,13 @@ function formatApprovementTender(t) {
     location: t.location || (t.districtId ? t.districtId.name : ''),
     taluk: t.taluk || '',
     village: t.village || '',
-    latitude: t.latitude ?? null,
-    longitude: t.longitude ?? null,
+    latitude: t.latitude ?? t.startLatitude ?? null,
+    longitude: t.longitude ?? t.startLongitude ?? null,
+    startLatitude: t.startLatitude ?? t.latitude ?? null,
+    startLongitude: t.startLongitude ?? t.longitude ?? null,
+    endLatitude: t.endLatitude ?? null,
+    endLongitude: t.endLongitude ?? null,
+    tenderRange: t.tenderRange ?? null,
     duration: t.duration || '',
     value: formatCurrency(t.estimatedValue),
     estimatedValue: t.estimatedValue,
@@ -283,6 +291,14 @@ exports.approveTender = async (req, res) => {
     tender.updatedBy = me._id
     await tender.save()
 
+    try {
+      const docStatus = roleName === 'administrator' ? 'Sent to Financial' : 'Approved'
+      const isAppr = roleName !== 'administrator'
+      await Document.updateMany({ createTenderId: tender._id }, { status: docStatus, ...(isAppr ? { isApproved: true } : {}) })
+    } catch (docErr) {
+      console.error('Failed to sync Document status on approveTender:', docErr)
+    }
+
     const creatorUser = await loadCreatorWithRole(tender.createdBy)
     notifyStage(tender, creatorUser, {
       stageLabel,
@@ -343,6 +359,12 @@ exports.rejectTender = async (req, res) => {
     tender.isRejected = true
     tender.updatedBy = me._id
     await tender.save()
+
+    try {
+      await Document.updateMany({ createTenderId: tender._id }, { status: 'Rejected' })
+    } catch (docErr) {
+      console.error('Failed to sync Document status on rejectTender:', docErr)
+    }
 
     await Rejection.create({
       tenderId: tender._id,

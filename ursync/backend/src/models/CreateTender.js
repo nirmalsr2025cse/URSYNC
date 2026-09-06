@@ -15,8 +15,13 @@ const createTenderSchema = new Schema(
     location: { type: String, trim: true },
     taluk: { type: String, trim: true },
     village: { type: String, trim: true },
-    latitude: { type: Number },
-    longitude: { type: Number },
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    startLatitude: { type: Number, default: null },
+    startLongitude: { type: Number, default: null },
+    endLatitude: { type: Number, default: null },
+    endLongitude: { type: Number, default: null },
+    tenderRange: { type: Number, default: null }, // range in km
 
     estimatedValue: { type: Number, required: true },
     currency: { type: String, default: 'INR' },
@@ -67,6 +72,8 @@ const createTenderSchema = new Schema(
 
     image: { type: String, trim: true },
     documentUrl: { type: String, trim: true },
+    documentFileName: { type: String, trim: true, default: '' },
+    documentFileSize: { type: Number, default: null },
 
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },

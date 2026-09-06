@@ -236,6 +236,7 @@ export default function ConflictDetails() {
   function handleApplyEdit() {
     setEditModalOpen(false)
     navigate('/conflicts', {
+      replace: true,
       state: {
         appliedMessage: `"${myTender.name}" schedule updated to ${formatDate(editDate)}.`,
       },

@@ -731,19 +731,7 @@ export default function ApplyTenderForm() {
       if (isEditMode) {
         await persistAppliedEdit()
         showToast('Application updated successfully!')
-
-        // Re-fetch so any replaced document now shows the NEW file's URL.
-        apiFetch('/applied-tenders/' + encodeURIComponent(applicationId))
-          .then((res) => {
-            if (res.data) {
-              setSavedDocuments(res.data.documents || [])
-              setSavedSignatureUrl(res.data.signatureUrl || null)
-              setSavedSignatureContentType(res.data.signatureContentType || null)
-              setDocumentFiles({})
-              setSignatureFile(null)
-            }
-          })
-          .catch(() => {})
+        setTimeout(() => navigate(cancelPath, { replace: true }), 1000)
       } else {
         await persistDraft()
         showToast('Application Saved Successfully!')
@@ -786,7 +774,7 @@ export default function ApplyTenderForm() {
       await submitDraft()
       sessionStorage.removeItem('lastTenderCode')
       showToast('Application submitted successfully!')
-      navigate('/apply-tenders')
+      navigate('/apply-tenders', { replace: true })
     } catch (err) {
       showToast(err.message || 'Failed to submit application.', 'error')
     } finally {

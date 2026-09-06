@@ -13,6 +13,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useRole } from '../components/RoleContext'
 import { useApi } from '../api/client'
 import LatLngInput from '../components/LatLngInput'
+import { broadcastEvent, subscribeToCrossTab } from '../utils/crossTabSync'
+import { calculateHaversineDistanceKm, isTenderRangeApproxMatch } from '../utils/geoUtils'
 
 const MAX_PDF_SIZE_MB = 10
 
@@ -206,6 +208,9 @@ export default function CreateTender() {
   // brand-new tender is first saved, so a subsequent "Send" doesn't try to
   // create a second duplicate document.
   const [tenderRecordId, setTenderRecordId] = useState(editData?.id || null)
+  const [lastUpdated, setLastUpdated] = useState(editData?.lastUpdated || editData?.updatedAt || null)
+  const [remoteConflict, setRemoteConflict] = useState(null)
+  const [isSyncing, setIsSyncing] = useState(false)
 
   // ── Form state ──────────────────────────────────────────────────────────────
   const [form, setForm] = useState({
@@ -222,18 +227,59 @@ export default function CreateTender() {
     location:         editData?.location            || '',
     taluk:            editData?.taluk               || '',
     village:          editData?.village             || '',
-    // Holds { address, lat, lng } once selected — user never types
-    // coordinates directly.
-    coordinates:      (editData && typeof editData.latitude === 'number')
-      ? { lat: editData.latitude, lng: editData.longitude, address: editData.location || '' }
+    // Holds { address, lat, lng } for starting coordinates
+    coordinates:      (editData && typeof (editData.startLatitude ?? editData.latitude) === 'number')
+      ? { lat: editData.startLatitude ?? editData.latitude, lng: editData.startLongitude ?? editData.longitude, address: editData.location || '' }
       : null,
+    // Holds { address, lat, lng } for ending coordinates
+    endCoordinates:   (editData && typeof editData.endLatitude === 'number')
+      ? { lat: editData.endLatitude, lng: editData.endLongitude, address: '' }
+      : null,
+    tenderRange:      editData?.tenderRange != null ? String(editData.tenderRange) : '',
     documentUrl:      editData?.documentUrl        || '',
     image:            editData?.image              || '',
   })
 
   const [documentFile, setDocumentFile] = useState(
-    editData?.documentUrl ? { name: editData.documentFileName || 'Existing document.pdf', size: null } : null
+    editData?.documentUrl ? { name: editData.documentFileName || 'Existing document.pdf', size: editData.documentFileSize || null } : null
   )
+
+  // Calculated Haversine straight-line distance between start and end coordinates
+  const calculatedDist = (
+    form.coordinates?.lat != null &&
+    form.coordinates?.lng != null &&
+    form.endCoordinates?.lat != null &&
+    form.endCoordinates?.lng != null
+  ) ? calculateHaversineDistanceKm(
+      form.coordinates.lat,
+      form.coordinates.lng,
+      form.endCoordinates.lat,
+      form.endCoordinates.lng
+    ) : null
+
+  // ── Listen to real-time cross-tab updates without reloading ────────────────
+  useEffect(() => {
+    const unsubscribe = subscribeToCrossTab((data) => {
+      if (!data || !data.payload) return
+      const { id, tenderId, action, updatedAt, status } = data.payload
+
+      // If the broadcasted event targets this tender
+      const matchesCurrent =
+        (tenderRecordId && String(id) === String(tenderRecordId)) ||
+        (form.tenderId && tenderId && form.tenderId.trim().toLowerCase() === tenderId.trim().toLowerCase())
+
+      if (matchesCurrent) {
+        setRemoteConflict({
+          time: new Date(data.timestamp).toLocaleTimeString(),
+          action: action || 'updated',
+          status: status || null,
+          updatedAt: updatedAt || null,
+        })
+      }
+    })
+
+    return unsubscribe
+  }, [tenderRecordId, form.tenderId])
 
   // ── Load department/category/district IDs from the backend ──────────────────
   useEffect(() => {
@@ -360,7 +406,21 @@ export default function CreateTender() {
       e.closingDate = 'Closing date must be after start date.'
     }
     if (!form.location.trim())       e.location       = 'Location is required.'
-    if (!form.coordinates)           e.coordinates    = 'Please select a location from the suggestions.'
+    if (!form.coordinates)           e.coordinates    = 'Please select starting coordinates from the suggestions.'
+
+    if (form.coordinates && form.endCoordinates && form.tenderRange !== '' && form.tenderRange != null) {
+      const isMatch = isTenderRangeApproxMatch(
+        form.coordinates.lat,
+        form.coordinates.lng,
+        form.endCoordinates.lat,
+        form.endCoordinates.lng,
+        form.tenderRange
+      )
+      if (!isMatch) {
+        e.tenderRange = `Entered range (${form.tenderRange} km) does not approximately match the calculated distance (${calculatedDist} km) between starting and ending coordinates.`
+      }
+    }
+
     return e
   }
 
@@ -395,12 +455,69 @@ export default function CreateTender() {
       village: form.village,
       latitude: form.coordinates?.lat ?? null,
       longitude: form.coordinates?.lng ?? null,
+      startLatitude: form.coordinates?.lat ?? null,
+      startLongitude: form.coordinates?.lng ?? null,
+      endLatitude: form.endCoordinates?.lat ?? null,
+      endLongitude: form.endCoordinates?.lng ?? null,
+      tenderRange: form.tenderRange !== '' && form.tenderRange != null ? Number(form.tenderRange) : null,
       estimatedValue: Number(form.estimatedValue),
       duration: form.duration,
       startDate: form.startDate,
       closingDate: form.closingDate,
       image: form.image,
       documentUrl: form.documentUrl,
+      documentFileName: documentFile?.name || '',
+      documentFileSize: documentFile?.size || null,
+      lastUpdated: lastUpdated || null,
+    }
+  }
+
+  // ── Load latest data in-place without page reload ─────────────────────────
+  async function handleLoadLatestChanges() {
+    if (!tenderRecordId) return
+    setIsSyncing(true)
+    try {
+      const res = await apiFetch(`/create-tenders/${tenderRecordId}`)
+      const t = res.data
+      if (t) {
+        setForm({
+          tenderId: t.tenderId || '',
+          title: t.title || '',
+          categoryId: t.categoryId || '',
+          procurementType: t.procurementType || 'Works',
+          districtId: t.districtId || '',
+          description: t.description || '',
+          estimatedValue: t.estimatedValue || t.amount || '',
+          startDate: toDateInputValue(t.startDate),
+          closingDate: toDateInputValue(t.closingDate || t.endDate),
+          duration: t.duration || '',
+          location: t.location || '',
+          taluk: t.taluk || '',
+          village: t.village || '',
+          coordinates: (typeof (t.startLatitude ?? t.latitude) === 'number')
+            ? { lat: t.startLatitude ?? t.latitude, lng: t.startLongitude ?? t.longitude, address: t.location || '' }
+            : null,
+          endCoordinates: (typeof t.endLatitude === 'number')
+            ? { lat: t.endLatitude, lng: t.endLongitude, address: '' }
+            : null,
+          tenderRange: t.tenderRange != null ? String(t.tenderRange) : '',
+          documentUrl: t.documentUrl || '',
+          image: t.image || '',
+        })
+        setDocumentFile(
+          t.documentUrl
+            ? { name: t.documentFileName || 'tender_document.pdf', size: t.documentFileSize || null }
+            : null
+        )
+        setLastUpdated(t.lastUpdated || t.updatedAt || null)
+        setRemoteConflict(null)
+        setErrors({})
+        showToast('Tender synchronized with latest changes without reloading the page!')
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to fetch latest changes.', 'error')
+    } finally {
+      setIsSyncing(false)
     }
   }
 
@@ -416,6 +533,17 @@ export default function CreateTender() {
         method: 'PUT',
         body: JSON.stringify(payload),
       })
+      const updatedTender = res.data
+      if (updatedTender) {
+        setLastUpdated(updatedTender.updatedAt || null)
+        broadcastEvent('TENDER_CHANGED', {
+          id: tenderRecordId,
+          tenderId: form.tenderId,
+          action: 'update',
+          updatedAt: updatedTender.updatedAt,
+          status: updatedTender.status,
+        })
+      }
       return res.data._id || tenderRecordId
     }
 
@@ -425,6 +553,14 @@ export default function CreateTender() {
     })
     const newId = res.data._id
     setTenderRecordId(newId)
+    setLastUpdated(res.data.updatedAt || null)
+    broadcastEvent('TENDER_CHANGED', {
+      id: newId,
+      tenderId: form.tenderId,
+      action: 'create',
+      updatedAt: res.data.updatedAt,
+      status: res.data.status,
+    })
     return newId
   }
 
@@ -441,8 +577,15 @@ export default function CreateTender() {
     try {
       await persistTender()
       showToast(tenderRecordId ? 'Tender updated successfully!' : 'Tender saved as draft!')
-      setTimeout(() => navigate(fromPath), 1200)
+      setTimeout(() => navigate(fromPath, { replace: true }), 1200)
     } catch (err) {
+      if (err.status === 409 || err.message?.toLowerCase().includes('modified in another')) {
+        setRemoteConflict({
+          time: 'Just now',
+          action: 'updated',
+          message: err.message,
+        })
+      }
       showToast(err.message || 'Failed to save tender.', 'error')
     } finally {
       setSaving(false)
@@ -480,10 +623,24 @@ export default function CreateTender() {
       }
       await apiFetch(`/create-tenders/${id}/${action}`, { method: 'PATCH' })
 
+      broadcastEvent('TENDER_CHANGED', {
+        id,
+        tenderId: form.tenderId,
+        action: 'send',
+        status: action === 'send-to-head' ? 'Sent to Head' : 'Sent to Administrator',
+      })
+
       const label = role === 'department_employee' ? 'Department Head' : 'Administrator'
       showToast(`Tender sent to ${label} successfully!`)
-      setTimeout(() => navigate('/create-saved-tenders'), 1200)
+      setTimeout(() => navigate('/create-saved-tenders', { replace: true }), 1200)
     } catch (err) {
+      if (err.status === 409 || err.message?.toLowerCase().includes('modified in another')) {
+        setRemoteConflict({
+          time: 'Just now',
+          action: 'updated',
+          message: err.message,
+        })
+      }
       showToast(err.message || 'Failed to send tender.', 'error')
     } finally {
       setSaving(false)
@@ -591,6 +748,46 @@ export default function CreateTender() {
           )}
         </div>
       </div>
+
+      {/* ── Cross-Tab Real-time Conflict Alert Banner ─────────────────── */}
+      {remoteConflict && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-fade-in">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center flex-shrink-0 text-white font-bold text-base">
+              ⚠️
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-900">
+                {remoteConflict.message || `This tender was modified in another tab ${remoteConflict.time ? `at ${remoteConflict.time}` : ''}!`}
+              </p>
+              <p className="text-xs text-amber-800/80 mt-0.5">
+                {remoteConflict.status && remoteConflict.status !== 'Draft'
+                  ? `Status is now "${remoteConflict.status}". Click below to sync without reloading the page.`
+                  : 'To avoid losing or overwriting updates, load the newest changes directly.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
+            {tenderRecordId && (
+              <button
+                type="button"
+                onClick={handleLoadLatestChanges}
+                disabled={isSyncing}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-[#1A4A8C] text-white hover:bg-[#0A2240] transition-colors shadow-sm disabled:opacity-50"
+              >
+                {isSyncing ? 'Syncing...' : 'Load Latest Changes'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setRemoteConflict(null)}
+              className="px-3 py-2 text-xs font-semibold rounded-xl border border-amber-300 text-amber-900 bg-white hover:bg-amber-100 transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Section 1: Project Details ─────────────────────────────────── */}
       <FormSection title="Project Details" icon={<InfoIcon />}>
@@ -733,13 +930,54 @@ export default function CreateTender() {
                  placeholder="Enter village" className={inputClass} />
         </Field>
 
-        <Field label="Coordinates (lat, long)" required error={errors.coordinates} fullWidth>
+        <Field label="Starting Coordinates (lat, long)" required error={errors.coordinates} fullWidth>
           <div name="coordinates">
             <LatLngInput
               value={form.coordinates}
               onChange={(loc) => set('coordinates', loc)}
               inputClassName={errors.coordinates ? inputError : inputClass}
             />
+          </div>
+        </Field>
+
+        <Field label="Ending Coordinates (lat, long)" error={errors.endCoordinates} fullWidth>
+          <div name="endCoordinates">
+            <LatLngInput
+              value={form.endCoordinates}
+              onChange={(loc) => set('endCoordinates', loc)}
+              inputClassName={errors.endCoordinates ? inputError : inputClass}
+            />
+          </div>
+        </Field>
+
+        <Field label="Tender Range (km)" error={errors.tenderRange} fullWidth>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="relative flex-1">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                name="tenderRange"
+                value={form.tenderRange}
+                onChange={e => set('tenderRange', e.target.value)}
+                placeholder="e.g. 15.5"
+                className={(errors.tenderRange ? inputError : inputClass) + ' pr-12'}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#6B7A8D]">
+                km
+              </span>
+            </div>
+            {calculatedDist !== null && (
+              <button
+                type="button"
+                onClick={() => set('tenderRange', String(calculatedDist))}
+                className="px-3 py-2 text-xs font-semibold rounded-xl bg-[#FFFAF3] border border-[#FFE5BF] text-[#1A4A8C] hover:bg-[#FFF2DB] transition-colors flex items-center gap-1.5 whitespace-nowrap self-start sm:self-auto"
+                title="Populate with calculated straight-line distance"
+              >
+                <span>Calculated: <strong>{calculatedDist} km</strong></span>
+                <span className="text-[10px] bg-[#1A4A8C] text-white px-1.5 py-0.5 rounded font-bold">Use</span>
+              </button>
+            )}
           </div>
         </Field>
       </FormSection>

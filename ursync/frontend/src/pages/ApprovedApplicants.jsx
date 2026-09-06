@@ -224,7 +224,7 @@ export default function ApprovedApplicants() {
       setConfirmOpen(false)
       showToast('Sent to department successfully')
       setTimeout(() => {
-        navigate('/applications', { state: { fromTab } })
+        navigate('/applications', { replace: true, state: { fromTab } })
       }, 1000)
     } catch (err) {
       showToast(err.message || 'Failed to send to department', 'error')

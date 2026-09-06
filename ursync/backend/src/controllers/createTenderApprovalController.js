@@ -81,6 +81,7 @@
 
 const CreateTender = require('../models/CreateTender')
 const Tender = require('../models/Tender')
+const Document = require('../models/Document')
 const Rejection = require('../models/Rejection')
 const Role = require('../models/Role')
 const User = require('../models/User')
@@ -243,6 +244,12 @@ exports.rejectTender = async (req, res) => {
     tender.sentTo = null
     await tender.save()
 
+    try {
+      await Document.updateMany({ createTenderId: tender._id }, { status: 'Rejected' })
+    } catch (docErr) {
+      console.error('Failed to sync Document status on rejectTender:', docErr)
+    }
+
     // ── notification: rejection email ───────────────────────────────────
     const creatorUser = await loadCreatorWithRole(tender.createdBy)
     notifyRejection(tender, creatorUser, reason.trim())
@@ -291,6 +298,12 @@ exports.financialApprove = async (req, res) => {
     tender.sentTo = tenderAuthorityUser._id
     tender.updatedBy = currentUser._id
     await tender.save()
+
+    try {
+      await Document.updateMany({ createTenderId: tender._id }, { status: 'Sent to Tender Authority' })
+    } catch (docErr) {
+      console.error('Failed to sync Document status on financialApprove:', docErr)
+    }
 
     const creatorUser = await loadCreatorWithRole(tender.createdBy)
     notifyStage(tender, creatorUser, {
@@ -409,6 +422,8 @@ exports.tenderAuthorityApprove = async (req, res) => {
         description: tender.description,
         image: tender.image,
         documentUrl: tender.documentUrl || null,
+        documentFileName: tender.documentFileName || (tender.documentUrl ? 'tender_document.pdf' : ''),
+        documentFileSize: tender.documentFileSize || null,
 
         departmentId: tender.departmentId,
         categoryId: tender.categoryId,
@@ -419,8 +434,13 @@ exports.tenderAuthorityApprove = async (req, res) => {
         location: tender.location,
         taluk: tender.taluk || '',
         village: tender.village || '',
-        latitude: tender.latitude ?? null,
-        longitude: tender.longitude ?? null,
+        latitude: tender.latitude ?? tender.startLatitude ?? null,
+        longitude: tender.longitude ?? tender.startLongitude ?? null,
+        startLatitude: tender.startLatitude ?? tender.latitude ?? null,
+        startLongitude: tender.startLongitude ?? tender.longitude ?? null,
+        endLatitude: tender.endLatitude ?? null,
+        endLongitude: tender.endLongitude ?? null,
+        tenderRange: tender.tenderRange ?? null,
         duration: tender.duration || '',
 
         // Project schedule — copied straight from the CreateTender draft,
@@ -496,6 +516,36 @@ exports.tenderAuthorityApprove = async (req, res) => {
       tender.applicationEndDate = appEnd
       tender.applicationDeadline = appDeadline
       await tender.save()
+
+      // ── STEP 3: map Document in documents collection to live approved tender ──
+      try {
+        const updatedDocs = await Document.updateMany(
+          { createTenderId: tender._id },
+          {
+            publishedTenderId: createdTender._id,
+            tenderId: createdTender.tenderCode,
+            isApproved: true,
+            status: 'Approved',
+          }
+        )
+        if (updatedDocs.matchedCount === 0 && tender.documentUrl) {
+          await Document.create({
+            tenderId: createdTender.tenderCode,
+            createTenderId: tender._id,
+            publishedTenderId: createdTender._id,
+            fileName: tender.documentFileName || 'tender_document.pdf',
+            fileUrl: tender.documentUrl,
+            contentType: 'application/pdf',
+            fileSize: tender.documentFileSize || null,
+            uploadedBy: tender.createdBy,
+            departmentId: tender.departmentId,
+            status: 'Approved',
+            isApproved: true,
+          })
+        }
+      } catch (docErr) {
+        console.error('Failed to sync Document on tenderAuthorityApprove:', docErr)
+      }
 
       // ── notification: final "approved & published" email ────────────
       // Goes to the creator, every user in approvalChain (everyone who
